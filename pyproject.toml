@@ -1,0 +1,96 @@
+## @file pyproject.toml
+## @brief agent-swarm 项目元数据与构建配置
+##
+## W1 切片范围：仅引入运行最小骨架所需依赖（OpenAI / pydantic / click / pyyaml）。
+## 后续 Weekly Slice 会逐步扩展（aiosqlite W3 / textual W6 等）。
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent-swarm"
+version = "0.1.0a1"
+description = "通用多 Agent 协作框架（W1 骨架）"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "agent-swarm contributors" }]
+dependencies = [
+    "openai>=1.40.0",            # OpenAI provider（W1）
+    "anthropic>=0.40.0",         # Anthropic provider（W2 提前装好，避免后续打断）
+    "pydantic>=2.7.0",           # YAML/dict 校验
+    "pyyaml>=6.0.1",             # Swarm.from_yaml
+    "click>=8.1.7",              # CLI
+    "rich>=13.7.1",              # 终端输出美化
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.5.0",
+    "mypy>=1.10.0",
+    "types-PyYAML",
+]
+
+[project.scripts]
+agent-swarm = "agent_swarm.cli.main:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_swarm"]
+
+# ---- ruff ----
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # bugbear
+    "UP",  # pyupgrade
+    "SIM", # simplify
+]
+ignore = ["E501"]  # line too long, ruff format 已经管
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["B011"]  # 测试里允许 assert False
+
+# ---- mypy ----
+[tool.mypy]
+python_version = "3.11"
+strict = false               # W1 渐进式严格化；后续 phase 逐步收紧
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+files = ["src/agent_swarm"]
+
+# ---- pytest ----
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "golden: golden case e2e 测试（§17.3）",
+    "phase(n): 该测试要求所属 phase 已实现",
+    "slow: 真实 LLM 调用（nightly 才跑）",
+]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+]
+
+# ---- coverage ----
+[tool.coverage.run]
+source = ["src/agent_swarm"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 75              # W1 门槛；W6 完成后逐步提至 80/85
+show_missing = true
+skip_covered = false

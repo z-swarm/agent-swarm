@@ -1,0 +1,48 @@
+## .gitignore for agent-swarm
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.eggs/
+.venv/
+venv/
+.python-version
+
+# 构建产物
+build/
+dist/
+*.whl
+
+# 测试 & 覆盖
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# 类型检查
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# 运行时产物
+*.log
+*.db
+*.db-shm
+*.db-wal
+sessions.db
+.env
+.env.local
+
+# LLM 录制（不进 git；仅 _recordings_baseline 进）
+tests/_recordings_local/
+
+# 演示录屏（大文件不进主仓库；用 git-lfs 或外部存储）
+demos/*.mp4

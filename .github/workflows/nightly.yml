@@ -1,0 +1,44 @@
+# @file nightly.yml
+# @brief 每日真实 LLM 测试（DESIGN.md §17.4 / §17.5）
+#
+# 不阻塞 PR；产出:
+#   ① Golden Cases 用真实 LLM 跑（W4 起会有真实 case；W1 暂为占位）
+#   ② Performance benchmark 与 baseline 对比
+
+name: Nightly
+
+on:
+  schedule:
+    - cron: "0 2 * * *"   # UTC 02:00 / 北京时间 10:00
+  workflow_dispatch:
+
+jobs:
+  golden-real-llm:
+    name: Golden Cases (real LLM)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run golden cases against real LLM
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          # W1：仅占位，golden 目录尚无 case
+          # W4 起：pytest tests/golden/ -m "phase==1" --llm-real
+          if [ -d tests/golden/cases ] && [ "$(ls -A tests/golden/cases 2>/dev/null)" ]; then
+            pytest tests/golden/ -m "phase<=1 and not slow" --llm-real
+          else
+            echo "::notice::No golden cases yet (W4 will introduce them)"
+          fi

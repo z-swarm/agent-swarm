@@ -1,0 +1,28 @@
+# Weekly Slice W1 演示配置
+# DESIGN.md §15 W1 DoD: 单 agent + read_file + CLI 跑通 hello
+#
+# 用法:
+#   export OPENAI_API_KEY=sk-...
+#   agent-swarm run examples/w1_hello.yaml
+#
+# 预期: agent 读取项目 README.md 并产出一句话摘要
+
+name: w1-hello
+
+agents:
+  - id: reader-1
+    role: documentation reader
+    persona: |
+      You read project documentation and produce concise summaries.
+      Always use read_file to fetch content; never guess.
+    provider: openai
+    model: gpt-4o-mini
+    tools:
+      - read_file
+    max_iterations: 5
+
+tasks:
+  - title: Summarize project README
+    description: |
+      Read README.md in the workspace and produce a one-sentence summary
+      describing what this project is.
