@@ -14,29 +14,31 @@
 
 ## 状态
 
-🟢 **Phase 1 / Week 1 完成** — 单 agent + read_file 工具 + CLI 跑通最小切片
+🟢 **Phase 1 / Week 2 完成** — 双 agent + Mailbox + TaskQueue (CAS) + Anthropic Provider
 
 | 周 | 切片 | 状态 |
 |---|------|-----|
 | W1 | 单 agent + CLI hello | ✅ |
-| W2 | 双 agent + Mailbox + TaskQueue | ⬜ |
+| W2 | 双 agent + Mailbox + TaskQueue + Anthropic | ✅ |
 | W3 | SQLite 持久化 + Session 恢复 | ⬜ |
 | W4 | KB + Skill + Golden Case G-001 | ⬜ |
 | W5 | SecurityContext + Sandbox | ⬜ |
 | W6 | TUI + Phase 1 DoD 全过 | ⬜ |
 
-## Quickstart (W1)
+## Quickstart
 
 ```bash
 # 安装
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# 准备 OpenAI Key
+# W1：单 agent 读 README 并总结
 export OPENAI_API_KEY=sk-...
-
-# 跑 W1 演示：让 agent 读取项目 README 并总结
 agent-swarm run examples/w1_hello.yaml
+
+# W2：双 agent 协作（reader 读 → 发消息给 writer → writer 总结）
+echo "payload-from-w2" > data.txt
+agent-swarm run examples/w2_two_agents.yaml
 ```
 
 预期输出：CLI 打印任务结果表格 + agent 给出的一句话摘要。

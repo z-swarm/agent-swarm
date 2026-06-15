@@ -106,16 +106,49 @@ class Task:
     """
     任务——DESIGN.md §6.4.1
 
-    W1 简化：未引入 version/CAS（W2 才用到 TaskQueue）
+    W2: 引入 version (CAS 乐观锁) + depends_on 依赖链
     """
 
     id: str
     title: str
     description: str
-    status: Literal["pending", "in_progress", "completed", "failed"] = "pending"
+    status: Literal["pending", "blocked", "in_progress", "completed", "failed"] = "pending"
     assigned_to: str | None = None
+    assigned_skill: str | None = None  # W4 启用——按技能匹配 agent
+    depends_on: list[str] = field(default_factory=list)  # 依赖任务 id 列表
     result: Any | None = None
     error: str | None = None
+    version: int = 0  # CAS 版本号——每次状态变更 +1
+    created_at: float = 0.0
+    updated_at: float = 0.0
+
+
+# ---------------------------------------------------------------------------
+# 任务认领结果——DESIGN.md §6.4.3
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ClaimResult:
+    """
+    任务认领/状态更新的结果
+
+    用 reason 显式区分失败原因（避免 None 三义混淆）:
+      - task_not_found
+      - version_mismatch (CAS 冲突——其他 agent 抢先更新)
+      - already_claimed
+      - dependency_blocked
+    """
+
+    success: bool
+    task: Task | None = None
+    reason: Literal[
+        "ok",
+        "task_not_found",
+        "version_mismatch",
+        "already_claimed",
+        "dependency_blocked",
+    ] = "ok"
 
 
 # ---------------------------------------------------------------------------
@@ -133,3 +166,28 @@ class LLMResponse:
     tokens_prompt: int
     tokens_completion: int
     model: str
+
+
+# ---------------------------------------------------------------------------
+# Mailbox 消息——DESIGN.md §6.5
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Message:
+    """
+    Agent 间点对点消息
+
+    @note W2 内存实现；W3 起持久化（与 SessionEvent 共用 SQLite store）
+    """
+
+    id: str
+    from_agent: str
+    to_agent: str | None  # None = broadcast（W2 暂不实现广播）
+    target_type: Literal["internal", "external"]  # internal=agent间; external=对外
+    msg_type: Literal["question", "challenge", "reply", "notify", "delegate"]
+    content: str
+    refs: list[str] = field(default_factory=list)  # 引用的其他消息/任务 id
+    reply_to: str | None = None  # 父消息 id
+    timestamp: float = 0.0
+    read: bool = False

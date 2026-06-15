@@ -172,3 +172,81 @@ async def test_runner_rejects_negative_max_iterations(
     task = Task(id="t-neg", title="x", description="y")
     with pytest.raises(ValueError, match="max_iterations"):
         await runner.run(task)
+
+
+async def test_runner_finish_reason_length_terminates(
+    fake_llm: FakeLLMProvider, workspace: Path
+) -> None:
+    """LLM 因 max_tokens 截断——视为完成，不再继续 OTAR"""
+    fake_llm.script.append(
+        ScriptedResponse(
+            content="partial answer",
+            tool_calls=[ToolCall(id="c1", name="read_file", arguments={"path": "x"})],
+            finish_reason="length",
+        )
+    )
+    # 兜底：若误进下一轮，会取到这条
+    fake_llm.script.append(ScriptedResponse(content="should not run", finish_reason="stop"))
+
+    agent = _make_agent()
+    runner = AgentRunner(agent, fake_llm, {"read_file": ReadFileTool(workspace)})
+    res = await runner.run(Task(id="t-len", title="x", description="y"))
+
+    assert res.finish_reason == "length"
+    assert res.task.status == "completed"
+    assert "partial answer" in res.final_text
+    # 只调一次 LLM——不进 act
+    assert len(fake_llm.calls) == 1
+
+
+async def test_runner_llm_exception_marks_task_failed(
+    workspace: Path,
+) -> None:
+    """LLM provider 抛异常——任务标记 failed，finish_reason='error'"""
+
+    class BoomProvider(FakeLLMProvider):
+        async def chat(self, messages, **kwargs):  # type: ignore[override]
+            self.calls.append(list(messages))
+            raise RuntimeError("api down")
+
+    boom = BoomProvider()
+    agent = _make_agent()
+    runner = AgentRunner(agent, boom, {"read_file": ReadFileTool(workspace)})
+    res = await runner.run(Task(id="t-err", title="x", description="y"))
+
+    assert res.finish_reason == "error"
+    assert res.task.status == "failed"
+    assert res.task.error is not None
+    assert "api down" in res.task.error
+
+
+async def test_runner_initial_inbox_messages_appear_in_prompt(
+    fake_llm: FakeLLMProvider, workspace: Path
+) -> None:
+    """W2: 启动时已有的 inbox 消息应渲染到首轮 user prompt"""
+    from agent_swarm.core.types import Message
+
+    fake_llm.script.append(ScriptedResponse(content="ok", finish_reason="stop"))
+
+    agent = _make_agent()
+    runner = AgentRunner(agent, fake_llm, {"read_file": ReadFileTool(workspace)})
+    task = Task(id="t-msg", title="x", description="y")
+
+    inbox = [
+        Message(
+            id="m-1",
+            from_agent="other",
+            to_agent="a-1",
+            target_type="internal",
+            msg_type="delegate",
+            content="please handle X",
+            timestamp=0.0,
+        )
+    ]
+    await runner.run(task, inbox_messages=inbox)
+
+    # 第一次 LLM 调用的 user turn 应含消息内容
+    user_turn = next(t for t in fake_llm.calls[0] if t.role == "user")
+    assert "please handle X" in user_turn.content
+    assert "delegate" in user_turn.content
+    assert "from other" in user_turn.content

@@ -1,0 +1,54 @@
+# Weekly Slice W2 演示配置
+# DESIGN.md §15 W2 DoD: 双 agent 通过 Mailbox 协作，A 读文件 → 发消息给 B → B 写总结
+#
+# 用法:
+#   export OPENAI_API_KEY=sk-...
+#   # 在工作目录放一个 data.txt
+#   echo "payload-from-w2" > data.txt
+#   agent-swarm run examples/w2_two_agents.yaml
+#
+# 预期: reader 读 data.txt → send_message 给 writer → writer 输出总结
+
+name: w2-two-agents
+
+agents:
+  - id: reader
+    role: data reader
+    persona: |
+      You read files and forward findings to teammates via send_message.
+      Use msg_type=delegate when handing work over.
+    provider: openai
+    model: gpt-4o-mini
+    tools:
+      - read_file
+      - send_message
+    max_iterations: 5
+
+  - id: writer
+    role: summarizer
+    persona: |
+      You write concise summaries based on messages received from teammates.
+      Reply (or just stop) once the summary is produced.
+    provider: openai
+    model: gpt-4o-mini
+    tools:
+      - send_message
+    max_iterations: 4
+
+tasks:
+  - id: T-read
+    title: Read data.txt and forward to writer
+    description: |
+      1. Use read_file to read 'data.txt' in the workspace.
+      2. Use send_message with msg_type='delegate' to send the contents
+         to agent 'writer' along with a request to summarize.
+    assigned_to: reader
+
+  - id: T-write
+    title: Summarize the data
+    description: |
+      Wait for reader's message in your inbox, then produce a one-line
+      summary of the data they sent.
+    assigned_to: writer
+    depends_on:
+      - T-read

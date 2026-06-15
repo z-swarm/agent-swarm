@@ -1,25 +1,31 @@
 """
 @module agent_swarm.core.agent_runner
-@brief  Agent 主循环——W1 最小实现
+@brief  Agent 主循环——W2 扩展为多任务自认领 + Mailbox 感知
 
-DESIGN.md §7.1 完整循环 observe → think → act → reflect
-W1 简化:
-  - observe = 读取当前任务（W1 单任务，直接传入）
-  - think   = LLM 调用 + 工具 schema
-  - act     = 执行工具调用
-  - reflect = 检查 finish_reason，决定是否继续
-  W1 暂不接 ObservabilityBus（W3 上线）；用 logger 占位
+W1 → W2 演进:
+  - W1: AgentRunner.run(task) 跑单个任务
+  - W2: AgentRunner.run_loop(task_queue, mailbox) 持续抢任务 + 处理消息
+        run(task) 仍保留——单任务模式（测试与回退）
+
+设计要点:
+  - observe 阶段把 mailbox 中的未读消息渲染到对话历史的 user turn
+  - 每完成一个任务，CAS complete，再回头抢
+  - 抢不到 + mailbox 空 → wait_for_message(timeout) 避免忙等
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from agent_swarm.core.mailbox import Mailbox
+from agent_swarm.core.task_queue import TaskQueue
 from agent_swarm.core.types import (
     Agent,
     LLMResponse,
+    Message,
     Task,
     Tool,
     Turn,
@@ -38,7 +44,22 @@ class AgentRunResult:
     iterations: int
     tokens_total: int
     final_text: str
-    finish_reason: str  # 终止原因："stop" / "max_iterations" / "error"
+    finish_reason: str  # "stop" / "max_iterations" / "error" / "length"
+
+
+@dataclass
+class AgentLoopStats:
+    """run_loop 的统计——一个 agent 在 swarm 中跑完后产出"""
+
+    agent_id: str
+    tasks_completed: list[str] = field(default_factory=list)
+    tasks_failed: list[str] = field(default_factory=list)
+    cas_conflicts: int = 0  # 抢任务时遇到 version_mismatch 的次数
+    messages_consumed: int = 0
+    tokens_total: int = 0
+    task_results: list[AgentRunResult] = field(default_factory=list)
+    # 内部状态——_loop_once 与 run_loop 之间传递"本轮是否 idle"
+    last_round_was_idle: bool = False
 
 
 class AgentRunner:
@@ -47,6 +68,10 @@ class AgentRunner:
 
     @note 保持 Agent 数据类纯净（types.py 中的 Agent）；
           AgentRunner 持有运行时依赖（provider / tools / logger）
+
+    W2 修订:
+      - tools 字典里的 send_message 等 per-agent 工具由调用方传入
+      - 新增 run_loop()——多 agent swarm 模式
     """
 
     def __init__(
@@ -72,38 +97,44 @@ class AgentRunner:
             for t in self.tools.values()
         ]
 
-    async def run(self, task: Task) -> AgentRunResult:
+    # ==================================================================
+    # 单任务模式（W1 接口，保持向后兼容；测试与简单 swarm 仍可用）
+    # ==================================================================
+    async def run(
+        self,
+        task: Task,
+        inbox_messages: list[Message] | None = None,
+    ) -> AgentRunResult:
         """
-        @brief 执行单个任务，返回结果
+        @brief 执行单个任务
 
-        循环：think → 若有工具调用则 act → reflect → 重新 think
-              直至 finish_reason == "stop" 或达 max_iterations
+        @param task           待执行任务
+        @param inbox_messages 启动时已有的 mailbox 消息——会渲染到首轮 user prompt
         """
-        # B1 修复：边界保护——max_iterations <= 0 直接拒绝，避免 for 循环
-        # 不执行导致 iteration 变量未定义的 NameError
         if self.agent.max_iterations <= 0:
             raise ValueError(
                 f"agent {self.agent.id}: max_iterations must be >= 1, "
                 f"got {self.agent.max_iterations}"
             )
 
-        log.info("agent=%s starting task=%s: %s", self.agent.id, task.id, task.title)
+        log.info("agent=%s starting task=%s: %s",
+                 self.agent.id, task.id, task.title)
         task.status = "in_progress"
         task.assigned_to = self.agent.id
 
-        history: list[Turn] = self._build_initial_history(task)
+        history: list[Turn] = self._build_initial_history(task, inbox_messages)
         tokens_total = 0
         last_text = ""
         finish: str = "stop"
-        iteration = 0  # 显式初始化——保证 return 时一定有定义
+        iteration = 0
 
         for iteration in range(1, self.agent.max_iterations + 1):
-            log.debug("agent=%s iter=%d/%d", self.agent.id, iteration, self.agent.max_iterations)
+            log.debug("agent=%s iter=%d/%d",
+                      self.agent.id, iteration, self.agent.max_iterations)
 
-            # think: LLM 调用
             try:
                 resp = await self._think(history)
-            except Exception as exc:  # noqa: BLE001 - W1 顶层兜底
+            except Exception as exc:  # noqa: BLE001
                 log.exception("agent=%s LLM error: %s", self.agent.id, exc)
                 task.status = "failed"
                 task.error = f"LLM error: {exc}"
@@ -113,7 +144,6 @@ class AgentRunner:
             tokens_total += resp.tokens_prompt + resp.tokens_completion
             last_text = resp.content
 
-            # 把 assistant 回复入历史
             history.append(
                 Turn(
                     role="assistant",
@@ -123,7 +153,6 @@ class AgentRunner:
                 )
             )
 
-            # reflect: 没有工具调用 → 终止
             if resp.finish_reason == "stop" or not resp.tool_calls:
                 finish = "stop"
                 task.status = "completed"
@@ -131,13 +160,11 @@ class AgentRunner:
                 break
 
             if resp.finish_reason == "length":
-                # 超 max_tokens——把当前结果作为最终输出，不再继续
                 finish = "length"
                 task.status = "completed"
                 task.result = resp.content
                 break
 
-            # act: 执行所有工具调用
             for tc in resp.tool_calls:
                 tool_result = await self._act(tc.name, tc.arguments)
                 history.append(
@@ -149,45 +176,165 @@ class AgentRunner:
                     )
                 )
         else:
-            # 达到 max_iterations 仍未停止
             log.warning(
                 "agent=%s reached max_iterations=%d without stop",
-                self.agent.id,
-                self.agent.max_iterations,
+                self.agent.id, self.agent.max_iterations,
             )
             finish = "max_iterations"
-            task.status = "completed"  # 视为已完成（带最近一次回复）
+            task.status = "completed"
             task.result = last_text
 
         return AgentRunResult(
             task=task,
             history=history,
-            iterations=iteration,  # B1 修复：iteration 已在循环前显式初始化为 0
+            iterations=iteration,
             tokens_total=tokens_total,
             final_text=last_text,
             finish_reason=finish,
         )
 
-    # ------------------------------------------------------------------
+    # ==================================================================
+    # 多 agent swarm 模式（W2 新增）
+    # ==================================================================
+    async def run_loop(
+        self,
+        task_queue: TaskQueue,
+        mailbox: Mailbox,
+        idle_timeout: float = 1.0,
+        max_idle_polls: int = 3,
+    ) -> AgentLoopStats:
+        """
+        持续抢任务 + 处理消息，直到无任务可抢且连续 N 次 idle
+
+        @param idle_timeout    每次 wait_for_message 的超时
+        @param max_idle_polls  连续无任务+无消息几次后退出
+
+        终止条件:
+          - 连续 max_idle_polls 次 idle 检查都没有任务/消息
+          - 调用方 cancel 此 coroutine（CancelledError 触发后仍 return 已积累 stats）
+        """
+        stats = AgentLoopStats(agent_id=self.agent.id)
+        idle_rounds = 0
+        log.info("agent=%s loop start", self.agent.id)
+
+        try:
+            while idle_rounds < max_idle_polls:
+                await self._loop_once(task_queue, mailbox, stats, idle_timeout)
+                if stats.last_round_was_idle:
+                    idle_rounds += 1
+                else:
+                    idle_rounds = 0
+        except asyncio.CancelledError:
+            # 被 watcher 取消——返回已有 stats，不让异常传播
+            log.info("agent=%s loop cancelled by orchestrator", self.agent.id)
+
+        log.info(
+            "agent=%s loop end: completed=%d failed=%d cas_conflicts=%d",
+            self.agent.id, len(stats.tasks_completed),
+            len(stats.tasks_failed), stats.cas_conflicts,
+        )
+        return stats
+
+    async def _loop_once(
+        self,
+        task_queue: TaskQueue,
+        mailbox: Mailbox,
+        stats: AgentLoopStats,
+        idle_timeout: float,
+    ) -> None:
+        """run_loop 的一次迭代——抽取出来便于阅读 + 单测"""
+        # ① 拉取未读消息
+        inbox = await mailbox.receive(self.agent.id, unread_only=True)
+        stats.messages_consumed += len(inbox)
+        if inbox:
+            ids = [m.id for m in inbox]
+            await mailbox.mark_read(self.agent.id, ids)
+
+        # ② 尝试抢任务
+        claimable = await task_queue.list_claimable(agent_id=self.agent.id)
+        claimed_task: Task | None = None
+        for cand in claimable:
+            res = await task_queue.claim(
+                cand.id, self.agent.id, expected_version=cand.version
+            )
+            if res.success and res.task:
+                claimed_task = res.task
+                break
+            if res.reason == "version_mismatch":
+                stats.cas_conflicts += 1
+
+        # ③ 路由
+        if claimed_task is not None:
+            stats.last_round_was_idle = False
+            run_res = await self.run(claimed_task, inbox_messages=inbox)
+            stats.task_results.append(run_res)
+            stats.tokens_total += run_res.tokens_total
+
+            version_after_run = claimed_task.version  # claim 后是 1
+            if claimed_task.status == "completed":
+                cr = await task_queue.complete(
+                    claimed_task.id, run_res.final_text,
+                    expected_version=version_after_run,
+                )
+                if cr.success:
+                    stats.tasks_completed.append(claimed_task.id)
+                else:
+                    log.warning("agent=%s complete cas failed: %s",
+                                self.agent.id, cr.reason)
+                    stats.tasks_failed.append(claimed_task.id)
+            else:
+                cr = await task_queue.fail(
+                    claimed_task.id, claimed_task.error or "unknown",
+                    expected_version=version_after_run,
+                )
+                if cr.success:
+                    stats.tasks_failed.append(claimed_task.id)
+        elif inbox:
+            stats.last_round_was_idle = False
+        else:
+            got = await mailbox.wait_for_message(
+                self.agent.id, timeout=idle_timeout
+            )
+            stats.last_round_was_idle = not got
+
+    # ==================================================================
     # 内部步骤
-    # ------------------------------------------------------------------
-    def _build_initial_history(self, task: Task) -> list[Turn]:
-        """构造起始对话——system prompt + 任务描述"""
+    # ==================================================================
+    def _build_initial_history(
+        self,
+        task: Task,
+        inbox_messages: list[Message] | None = None,
+    ) -> list[Turn]:
+        """构造起始对话——system prompt + 任务描述 + 初始消息"""
         sys_prompt = (
-            f"You are {self.agent.role}. "
+            f"You are {self.agent.role} (id: {self.agent.id}). "
             f"{self.agent.persona}\n\n"
-            "Use the provided tools to gather information when needed. "
+            "Use the provided tools to gather information and collaborate "
+            "with other agents when needed. "
             "When you have completed the task, provide your final answer "
             "without calling any more tools."
         )
-        user_prompt = (
-            f"Task: {task.title}\n\n"
-            f"Description:\n{task.description}\n\n"
-            "Please complete this task."
-        )
+
+        user_lines = [
+            f"Task: {task.title}",
+            "",
+            f"Description:\n{task.description}",
+        ]
+
+        if inbox_messages:
+            user_lines.append("")
+            user_lines.append("Pending messages from other agents:")
+            for m in inbox_messages:
+                user_lines.append(
+                    f"  [{m.msg_type}] from {m.from_agent}: {m.content}"
+                )
+
+        user_lines.append("")
+        user_lines.append("Please complete this task.")
+
         return [
             Turn(role="system", content=sys_prompt, timestamp=time.time()),
-            Turn(role="user", content=user_prompt, timestamp=time.time()),
+            Turn(role="user", content="\n".join(user_lines), timestamp=time.time()),
         ]
 
     async def _think(self, history: list[Turn]) -> LLMResponse:
@@ -202,7 +349,6 @@ class AgentRunner:
         """执行单次工具调用"""
         tool = self.tools.get(tool_name)
         if tool is None:
-            # LLM 调了不存在/未授权的工具——返回错误供其修正
             return f"[error] tool {tool_name!r} not available to this agent"
         try:
             return await tool.invoke(arguments)
