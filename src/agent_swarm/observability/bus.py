@@ -124,13 +124,15 @@ class ObservabilityBus:
         return evt
 
     async def aclose(self) -> None:
-        """关闭所有 sink"""
+        """关闭所有 sink 并清空订阅列表（W3-Z3）"""
         for sink in self._sinks:
             try:
                 await sink.aclose()
             except Exception as exc:  # noqa: BLE001
                 log.warning("obs.sink_close_error sink=%s err=%s",
                             type(sink).__name__, exc)
+        # 清空——避免 close 后误用已关闭 sink
+        self._sinks.clear()
 
 
 # ---------------------------------------------------------------------------

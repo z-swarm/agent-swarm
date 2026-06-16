@@ -419,3 +419,39 @@ def test_cli_session_resume_full_state(tmp_path: Path) -> None:
     assert "T1" in res.stdout
     assert "completed" in res.stdout
     assert "ping" in res.stdout
+
+
+def test_cli_session_show_with_config_flag(tmp_path: Path) -> None:
+    """W3-Z4 回归：--config 显示 yaml 配置"""
+    import asyncio
+
+    from agent_swarm.core.session_manager import SessionManager
+    from agent_swarm.observability.sqlite_sink import SqliteEventSink
+
+    db = tmp_path / "cfg.db"
+
+    async def _seed():
+        sink = SqliteEventSink(db)
+        mgr = SessionManager(sink)
+        await mgr.create_session(
+            "with-config",
+            session_id="C1",
+            config_yaml="name: with-config\nagents:\n  - id: a\n",
+        )
+        await sink.aclose()
+
+    asyncio.run(_seed())
+
+    runner = CliRunner()
+    # 默认 --no-config 时不显示
+    res_default = runner.invoke(cli, ["session", "show", "C1", "--db", str(db)])
+    assert res_default.exit_code == 0
+    assert "Config YAML" not in res_default.stdout
+
+    # --config 时显示
+    res_with = runner.invoke(
+        cli, ["session", "show", "C1", "--config", "--db", str(db)]
+    )
+    assert res_with.exit_code == 0
+    assert "Config YAML" in res_with.stdout
+    assert "with-config" in res_with.stdout

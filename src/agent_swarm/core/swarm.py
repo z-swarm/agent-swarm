@@ -224,6 +224,18 @@ class Swarm:
                 await watcher_task
         except Exception as exc:  # noqa: BLE001
             log.exception("swarm crashed: %s", exc)
+            # W3-Z1 修复：crash 路径也要 emit swarm.failed，保证事件流完整
+            await emit(
+                "swarm.failed",
+                self.session_id,
+                {
+                    "duration_seconds": time.monotonic() - t0,
+                    "tasks_completed": 0,
+                    "tasks_failed": 0,
+                    "tasks_unfinished": len(self.tasks),
+                    "error": str(exc),
+                },
+            )
             return SwarmResult(
                 name=self.name,
                 state="failed",

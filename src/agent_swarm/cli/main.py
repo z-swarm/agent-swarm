@@ -211,7 +211,14 @@ def session_list(db_path: Path | None) -> None:
     default=True,
     help="是否打印事件流（默认 True）",
 )
-def session_show(session_id: str, db_path: Path | None, events: bool) -> None:
+@click.option(
+    "--config/--no-config",
+    default=False,
+    help="是否打印原始 yaml 配置（默认 False）",
+)
+def session_show(
+    session_id: str, db_path: Path | None, events: bool, config: bool
+) -> None:
     """显示 session 详情 + 事件流"""
     db = db_path or DEFAULT_DB_PATH
     if not db.exists():
@@ -225,13 +232,16 @@ def session_show(session_id: str, db_path: Path | None, events: bool) -> None:
         try:
             info = await mgr.get_session(session_id)
             if info is None:
-                return None, []
+                return None, [], None
             evts = await sink.get_events(session_id) if events else []
-            return info, evts
+            # W3-Z4: 同时取回 config_yaml
+            full = await sink.get_session(session_id)
+            cfg_yaml = full["config_yaml"] if full and config else None
+            return info, evts, cfg_yaml
         finally:
             await sink.aclose()
 
-    info, evts = asyncio.run(_show())
+    info, evts, cfg_yaml = asyncio.run(_show())
     if info is None:
         console.print(f"[red]Session not found:[/] {session_id}")
         sys.exit(2)
@@ -248,6 +258,10 @@ def session_show(session_id: str, db_path: Path | None, events: bool) -> None:
             f"  ended: "
             f"{datetime.fromtimestamp(info.ended_at).strftime('%Y-%m-%d %H:%M:%S')}"
         )
+
+    if cfg_yaml:
+        console.rule("[bold]Config YAML[/]")
+        console.print(cfg_yaml)
 
     if events:
         console.rule(f"[bold]Events ({len(evts)})[/]")

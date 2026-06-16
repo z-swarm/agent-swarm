@@ -209,8 +209,8 @@ async def test_complex_result_persists_as_string(
     tmp_path: Path,
 ) -> None:
     """
-    W3-B3: complete() 时如果 result 是 dict / 复杂对象，emit 时会被转 str
-    回放后 result 字段是 str 而非原对象——记录此契约
+    W3-Z2 修复后：dict 类型 result 经 sink (json.dumps default=str) 序列化，
+    回放时恢复为原 dict 结构（不再被强制 str() 化）
     """
     from agent_swarm.core.task_queue import TaskQueue
     from agent_swarm.core.types import Task as _Task
@@ -227,7 +227,6 @@ async def test_complex_result_persists_as_string(
         q = TaskQueue(session_id=sid)
         await q.add(_Task(id="T", title="x", description="y"))
         claimed = await q.claim("T", "a", expected_version=0)
-        # 用 dict 作为 result
         complex_result = {"score": 0.95, "tags": ["a", "b"]}
         await q.complete("T", complex_result, expected_version=claimed.task.version)  # type: ignore[union-attr]
     finally:
@@ -240,12 +239,72 @@ async def test_complex_result_persists_as_string(
         mgr = SessionManager(sink2)
         state = await mgr.restore_session(sid)
         t = (await state.task_queue.list_all())[0]
-        # 契约：复杂对象会被 str() —— 回放后是字符串
-        assert isinstance(t.result, str)
-        assert "score" in t.result
-        assert "0.95" in t.result
+        # W3-Z2 后契约：dict 结构保留
+        assert isinstance(t.result, dict)
+        assert t.result["score"] == 0.95
+        assert t.result["tags"] == ["a", "b"]
     finally:
         await sink2.aclose()
+
+
+async def test_swarm_crash_emits_failed_event(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    W3-Z1 回归：swarm 内部崩溃也要 emit swarm.failed
+    构造 watcher 路径之外的异常——例如 asyncio.create_task 抛错
+    """
+    fake = FakeLLMProvider()
+    fake.script.append(ScriptedResponse(content="ok", finish_reason="stop"))
+    monkeypatch.setattr("agent_swarm.core.swarm.get_provider", lambda *_a, **_k: fake)
+
+    db = tmp_path / "crash.db"
+    bus = ObservabilityBus()
+    sink = SqliteEventSink(db)
+    bus.register_sink(sink)
+    set_global_bus(bus)
+
+    sid: str
+    try:
+        cfg = _two_task_cfg(tmp_path)
+        swarm = Swarm.from_dict(cfg, base_dir=tmp_path)
+        sid = swarm.session_id
+        await sink.register_session(sid, swarm.name)
+
+        # 让 asyncio.create_task 失败——触发外层 except
+        def boom(*args, **kw):  # noqa: ARG001
+            raise RuntimeError("create_task explosion")
+
+        monkeypatch.setattr("agent_swarm.core.swarm.asyncio.create_task", boom)
+
+        result = await swarm.run()
+        assert result.state == "failed"
+    finally:
+        set_global_bus(None)
+        await sink.aclose()
+
+    # 验证 swarm.failed 事件已落库
+    sink2 = SqliteEventSink(db)
+    try:
+        events = await sink2.get_events(sid)
+        names = [e.event_name for e in events]
+        assert "swarm.failed" in names
+        # error 字段应携带异常信息
+        failed_evt = next(e for e in events if e.event_name == "swarm.failed")
+        assert "explosion" in failed_evt.payload.get("error", "")
+    finally:
+        await sink2.aclose()
+
+
+async def test_bus_aclose_clears_sinks(tmp_path: Path) -> None:
+    """W3-Z3 回归：bus.aclose 后 sinks 列表应为空"""
+    bus = ObservabilityBus()
+    sink = SqliteEventSink(tmp_path / "x.db")
+    bus.register_sink(sink)
+    assert len(bus.sinks) == 1
+    await bus.aclose()
+    assert len(bus.sinks) == 0
 
 
 async def test_restore_does_not_use_private_fields(

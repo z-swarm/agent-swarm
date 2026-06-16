@@ -218,10 +218,12 @@ class TaskQueue:
                 t.updated_at = time.time()
                 log.info("task.completed id=%s v=%d", task_id, t.version)
                 event_name = "task.completed"
+                # W3-Z2 修复：result 直接传，由 sink (json.dumps default=str) 兜底
+                # 上层粗暴 str() 会丢失结构化信息（如 dict/list）
                 event_payload = {
                     "task_id": task_id,
                     "version": t.version,
-                    "result": result if isinstance(result, str | int | float | bool | type(None)) else str(result),
+                    "result": result,
                 }
                 # 解阻塞依赖此任务的其他 task——同时收集事件
                 unblocked_events = self._unblock_dependents(task_id)
