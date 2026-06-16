@@ -1,6 +1,6 @@
 """
 @module agent_swarm.core.swarm
-@brief  Swarm 编排器（W2 多 agent 并发版本）
+@brief  Swarm 编排器（W2 多 agent 并发 + W3 ObservabilityBus 集成）
 
 DESIGN.md §3.2 完整 API；W2 阶段:
   - Swarm.from_yaml() / from_dict()
@@ -8,12 +8,10 @@ DESIGN.md §3.2 完整 API；W2 阶段:
   - TaskQueue 内存实现
   - Mailbox 内存实现
 
-W1 → W2 演进:
-  - W1: 取第一个 agent 串行跑所有任务
-  - W2: 所有 agent 并发；任务通过 TaskQueue.claim 自分配
-        agent 间通过 Mailbox.send_message 协作
-
-W3 起 SQLite 持久化；handle_external_message / pause / resume 留待后续
+W3 增强:
+  - 自动生成 session_id（uuid4）
+  - 启动时注入 ObservabilityBus（默认 JsonLogSink + InMemorySink）
+  - run() 周期内 emit swarm.* 事件
 """
 
 from __future__ import annotations
@@ -25,6 +23,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import yaml
 
@@ -32,6 +31,9 @@ from agent_swarm.core.agent_runner import AgentLoopStats, AgentRunner, AgentRunR
 from agent_swarm.core.mailbox import Mailbox
 from agent_swarm.core.task_queue import TaskQueue
 from agent_swarm.core.types import Agent, AgentCapabilities, Task
+from agent_swarm.observability import (
+    emit,
+)
 from agent_swarm.providers import get_provider
 from agent_swarm.tools import build_per_agent_tools, build_shared_tools
 
@@ -67,6 +69,7 @@ class Swarm:
         tasks: list[Task],
         workspace: Path | str | None = None,
         provider_overrides: dict[str, dict[str, Any]] | None = None,
+        session_id: str | None = None,
     ) -> None:
         if not agents:
             raise ValueError("Swarm needs at least one agent")
@@ -79,10 +82,12 @@ class Swarm:
             Path(workspace).resolve() if workspace else Path.cwd().resolve()
         )
         self.provider_overrides = provider_overrides or {}
+        # W3: 自动分配 session_id 用于事件流标记 / SessionManager 恢复
+        self.session_id = session_id or f"s-{uuid4().hex[:12]}"
 
-        # W2 共享基础设施
-        self.task_queue = TaskQueue()
-        self.mailbox = Mailbox()
+        # W3 共享基础设施——session_id 同步注入
+        self.task_queue = TaskQueue(session_id=self.session_id)
+        self.mailbox = Mailbox(session_id=self.session_id)
         self._run_called: bool = False  # W2-B8: 防止 run() 被调多次
 
     # ------------------------------------------------------------------
@@ -152,8 +157,17 @@ class Swarm:
 
         t0 = time.monotonic()
         log.info(
-            "swarm=%s start (%d agent(s), %d task(s))",
-            self.name, len(self.agents), len(self.tasks),
+            "swarm=%s session=%s start (%d agent(s), %d task(s))",
+            self.name, self.session_id, len(self.agents), len(self.tasks),
+        )
+        await emit(
+            "swarm.started",
+            self.session_id,
+            {
+                "name": self.name,
+                "agent_ids": [a.id for a in self.agents],
+                "task_count": len(self.tasks),
+            },
         )
 
         # 1) 任务入队
@@ -249,6 +263,17 @@ class Swarm:
         log.info(
             "swarm=%s done in %.1fs: %d completed, %d failed, %d unfinished",
             self.name, duration, completed, failed, unfinished,
+        )
+        await emit(
+            "swarm.completed" if state == "completed" else "swarm.failed",
+            self.session_id,
+            {
+                "duration_seconds": duration,
+                "tasks_completed": completed,
+                "tasks_failed": failed,
+                "tasks_unfinished": unfinished,
+                "error": first_error,
+            },
         )
 
         return SwarmResult(

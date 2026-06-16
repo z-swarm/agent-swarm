@@ -194,3 +194,228 @@ def test_cli_run_nonexistent_file(tmp_path: Path) -> None:
     runner = CliRunner()
     res = runner.invoke(cli, ["run", str(tmp_path / "ghost.yaml")])
     assert res.exit_code != 0
+
+
+# ---------------------------------------------------------------------------
+# session 子命令（W3）
+# ---------------------------------------------------------------------------
+
+
+def test_cli_session_help() -> None:
+    runner = CliRunner()
+    res = runner.invoke(cli, ["session", "--help"])
+    assert res.exit_code == 0
+    assert "list" in res.stdout
+    assert "show" in res.stdout
+    assert "resume" in res.stdout
+
+
+def test_cli_session_list_no_db(tmp_path: Path) -> None:
+    """db 文件不存在 → 友好提示 + exit 0"""
+    runner = CliRunner()
+    res = runner.invoke(
+        cli, ["session", "list", "--db", str(tmp_path / "nope.db")]
+    )
+    assert res.exit_code == 0
+    assert "No session database" in res.stdout
+
+
+def test_cli_session_list_empty(tmp_path: Path) -> None:
+    """db 存在但无 session"""
+    import asyncio
+
+    from agent_swarm.observability.sqlite_sink import SqliteEventSink
+
+    db = tmp_path / "empty.db"
+
+    async def _init():
+        sink = SqliteEventSink(db)
+        await sink._ensure_conn()  # 触发建库
+        await sink.aclose()
+
+    asyncio.run(_init())
+
+    runner = CliRunner()
+    res = runner.invoke(cli, ["session", "list", "--db", str(db)])
+    assert res.exit_code == 0
+    assert "no sessions" in res.stdout.lower()
+
+
+def test_cli_session_list_shows_sessions(tmp_path: Path) -> None:
+    """注册 2 个 session 后 list 应都能看到"""
+    import asyncio
+
+    from agent_swarm.core.session_manager import SessionManager
+    from agent_swarm.observability.sqlite_sink import SqliteEventSink
+
+    db = tmp_path / "list.db"
+
+    async def _seed():
+        sink = SqliteEventSink(db)
+        mgr = SessionManager(sink)
+        await mgr.create_session("alpha")
+        await mgr.create_session("beta")
+        await sink.aclose()
+
+    asyncio.run(_seed())
+
+    runner = CliRunner()
+    res = runner.invoke(cli, ["session", "list", "--db", str(db)])
+    assert res.exit_code == 0
+    assert "alpha" in res.stdout
+    assert "beta" in res.stdout
+
+
+def test_cli_session_show_unknown(tmp_path: Path) -> None:
+    """不存在的 session_id → exit 2"""
+    import asyncio
+
+    from agent_swarm.observability.sqlite_sink import SqliteEventSink
+
+    db = tmp_path / "show.db"
+
+    async def _init():
+        sink = SqliteEventSink(db)
+        await sink._ensure_conn()
+        await sink.aclose()
+
+    asyncio.run(_init())
+
+    runner = CliRunner()
+    res = runner.invoke(cli, ["session", "show", "ghost", "--db", str(db)])
+    assert res.exit_code == 2
+    assert "not found" in res.stdout.lower()
+
+
+def test_cli_session_show_with_events(tmp_path: Path) -> None:
+    """有 session + 事件 → 显示详情和事件流"""
+    import asyncio
+
+    from agent_swarm.core.session_manager import SessionManager
+    from agent_swarm.core.types import SessionEvent
+    from agent_swarm.observability.sqlite_sink import SqliteEventSink
+
+    db = tmp_path / "show.db"
+
+    async def _seed():
+        sink = SqliteEventSink(db)
+        mgr = SessionManager(sink)
+        await mgr.create_session("test", session_id="S1")
+        await sink.consume(
+            SessionEvent(event_name="task.created", session_id="S1",
+                         timestamp=1.0, seq=0, payload={"task_id": "T"})
+        )
+        await sink.aclose()
+
+    asyncio.run(_seed())
+
+    runner = CliRunner()
+    res = runner.invoke(cli, ["session", "show", "S1", "--db", str(db)])
+    assert res.exit_code == 0
+    assert "S1" in res.stdout
+    assert "task.created" in res.stdout
+    assert "test" in res.stdout  # swarm_name
+
+
+def test_cli_session_show_no_events_flag(tmp_path: Path) -> None:
+    """--no-events 时不打印事件流"""
+    import asyncio
+
+    from agent_swarm.core.session_manager import SessionManager
+    from agent_swarm.core.types import SessionEvent
+    from agent_swarm.observability.sqlite_sink import SqliteEventSink
+
+    db = tmp_path / "show2.db"
+
+    async def _seed():
+        sink = SqliteEventSink(db)
+        mgr = SessionManager(sink)
+        await mgr.create_session("x", session_id="S2")
+        await sink.consume(
+            SessionEvent(event_name="task.created", session_id="S2",
+                         timestamp=1.0, seq=0, payload={"task_id": "T"})
+        )
+        await sink.aclose()
+
+    asyncio.run(_seed())
+
+    runner = CliRunner()
+    res = runner.invoke(
+        cli, ["session", "show", "S2", "--no-events", "--db", str(db)]
+    )
+    assert res.exit_code == 0
+    assert "S2" in res.stdout
+    # 事件不应被打印
+    assert "task.created" not in res.stdout
+
+
+def test_cli_session_resume_unknown(tmp_path: Path) -> None:
+    """不存在的 session → exit 2"""
+    import asyncio
+
+    from agent_swarm.observability.sqlite_sink import SqliteEventSink
+
+    db = tmp_path / "resume.db"
+
+    async def _init():
+        sink = SqliteEventSink(db)
+        await sink._ensure_conn()
+        await sink.aclose()
+
+    asyncio.run(_init())
+
+    runner = CliRunner()
+    res = runner.invoke(cli, ["session", "resume", "ghost", "--db", str(db)])
+    assert res.exit_code == 2
+    assert "not found" in res.stdout.lower()
+
+
+def test_cli_session_resume_no_db(tmp_path: Path) -> None:
+    """db 文件不存在 → exit 2 + 错误提示"""
+    runner = CliRunner()
+    res = runner.invoke(
+        cli, ["session", "resume", "x", "--db", str(tmp_path / "nope.db")]
+    )
+    assert res.exit_code == 2
+    assert "not found" in res.stdout.lower()
+
+
+def test_cli_session_resume_full_state(tmp_path: Path) -> None:
+    """完整事件流恢复——CLI 输出含任务表 + 消息列表"""
+    import asyncio
+
+    from agent_swarm.core.session_manager import SessionManager
+    from agent_swarm.core.types import SessionEvent
+    from agent_swarm.observability.sqlite_sink import SqliteEventSink
+
+    db = tmp_path / "rsm.db"
+
+    async def _seed():
+        sink = SqliteEventSink(db)
+        mgr = SessionManager(sink)
+        await mgr.create_session("recovery", session_id="R1")
+        events = [
+            ("task.created", {"task_id": "T1", "title": "build", "description": "do",
+                              "status": "pending", "depends_on": []}),
+            ("task.claimed", {"task_id": "T1", "agent_id": "a", "version": 1}),
+            ("task.completed", {"task_id": "T1", "version": 2, "result": "OK"}),
+            ("message.sent", {"msg_id": "m1", "from": "a", "to": "b",
+                              "msg_type": "notify", "content": "ping"}),
+        ]
+        for i, (name, payload) in enumerate(events):
+            await sink.consume(SessionEvent(
+                event_name=name, session_id="R1",
+                timestamp=float(i + 1), seq=i, payload=payload,
+            ))
+        await sink.aclose()
+
+    asyncio.run(_seed())
+
+    runner = CliRunner()
+    res = runner.invoke(cli, ["session", "resume", "R1", "--db", str(db)])
+    assert res.exit_code == 0
+    assert "Restored" in res.stdout
+    assert "R1" in res.stdout
+    assert "T1" in res.stdout
+    assert "completed" in res.stdout
+    assert "ping" in res.stdout

@@ -14,13 +14,13 @@
 
 ## 状态
 
-🟢 **Phase 1 / Week 2 完成** — 双 agent + Mailbox + TaskQueue (CAS) + Anthropic Provider
+🟢 **Phase 1 / Week 3 完成** — SQLite 持久化 + Session 恢复 + ObservabilityBus
 
 | 周 | 切片 | 状态 |
 |---|------|-----|
 | W1 | 单 agent + CLI hello | ✅ |
 | W2 | 双 agent + Mailbox + TaskQueue + Anthropic | ✅ |
-| W3 | SQLite 持久化 + Session 恢复 | ⬜ |
+| W3 | SQLite 持久化 + Session 恢复 + Observability | ✅ |
 | W4 | KB + Skill + Golden Case G-001 | ⬜ |
 | W5 | SecurityContext + Sandbox | ⬜ |
 | W6 | TUI + Phase 1 DoD 全过 | ⬜ |
@@ -37,8 +37,14 @@ export OPENAI_API_KEY=sk-...
 agent-swarm run examples/w1_hello.yaml
 
 # W2：双 agent 协作（reader 读 → 发消息给 writer → writer 总结）
-echo "payload-from-w2" > data.txt
+echo "payload-from-w2" > examples/data.txt
 agent-swarm run examples/w2_two_agents.yaml
+
+# W3：跑完查看 session 历史 + 恢复状态
+agent-swarm run examples/w3_resume.yaml
+agent-swarm session list                      # 列出所有 session
+agent-swarm session show <session-id>         # 显示完整事件流
+agent-swarm session resume <session-id>       # 重建状态（任务/消息）
 ```
 
 预期输出：CLI 打印任务结果表格 + agent 给出的一句话摘要。

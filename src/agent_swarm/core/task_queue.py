@@ -1,15 +1,10 @@
 """
 @module agent_swarm.core.task_queue
-@brief  TaskQueue（W2 内存实现，CAS 单一并发模型）
+@brief  TaskQueue（W2 内存实现 + W3 ObservabilityBus 集成）
 
-DESIGN.md §6.4 完整规约。W2 阶段:
-  - 内存实现（asyncio.Lock 保护 dict）
-  - CAS 通过版本号比较实现
-  - W3 切到 SQLite——StorageBackend.cas_update_task 替换内存路径
-
-为什么内存够用?
-  - W2 单进程内多 agent 并发，asyncio.Lock 已能保证原子性
-  - W3 跨进程恢复才需要 SQLite WAL；W2 不引入 IO 复杂度
+DESIGN.md §6.4 完整规约。
+W2: 内存实现 + CAS
+W3: 每次状态变更 emit 事件，事件流即恢复源
 """
 
 from __future__ import annotations
@@ -20,6 +15,7 @@ import time
 from typing import Any
 
 from agent_swarm.core.types import ClaimResult, Task
+from agent_swarm.observability import emit
 
 log = logging.getLogger(__name__)
 
@@ -33,17 +29,26 @@ class TaskQueue:
         claim(task_id, agent_id, expected_version) → CAS 更新
         complete/fail(task_id, ..., expected_version) → CAS 更新
         所有 CAS 失败返回 reason="version_mismatch"，agent 应重新拉取
+
+    @note W3 事件:
+        task.created / task.claimed / task.completed / task.failed / task.unblocked
+        task.cas_conflict (claim/complete/fail 任意一个版本不匹配时)
     """
 
-    def __init__(self) -> None:
+    def __init__(self, session_id: str = "local") -> None:
+        """
+        @param session_id 用于事件标记——SessionManager 按此分组持久化
+        """
         self._tasks: dict[str, Task] = {}
-        self._lock = asyncio.Lock()  # 保护 _tasks 的所有读写
+        self._lock = asyncio.Lock()
+        self.session_id = session_id
 
     # ------------------------------------------------------------------
     # 写入
     # ------------------------------------------------------------------
     async def add(self, task: Task) -> str:
         """新增任务——返回 task.id"""
+        # 持锁完成状态变更，emit 在锁外执行（避免持锁 await 跨边界）
         async with self._lock:
             if task.id in self._tasks:
                 raise ValueError(f"task {task.id!r} already exists")
@@ -62,7 +67,16 @@ class TaskQueue:
             self._tasks[task.id] = task
             log.debug("task.created id=%s title=%s status=%s",
                       task.id, task.title, task.status)
-            return task.id
+            payload = {
+                "task_id": task.id,
+                "title": task.title,
+                "status": task.status,
+                "depends_on": list(task.depends_on),
+                "assigned_to": task.assigned_to,
+            }
+        # 锁外 emit
+        await emit("task.created", self.session_id, payload)
+        return task.id
 
     async def add_many(self, tasks: list[Task]) -> list[str]:
         """批量新增——便于 Swarm 启动时一次性注入"""
@@ -125,75 +139,152 @@ class TaskQueue:
         @return ClaimResult.success=True 时 task 是更新后的副本
                 失败时 reason 区分原因；冲突时调用方应 list_claimable 重试
         """
+        # 持锁完成状态变更；事件类型在锁外 emit
+        event_name: str | None = None
+        event_payload: dict[str, Any] = {}
+        result: ClaimResult
+
         async with self._lock:
             t = self._tasks.get(task_id)
             if t is None:
-                return ClaimResult(success=False, reason="task_not_found")
-            if t.version != expected_version:
+                result = ClaimResult(success=False, reason="task_not_found")
+            elif t.version != expected_version:
                 # CAS 冲突——其他 agent 抢先了
                 log.info("task.cas_conflict id=%s expected=%d actual=%d agent=%s",
                          task_id, expected_version, t.version, agent_id)
-                return ClaimResult(success=False, reason="version_mismatch")
-            if t.status == "in_progress":
-                return ClaimResult(success=False, reason="already_claimed")
-            if t.status != "pending":
-                return ClaimResult(success=False, reason="version_mismatch")
-            if not self._deps_satisfied(t):
-                return ClaimResult(success=False, reason="dependency_blocked")
+                event_name = "task.cas_conflict"
+                event_payload = {
+                    "task_id": task_id,
+                    "agent_id": agent_id,
+                    "op": "claim",
+                    "expected_version": expected_version,
+                    "actual_version": t.version,
+                }
+                result = ClaimResult(success=False, reason="version_mismatch")
+            elif t.status == "in_progress":
+                result = ClaimResult(success=False, reason="already_claimed")
+            elif t.status != "pending":
+                result = ClaimResult(success=False, reason="version_mismatch")
+            elif not self._deps_satisfied(t):
+                result = ClaimResult(success=False, reason="dependency_blocked")
+            else:
+                # 认领成功——原地更新
+                t.status = "in_progress"
+                t.assigned_to = agent_id
+                t.version += 1
+                t.updated_at = time.time()
+                log.info("task.claimed id=%s agent=%s v=%d", task_id, agent_id, t.version)
+                event_name = "task.claimed"
+                event_payload = {
+                    "task_id": task_id,
+                    "agent_id": agent_id,
+                    "version": t.version,
+                }
+                result = ClaimResult(success=True, task=t, reason="ok")
 
-            # 认领成功——原地更新
-            t.status = "in_progress"
-            t.assigned_to = agent_id
-            t.version += 1
-            t.updated_at = time.time()
-            log.info("task.claimed id=%s agent=%s v=%d", task_id, agent_id, t.version)
-            return ClaimResult(success=True, task=t, reason="ok")
+        if event_name is not None:
+            await emit(event_name, self.session_id, event_payload)
+        return result
 
     async def complete(
         self, task_id: str, result: Any, expected_version: int
     ) -> ClaimResult:
         """CAS 更新 status=in_progress → completed；冲突返回 version_mismatch"""
+        event_name: str | None = None
+        event_payload: dict[str, Any] = {}
+        # 解阻塞产生的事件
+        unblocked_events: list[tuple[str, dict[str, Any]]] = []
+        ret: ClaimResult
+
         async with self._lock:
             t = self._tasks.get(task_id)
             if t is None:
-                return ClaimResult(success=False, reason="task_not_found")
-            if t.version != expected_version:
+                ret = ClaimResult(success=False, reason="task_not_found")
+            elif t.version != expected_version:
                 log.info("task.cas_conflict on complete id=%s expected=%d actual=%d",
                          task_id, expected_version, t.version)
-                return ClaimResult(success=False, reason="version_mismatch")
+                event_name = "task.cas_conflict"
+                event_payload = {
+                    "task_id": task_id,
+                    "op": "complete",
+                    "expected_version": expected_version,
+                    "actual_version": t.version,
+                }
+                ret = ClaimResult(success=False, reason="version_mismatch")
+            else:
+                t.status = "completed"
+                t.result = result
+                t.version += 1
+                t.updated_at = time.time()
+                log.info("task.completed id=%s v=%d", task_id, t.version)
+                event_name = "task.completed"
+                event_payload = {
+                    "task_id": task_id,
+                    "version": t.version,
+                    "result": result if isinstance(result, str | int | float | bool | type(None)) else str(result),
+                }
+                # 解阻塞依赖此任务的其他 task——同时收集事件
+                unblocked_events = self._unblock_dependents(task_id)
+                ret = ClaimResult(success=True, task=t, reason="ok")
 
-            t.status = "completed"
-            t.result = result
-            t.version += 1
-            t.updated_at = time.time()
-            log.info("task.completed id=%s v=%d", task_id, t.version)
-
-            # 解阻塞依赖此任务的其他 task
-            self._unblock_dependents(task_id)
-            return ClaimResult(success=True, task=t, reason="ok")
+        if event_name is not None:
+            await emit(event_name, self.session_id, event_payload)
+        for name, payload in unblocked_events:
+            await emit(name, self.session_id, payload)
+        return ret
 
     async def fail(
         self, task_id: str, error: str, expected_version: int
     ) -> ClaimResult:
         """CAS 更新 status → failed"""
+        event_name: str | None = None
+        event_payload: dict[str, Any] = {}
+        ret: ClaimResult
+
         async with self._lock:
             t = self._tasks.get(task_id)
             if t is None:
-                return ClaimResult(success=False, reason="task_not_found")
-            if t.version != expected_version:
-                return ClaimResult(success=False, reason="version_mismatch")
-            t.status = "failed"
-            t.error = error
-            t.version += 1
-            t.updated_at = time.time()
-            log.warning("task.failed id=%s v=%d error=%s", task_id, t.version, error)
-            return ClaimResult(success=True, task=t, reason="ok")
+                ret = ClaimResult(success=False, reason="task_not_found")
+            elif t.version != expected_version:
+                event_name = "task.cas_conflict"
+                event_payload = {
+                    "task_id": task_id,
+                    "op": "fail",
+                    "expected_version": expected_version,
+                    "actual_version": t.version,
+                }
+                ret = ClaimResult(success=False, reason="version_mismatch")
+            else:
+                t.status = "failed"
+                t.error = error
+                t.version += 1
+                t.updated_at = time.time()
+                log.warning("task.failed id=%s v=%d error=%s", task_id, t.version, error)
+                event_name = "task.failed"
+                event_payload = {
+                    "task_id": task_id,
+                    "version": t.version,
+                    "error": error,
+                }
+                ret = ClaimResult(success=True, task=t, reason="ok")
+
+        if event_name is not None:
+            await emit(event_name, self.session_id, event_payload)
+        return ret
 
     # ------------------------------------------------------------------
     # 内部：依赖解阻塞
     # ------------------------------------------------------------------
-    def _unblock_dependents(self, completed_task_id: str) -> None:
-        """task X 完成后，把所有依赖 X 的 blocked 任务转回 pending"""
+    def _unblock_dependents(
+        self, completed_task_id: str
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """
+        task X 完成后，把所有依赖 X 的 blocked 任务转回 pending
+
+        @return 待 emit 的事件列表 [(event_name, payload), ...]
+                调用方在锁外 await emit
+        """
+        events: list[tuple[str, dict[str, Any]]] = []
         for t in self._tasks.values():
             if (
                 t.status == "blocked"
@@ -204,6 +295,47 @@ class TaskQueue:
                 t.version += 1
                 t.updated_at = time.time()
                 log.debug("task.unblocked id=%s", t.id)
+                events.append(
+                    (
+                        "task.unblocked",
+                        {
+                            "task_id": t.id,
+                            "version": t.version,
+                            "trigger": completed_task_id,
+                        },
+                    )
+                )
+        return events
+
+    # ------------------------------------------------------------------
+    # 恢复支持（W3）——SessionManager 用，绕过 emit
+    # ------------------------------------------------------------------
+    async def restore_task(self, task: Task) -> None:
+        """
+        从事件流回放写入一个 Task——绕过 add() 的 emit + 依赖检查
+
+        @note 仅供 SessionManager 在重放时调用；普通业务路径请用 add()
+        """
+        async with self._lock:
+            self._tasks[task.id] = task
+
+    async def restore_apply(
+        self,
+        task_id: str,
+        updates: dict[str, Any],
+    ) -> None:
+        """
+        从事件流回放更新一个 Task 字段——绕过 CAS 与 emit
+
+        @note SessionManager 重放 task.claimed/completed/failed/unblocked 时调
+        """
+        async with self._lock:
+            t = self._tasks.get(task_id)
+            if t is None:
+                return
+            for k, v in updates.items():
+                if hasattr(t, k):
+                    setattr(t, k, v)
 
     # ------------------------------------------------------------------
     # 统计快照

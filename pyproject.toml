@@ -19,6 +19,7 @@ authors = [{ name = "agent-swarm contributors" }]
 dependencies = [
     "openai>=1.40.0",            # OpenAI provider（W1）
     "anthropic>=0.40.0",         # Anthropic provider（W2 提前装好，避免后续打断）
+    "aiosqlite>=0.20.0",         # SQLite 持久化 (W3)
     "pydantic>=2.7.0",           # YAML/dict 校验
     "pyyaml>=6.0.1",             # Swarm.from_yaml
     "click>=8.1.7",              # CLI

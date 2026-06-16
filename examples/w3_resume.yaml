@@ -1,0 +1,63 @@
+# Weekly Slice W3 演示配置
+# DESIGN.md §15 W3 DoD: SQLite 持久化 + Session 恢复
+#
+# 用法（端到端演示中断+恢复）:
+#   export OPENAI_API_KEY=sk-...
+#   echo "production data" > examples/data.txt
+#
+#   # 1) 跑 swarm（事件流自动落 ~/.agent_swarm/sessions.db）
+#   agent-swarm run examples/w3_resume.yaml
+#
+#   # 2) 列出已有 session
+#   agent-swarm session list
+#
+#   # 3) 查看某个 session 的完整事件流
+#   agent-swarm session show <session-id>
+#
+#   # 4) 恢复 session 状态——展示重建出的任务/消息
+#   agent-swarm session resume <session-id>
+#
+# 关键演示价值:
+#   - 在 swarm 跑到一半时 Ctrl-C 或 kill -9
+#   - 重启后 session resume <id>——状态完全一致
+
+name: w3-resume
+
+agents:
+  - id: reader
+    role: data reader
+    persona: |
+      Read files in workspace and forward findings to teammates.
+    provider: openai
+    model: gpt-4o-mini
+    tools:
+      - read_file
+      - send_message
+    max_iterations: 4
+
+  - id: analyst
+    role: analyst
+    persona: |
+      Analyze incoming data and produce conclusions.
+    provider: openai
+    model: gpt-4o-mini
+    tools:
+      - send_message
+    max_iterations: 3
+
+tasks:
+  - id: T-fetch
+    title: Fetch and forward data
+    description: |
+      Read 'data.txt' from workspace then send_message to 'analyst'
+      with the contents. Use msg_type='delegate'.
+    assigned_to: reader
+
+  - id: T-analyze
+    title: Analyze data
+    description: |
+      Wait for reader's message, analyze the data, produce a one-line
+      analytical conclusion.
+    assigned_to: analyst
+    depends_on:
+      - T-fetch

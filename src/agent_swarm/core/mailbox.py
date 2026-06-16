@@ -1,16 +1,10 @@
 """
 @module agent_swarm.core.mailbox
-@brief  Mailbox（W2 内存实现，点对点消息）
+@brief  Mailbox（W2 内存 + W3 ObservabilityBus 集成）
 
-DESIGN.md §6.5 完整规约。W2 阶段:
-  - 内存 dict[agent_id → list[Message]]
-  - 提供 receive() 拉取（poll 模式，W2 简化）
-  - asyncio.Event 唤醒等待 receive 的协程，避免轮询
-  - W3 持久化到 SQLite
-
-后续扩展:
-  - W3 SessionManager 重放 message.sent / message.received 事件
-  - 远期 broadcast / reply_to 线程
+DESIGN.md §6.5 完整规约。
+W2: 内存 dict[agent_id → list[Message]] + asyncio.Event 唤醒
+W3: send/receive 路径 emit 事件
 """
 
 from __future__ import annotations
@@ -22,6 +16,7 @@ from typing import Literal
 from uuid import uuid4
 
 from agent_swarm.core.types import Message
+from agent_swarm.observability import emit
 
 log = logging.getLogger(__name__)
 
@@ -32,9 +27,10 @@ class Mailbox:
 
     @note 不主动推送；agent 主动 receive() 拉取
           send() 唤醒等待该 agent 的 wait_for_message()
+    @note W3 事件: message.sent / message.received（仅在 receive 真返回非空时）
     """
 
-    def __init__(self) -> None:
+    def __init__(self, session_id: str = "local") -> None:
         # agent_id → 已发到该 agent 的消息列表（含已读）
         self._inbox: dict[str, list[Message]] = {}
         # agent_id → 唤醒事件（receive 等待用）
@@ -42,6 +38,7 @@ class Mailbox:
         self._lock = asyncio.Lock()
         # 全局有序消息表，方便 get_thread / 调试
         self._all: dict[str, Message] = {}
+        self.session_id = session_id
 
     # ------------------------------------------------------------------
     # 写入
@@ -68,6 +65,21 @@ class Mailbox:
             ev = self._events.get(msg.to_agent)
             if ev is not None:
                 ev.set()
+        # 锁外 emit
+        await emit(
+            "message.sent",
+            self.session_id,
+            {
+                "msg_id": msg.id,
+                "from": msg.from_agent,
+                "to": msg.to_agent,
+                "msg_type": msg.msg_type,
+                "content": msg.content,
+                "reply_to": msg.reply_to,
+                "refs": list(msg.refs),
+                "target_type": msg.target_type,
+            },
+        )
 
     @staticmethod
     def make_message(
@@ -144,15 +156,21 @@ class Mailbox:
 
     async def mark_read(self, agent_id: str, message_ids: list[str]) -> int:
         """标记消息为已读——返回实际标记数"""
+        marked: list[str] = []
         async with self._lock:
             box = self._inbox.get(agent_id, [])
             ids = set(message_ids)
-            count = 0
             for m in box:
                 if m.id in ids and not m.read:
                     m.read = True
-                    count += 1
-            return count
+                    marked.append(m.id)
+        if marked:
+            await emit(
+                "message.received",
+                self.session_id,
+                {"agent_id": agent_id, "msg_ids": marked, "count": len(marked)},
+            )
+        return len(marked)
 
     async def get(self, msg_id: str) -> Message | None:
         async with self._lock:
@@ -162,3 +180,27 @@ class Mailbox:
         """返回全部消息（按发送时间）——调试/可观测用"""
         async with self._lock:
             return sorted(self._all.values(), key=lambda m: m.timestamp)
+
+    # ------------------------------------------------------------------
+    # 恢复支持（W3）——SessionManager 用，绕过 emit
+    # ------------------------------------------------------------------
+    async def restore_message(self, msg: Message) -> None:
+        """
+        回放一条消息进 mailbox——绕过 send() 的 emit
+
+        @note 仅供 SessionManager 在重放时调用
+        """
+        async with self._lock:
+            if msg.to_agent is None:
+                return  # broadcast 不应出现在事件流中
+            self._inbox.setdefault(msg.to_agent, []).append(msg)
+            self._all[msg.id] = msg
+
+    async def restore_mark_read(self, msg_ids: list[str]) -> None:
+        """回放消息已读标记——绕过 emit"""
+        async with self._lock:
+            ids = set(msg_ids)
+            for mid in ids:
+                m = self._all.get(mid)
+                if m is not None:
+                    m.read = True

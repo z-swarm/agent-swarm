@@ -191,3 +191,28 @@ class Message:
     reply_to: str | None = None  # 父消息 id
     timestamp: float = 0.0
     read: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Session 事件——DESIGN.md §5.4 / §6.7（W3 引入）
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SessionEvent:
+    """
+    统一事件结构——事件名采用 §5.4 字符串规范 {layer}.{module}.{action}
+
+    一套事件流同时支撑：
+      - JSON 日志（JsonLogSink）
+      - 持久化 + 恢复（SqliteEventSink → SessionManager.restore_session）
+      - 实时推送（WebSocketSink，W6）
+      - Prometheus 指标（PrometheusSink，Phase 3）
+    """
+
+    event_name: str  # 例如 "task.created" / "agent.loop.iteration_complete"
+    session_id: str
+    timestamp: float
+    payload: dict[str, Any] = field(default_factory=dict)
+    seq: int = 0  # 单调递增序号——同一 session 内严格有序（事件流回放靠这个）
+    request_id: str | None = None  # 关联 SecurityContext.request_id（W5 启用）
