@@ -191,3 +191,144 @@ def test_from_yaml_max_iterations_zero_rejected(tmp_path: Path) -> None:
     p = _write_yaml(tmp_path / "s.yaml", cfg)
     with pytest.raises(ValueError, match=">= 1"):
         Swarm.from_yaml(p)
+
+
+# ---------------------------------------------------------------------------
+# 依赖解析与循环检测（W2-B9）
+# ---------------------------------------------------------------------------
+
+
+def _agent() -> dict:
+    return {
+        "id": "a",
+        "role": "r",
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+    }
+
+
+def test_depends_on_resolved_by_title(tmp_path: Path) -> None:
+    """depends_on 写 title 应被解析为 task id"""
+    cfg = {
+        "name": "deps",
+        "agents": [_agent()],
+        "tasks": [
+            {"id": "T1", "title": "first"},
+            {"id": "T2", "title": "second", "depends_on": ["first"]},
+        ],
+    }
+    p = _write_yaml(tmp_path / "s.yaml", cfg)
+    swarm = Swarm.from_yaml(p)
+    assert swarm.tasks[1].depends_on == ["T1"]
+
+
+def test_depends_on_resolved_by_id(tmp_path: Path) -> None:
+    cfg = {
+        "name": "deps",
+        "agents": [_agent()],
+        "tasks": [
+            {"id": "T1", "title": "first"},
+            {"id": "T2", "title": "second", "depends_on": ["T1"]},
+        ],
+    }
+    p = _write_yaml(tmp_path / "s.yaml", cfg)
+    swarm = Swarm.from_yaml(p)
+    assert swarm.tasks[1].depends_on == ["T1"]
+
+
+def test_depends_on_unknown_raises(tmp_path: Path) -> None:
+    cfg = {
+        "name": "deps",
+        "agents": [_agent()],
+        "tasks": [{"id": "T1", "title": "x", "depends_on": ["ghost"]}],
+    }
+    p = _write_yaml(tmp_path / "s.yaml", cfg)
+    with pytest.raises(ValueError, match="ghost"):
+        Swarm.from_yaml(p)
+
+
+def test_depends_on_ambiguous_title_raises(tmp_path: Path) -> None:
+    """两个任务同名 title——depends_on 用 title 引用应报歧义错"""
+    cfg = {
+        "name": "amb",
+        "agents": [_agent()],
+        "tasks": [
+            {"id": "T1", "title": "dup"},
+            {"id": "T2", "title": "dup"},
+            {"id": "T3", "title": "user", "depends_on": ["dup"]},
+        ],
+    }
+    p = _write_yaml(tmp_path / "s.yaml", cfg)
+    with pytest.raises(ValueError, match="ambiguous"):
+        Swarm.from_yaml(p)
+
+
+def test_depends_on_cycle_detected(tmp_path: Path) -> None:
+    """W2-B9 回归：A→B→A 循环依赖应在加载阶段拒绝"""
+    cfg = {
+        "name": "cycle",
+        "agents": [_agent()],
+        "tasks": [
+            {"id": "A", "title": "a", "depends_on": ["B"]},
+            {"id": "B", "title": "b", "depends_on": ["A"]},
+        ],
+    }
+    p = _write_yaml(tmp_path / "s.yaml", cfg)
+    with pytest.raises(ValueError, match="cycle"):
+        Swarm.from_yaml(p)
+
+
+def test_depends_on_three_node_cycle(tmp_path: Path) -> None:
+    """A→B→C→A 三节点环也应被检出"""
+    cfg = {
+        "name": "cycle3",
+        "agents": [_agent()],
+        "tasks": [
+            {"id": "A", "title": "a", "depends_on": ["C"]},
+            {"id": "B", "title": "b", "depends_on": ["A"]},
+            {"id": "C", "title": "c", "depends_on": ["B"]},
+        ],
+    }
+    p = _write_yaml(tmp_path / "s.yaml", cfg)
+    with pytest.raises(ValueError, match="cycle"):
+        Swarm.from_yaml(p)
+
+
+def test_depends_on_self_loop_detected(tmp_path: Path) -> None:
+    """A 依赖自己——也是环"""
+    cfg = {
+        "name": "self",
+        "agents": [_agent()],
+        "tasks": [{"id": "A", "title": "a", "depends_on": ["A"]}],
+    }
+    p = _write_yaml(tmp_path / "s.yaml", cfg)
+    with pytest.raises(ValueError, match="cycle"):
+        Swarm.from_yaml(p)
+
+
+def test_depends_on_dag_passes(tmp_path: Path) -> None:
+    """合法 DAG（A→B, A→C, B→D, C→D）应通过"""
+    cfg = {
+        "name": "dag",
+        "agents": [_agent()],
+        "tasks": [
+            {"id": "A", "title": "a"},
+            {"id": "B", "title": "b", "depends_on": ["A"]},
+            {"id": "C", "title": "c", "depends_on": ["A"]},
+            {"id": "D", "title": "d", "depends_on": ["B", "C"]},
+        ],
+    }
+    p = _write_yaml(tmp_path / "s.yaml", cfg)
+    swarm = Swarm.from_yaml(p)
+    assert len(swarm.tasks) == 4
+
+
+def test_assigned_to_unknown_agent_rejected(tmp_path: Path) -> None:
+    cfg = {
+        "name": "x",
+        "agents": [_agent()],
+        "tasks": [{"id": "T", "title": "t", "assigned_to": "ghost"}],
+    }
+    p = _write_yaml(tmp_path / "s.yaml", cfg)
+    with pytest.raises(ValueError, match="ghost"):
+        Swarm.from_yaml(p)

@@ -1,11 +1,14 @@
 # Weekly Slice W2 演示配置
 # DESIGN.md §15 W2 DoD: 双 agent 通过 Mailbox 协作，A 读文件 → 发消息给 B → B 写总结
 #
-# 用法:
+# 用法（注意：默认 workspace 是 yaml 所在目录 examples/）:
 #   export OPENAI_API_KEY=sk-...
-#   # 在工作目录放一个 data.txt
-#   echo "payload-from-w2" > data.txt
+#   echo "payload-from-w2" > examples/data.txt   # ← 文件要放在 examples/
 #   agent-swarm run examples/w2_two_agents.yaml
+#
+# 或显式覆盖 workspace:
+#   echo "payload-from-w2" > /tmp/data.txt
+#   agent-swarm run examples/w2_two_agents.yaml --workspace /tmp   # 待 W6 加 flag
 #
 # 预期: reader 读 data.txt → send_message 给 writer → writer 输出总结
 

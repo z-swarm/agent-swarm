@@ -250,3 +250,60 @@ async def test_runner_initial_inbox_messages_appear_in_prompt(
     assert "please handle X" in user_turn.content
     assert "delegate" in user_turn.content
     assert "from other" in user_turn.content
+
+
+async def test_runner_does_not_mutate_input_task(
+    fake_llm: FakeLLMProvider, workspace: Path
+) -> None:
+    """
+    W2-B2 回归：runner.run() 必须深拷贝 task，不污染入参对象
+
+    没有这个保证，TaskQueue 持有的 task 会被 runner 直接改写状态/result，
+    破坏 "TaskQueue 是任务状态唯一权威" 的契约。
+    """
+    fake_llm.script.append(ScriptedResponse(content="output", finish_reason="stop"))
+    agent = _make_agent()
+    runner = AgentRunner(agent, fake_llm, {"read_file": ReadFileTool(workspace)})
+
+    original = Task(id="t-pure", title="x", description="y")
+    assert original.status == "pending"
+    assert original.assigned_to is None
+    assert original.result is None
+
+    res = await runner.run(original)
+
+    # 入参对象保持不变——pending / 无 assigned_to / 无 result
+    assert original.status == "pending"
+    assert original.assigned_to is None
+    assert original.result is None
+
+    # 返回的 res.task 是副本，含最终状态
+    assert res.task is not original
+    assert res.task.status == "completed"
+    assert res.task.assigned_to == "a-1"
+    assert res.task.result == "output"
+
+
+async def test_runner_does_not_mutate_input_task_on_failure(
+    workspace: Path,
+) -> None:
+    """W2-B2 回归：LLM 失败也不污染入参 task"""
+
+    class BoomProvider(FakeLLMProvider):
+        async def chat(self, messages, **kwargs):  # type: ignore[override]
+            self.calls.append(list(messages))
+            raise RuntimeError("api down")
+
+    boom = BoomProvider()
+    agent = _make_agent()
+    runner = AgentRunner(agent, boom, {"read_file": ReadFileTool(workspace)})
+
+    original = Task(id="t-fail", title="x", description="y")
+    res = await runner.run(original)
+
+    # 原对象未动
+    assert original.status == "pending"
+    assert original.error is None
+    # 副本含失败信息
+    assert res.task.status == "failed"
+    assert "api down" in (res.task.error or "")

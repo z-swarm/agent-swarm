@@ -79,7 +79,12 @@ def run(config: Path, verbose: bool) -> None:
 def _print_summary(res: SwarmResult) -> None:
     """打印运行结果概要"""
     color = "green" if res.state == "completed" else "red"
-    console.rule(f"[{color}]swarm done[/] · {res.state} · {res.duration_seconds:.1f}s")
+    header = (
+        f"[{color}]swarm done[/] · {res.state} · {res.duration_seconds:.1f}s · "
+        f"completed={res.tasks_completed} failed={res.tasks_failed} "
+        f"unfinished={res.tasks_unfinished}"
+    )
+    console.rule(header)
 
     table = Table(title="Tasks", show_lines=False)
     table.add_column("ID", style="cyan")

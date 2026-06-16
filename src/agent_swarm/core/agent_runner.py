@@ -16,6 +16,7 @@ W1 → W2 演进:
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 import time
 from dataclasses import dataclass, field
@@ -59,7 +60,8 @@ class AgentLoopStats:
     tokens_total: int = 0
     task_results: list[AgentRunResult] = field(default_factory=list)
     # 内部状态——_loop_once 与 run_loop 之间传递"本轮是否 idle"
-    last_round_was_idle: bool = False
+    # repr=False 避免污染日志/打印；compare=False 避免影响 == 判断
+    last_round_was_idle: bool = field(default=False, repr=False, compare=False)
 
 
 class AgentRunner:
@@ -108,14 +110,20 @@ class AgentRunner:
         """
         @brief 执行单个任务
 
-        @param task           待执行任务
+        @param task           待执行任务（**会被深拷贝**，run() 不修改入参对象）
         @param inbox_messages 启动时已有的 mailbox 消息——会渲染到首轮 user prompt
+
+        W2-B2 修复：操作 task 副本，避免污染 TaskQueue 内部对象。
+        所有状态变更必须通过 TaskQueue.complete/fail 走 CAS（由 run_loop 负责）。
         """
         if self.agent.max_iterations <= 0:
             raise ValueError(
                 f"agent {self.agent.id}: max_iterations must be >= 1, "
                 f"got {self.agent.max_iterations}"
             )
+
+        # 深拷贝 task——后续 run() 内的所有修改只动副本
+        task = copy.deepcopy(task)
 
         log.info("agent=%s starting task=%s: %s",
                  self.agent.id, task.id, task.title)
@@ -270,8 +278,12 @@ class AgentRunner:
             stats.task_results.append(run_res)
             stats.tokens_total += run_res.tokens_total
 
-            version_after_run = claimed_task.version  # claim 后是 1
-            if claimed_task.status == "completed":
+            # claim 成功后版本号已 +1（claim 内部递增）；run() 不改原对象（W2-B2）
+            # 所以 expected_version = claimed_task.version（claim 返回值）
+            version_after_run = claimed_task.version
+            # run_res.task 是副本——通过它判断最终状态（W2-B2）
+            final_task = run_res.task
+            if final_task.status == "completed":
                 cr = await task_queue.complete(
                     claimed_task.id, run_res.final_text,
                     expected_version=version_after_run,
@@ -284,7 +296,7 @@ class AgentRunner:
                     stats.tasks_failed.append(claimed_task.id)
             else:
                 cr = await task_queue.fail(
-                    claimed_task.id, claimed_task.error or "unknown",
+                    claimed_task.id, final_task.error or "unknown",
                     expected_version=version_after_run,
                 )
                 if cr.success:

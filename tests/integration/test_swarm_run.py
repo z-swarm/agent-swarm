@@ -74,11 +74,16 @@ async def test_swarm_run_two_tasks_serial(
 
 async def test_swarm_run_failed_task_still_appended(
     tmp_path: Path,
-    fake_provider: FakeLLMProvider,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """B2 回归：runner 异常时 results 仍要 append 一行——保持 len(results) == len(tasks)"""
+    """
+    第一个任务的 LLM 抛异常 → runner.run 内部 try/except 把任务标 failed
+    → run_loop 调 task_queue.fail → 第二个任务正常完成
 
-    # 让第一个任务的 LLM 调用抛异常
+    断言：失败 + 成功的 task_results 各占一条（保持 len 与 tasks 一致）
+    """
+
+    # 让第一个任务的 LLM 调用抛异常，第二个正常
     class ExplodingProvider(FakeLLMProvider):
         async def chat(self, messages, **kwargs):  # type: ignore[override]
             self.calls.append(list(messages))
@@ -89,22 +94,15 @@ async def test_swarm_run_failed_task_still_appended(
     fake = ExplodingProvider()
     fake.script.append(ScriptedResponse(content="B ok", finish_reason="stop"))
 
-    # B2 验证关键：第一个任务整体抛异常进入 swarm 的外层 except 分支
-    # （而不是被 runner 内部 try/except 兜住），这样才会触发 results.append 的 stub 路径
-    # 我们用 monkeypatch 直接替换 runner 的 LLMProvider
-    from agent_swarm.core import swarm as swarm_mod
-
-    def _get(_n, **_k):
+    def _get(name: str, **kwargs):  # noqa: ARG001
         return fake
 
-    import importlib
-
-    importlib.reload(swarm_mod)  # 确保使用我们 patch 的 get_provider
-    swarm_mod.get_provider = _get  # type: ignore[assignment]
+    # 用标准 monkeypatch 注入；不要 importlib.reload（会破坏其他测试的引用）
+    monkeypatch.setattr("agent_swarm.core.swarm.get_provider", _get)
 
     cfg = _two_task_cfg(tmp_path)
-    s = swarm_mod.Swarm.from_dict(cfg, base_dir=tmp_path)
-    result = await s.run()
+    swarm = Swarm.from_dict(cfg, base_dir=tmp_path)
+    result = await swarm.run()
 
     # 即使第一个任务崩溃，agent_results 仍然有 2 条（B2 修复点）
     assert len(result.agent_results) == 2
@@ -147,3 +145,67 @@ async def test_swarm_run_tool_call_then_stop(
     # 工具结果应包含真实文件内容
     tool_turn = next(t for t in fake_provider.calls[1] if t.role == "tool")
     assert "payload-xyz" in tool_turn.content
+
+
+async def test_swarm_run_called_twice_raises(
+    tmp_path: Path,
+    fake_provider: FakeLLMProvider,
+) -> None:
+    """W2-B8 回归：同一 Swarm 实例 run() 调用两次应抛 RuntimeError"""
+    fake_provider.script.append(ScriptedResponse(content="ok", finish_reason="stop"))
+    swarm = Swarm.from_dict(_two_task_cfg(tmp_path), base_dir=tmp_path)
+    cfg_one_task = _two_task_cfg(tmp_path)
+    cfg_one_task["tasks"] = [{"title": "only one"}]
+    swarm = Swarm.from_dict(cfg_one_task, base_dir=tmp_path)
+
+    res1 = await swarm.run()
+    assert res1.state == "completed"
+
+    with pytest.raises(RuntimeError, match="already called"):
+        await swarm.run()
+
+
+async def test_swarm_result_distinguishes_failed_vs_unfinished(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W2-B6 回归：tasks_failed 和 tasks_unfinished 分开统计"""
+    # 让所有 LLM 调用直接抛——第一个任务变 failed
+    class BoomProvider(FakeLLMProvider):
+        async def chat(self, messages, **kwargs):  # type: ignore[override]
+            self.calls.append(list(messages))
+            raise RuntimeError("api down")
+
+    boom = BoomProvider()
+
+    def _get(name: str, **kwargs):  # noqa: ARG001
+        return boom
+
+    monkeypatch.setattr("agent_swarm.core.swarm.get_provider", _get)
+
+    cfg = {
+        "name": "fail-and-block",
+        "agents": [
+            {
+                "id": "a",
+                "role": "r",
+                "persona": "p",
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "tools": [],
+                "max_iterations": 2,
+            }
+        ],
+        "tasks": [
+            {"id": "T1", "title": "will-fail"},
+            # T2 依赖 T1——T1 失败后 T2 永远 blocked
+            {"id": "T2", "title": "blocked-forever", "depends_on": ["T1"]},
+        ],
+    }
+    swarm = Swarm.from_dict(cfg, base_dir=tmp_path)
+    res = await swarm.run()
+
+    assert res.state == "failed"
+    assert res.tasks_completed == 0
+    assert res.tasks_failed == 1  # T1 真正失败
+    assert res.tasks_unfinished == 1  # T2 卡在 blocked
+    assert res.error is not None

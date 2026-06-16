@@ -40,13 +40,18 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class SwarmResult:
-    """Swarm.run() 返回值——DESIGN.md §A.1"""
+    """
+    Swarm.run() 返回值——DESIGN.md §A.1
+
+    W2-B6 修复：tasks_failed 与 tasks_unfinished 分开统计，避免语义混淆。
+    """
 
     name: str
     state: str  # "completed" / "failed"
     duration_seconds: float
     tasks_completed: int
-    tasks_failed: int
+    tasks_failed: int  # 仅 status=failed 的任务数
+    tasks_unfinished: int = 0  # blocked / pending / in_progress 残留
     agent_results: list[AgentRunResult] = field(default_factory=list)
     agent_stats: list[AgentLoopStats] = field(default_factory=list)
     error: str | None = None
@@ -78,6 +83,7 @@ class Swarm:
         # W2 共享基础设施
         self.task_queue = TaskQueue()
         self.mailbox = Mailbox()
+        self._run_called: bool = False  # W2-B8: 防止 run() 被调多次
 
     # ------------------------------------------------------------------
     # 加载入口
@@ -133,7 +139,17 @@ class Swarm:
           2. 为每个 agent 构造 AgentRunner（含 per-agent send_message 工具）
           3. asyncio.gather 跑所有 run_loop
           4. 所有 agent 退出后汇总
+
+        @raise RuntimeError 同一 Swarm 实例的 run() 被调用第二次（W2-B8）
         """
+        # W2-B8: 防止重复 run——TaskQueue 状态会污染，必须新建 Swarm 重跑
+        if self._run_called:
+            raise RuntimeError(
+                f"Swarm {self.name!r} run() already called; "
+                "create a new Swarm instance to run again"
+            )
+        self._run_called = True
+
         t0 = time.monotonic()
         log.info(
             "swarm=%s start (%d agent(s), %d task(s))",
@@ -199,7 +215,8 @@ class Swarm:
                 state="failed",
                 duration_seconds=time.monotonic() - t0,
                 tasks_completed=0,
-                tasks_failed=len(self.tasks),
+                tasks_failed=0,
+                tasks_unfinished=len(self.tasks),
                 error=str(exc),
             )
 
@@ -239,7 +256,8 @@ class Swarm:
             state=state,
             duration_seconds=duration,
             tasks_completed=completed,
-            tasks_failed=failed + unfinished,
+            tasks_failed=failed,                # W2-B6: 不再混入 unfinished
+            tasks_unfinished=unfinished,
             agent_results=all_run_results,
             agent_stats=list(stats_list),
             error=first_error if state == "failed" else None,
@@ -327,10 +345,12 @@ def _parse_task(
 
 def _resolve_task_dependencies(tasks: list[Task]) -> None:
     """
-    把 depends_on 中的 title 引用解析为 task.id（W2 用户友好）
+    把 depends_on 中的 title 引用解析为 task.id（W2 用户友好），并检测循环依赖。
 
     用户可写 depends_on: ["read README"]，我们把它替换为对应任务 id。
     若同时存在多个同名 title，报错——避免歧义。
+
+    W2-B9 修复：解析后做拓扑排序检测环，避免 swarm 启动后所有任务 blocked。
     """
     title_to_ids: dict[str, list[str]] = {}
     for t in tasks:
@@ -357,3 +377,31 @@ def _resolve_task_dependencies(tasks: list[Task]) -> None:
                 f"(neither task id nor title)"
             )
         t.depends_on = new_deps
+
+    # W2-B9: 拓扑排序检测环——Kahn 算法
+    in_degree = {t.id: 0 for t in tasks}
+    for t in tasks:
+        # t 依赖每个 d → t 入度增 = len(t.depends_on)
+        in_degree[t.id] = len(t.depends_on)
+
+    # 反向邻接表：dep → 依赖它的任务
+    rev_adj: dict[str, list[str]] = {t.id: [] for t in tasks}
+    for t in tasks:
+        for d in t.depends_on:
+            rev_adj[d].append(t.id)
+
+    queue = [tid for tid, deg in in_degree.items() if deg == 0]
+    visited = 0
+    while queue:
+        cur = queue.pop()
+        visited += 1
+        for nxt in rev_adj[cur]:
+            in_degree[nxt] -= 1
+            if in_degree[nxt] == 0:
+                queue.append(nxt)
+
+    if visited != len(tasks):
+        cyclic = [tid for tid, deg in in_degree.items() if deg > 0]
+        raise ValueError(
+            f"task dependency cycle detected involving: {sorted(cyclic)}"
+        )
