@@ -32,6 +32,7 @@ from agent_swarm.core.types import (
     Turn,
 )
 from agent_swarm.providers.base import LLMProvider
+from agent_swarm.skills import SkillRegistry, compose_system_prompt
 
 log = logging.getLogger(__name__)
 
@@ -317,14 +318,29 @@ class AgentRunner:
         task: Task,
         inbox_messages: list[Message] | None = None,
     ) -> list[Turn]:
-        """构造起始对话——system prompt + 任务描述 + 初始消息"""
-        sys_prompt = (
-            f"You are {self.agent.role} (id: {self.agent.id}). "
-            f"{self.agent.persona}\n\n"
-            "Use the provided tools to gather information and collaborate "
-            "with other agents when needed. "
-            "When you have completed the task, provide your final answer "
-            "without calling any more tools."
+        """
+        构造起始对话——system prompt（含 skill extension）+ 任务描述 + 初始消息
+
+        W4 改造：通过 SkillRegistry 加载 agent.skills 列表，把每个 skill 的
+        prompt extension 拼入 system message（compose_system_prompt 负责）
+        """
+        # 解析 skills——未注册的 skill 仅记 warning，不阻断（向前兼容）
+        resolved_skills = []
+        for sid in self.agent.skills:
+            s = SkillRegistry.get(sid)
+            if s is None:
+                log.warning(
+                    "agent=%s skill %r not registered—prompt will skip it",
+                    self.agent.id, sid,
+                )
+                continue
+            resolved_skills.append(s)
+
+        sys_prompt = compose_system_prompt(
+            base_persona=self.agent.persona,
+            role=self.agent.role,
+            agent_id=self.agent.id,
+            skills=resolved_skills,
         )
 
         user_lines = [

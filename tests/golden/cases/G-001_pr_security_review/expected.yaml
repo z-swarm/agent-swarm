@@ -1,0 +1,29 @@
+id: G-001
+title: PR 安全审查 - SQL 注入 / 命令注入 / 硬编码凭证
+phase: 1
+swarm_config: input.yaml
+
+inputs:
+  source_file: auth.py
+
+expected:
+  must_find:
+    - keyword: "SQL"
+      location: "auth.py"
+    - keyword: "command injection"
+    - keyword: "hardcoded"
+      location: "auth.py"
+
+  must_not_claim:
+    # safe_query 是参数化的——不应被误报为 SQL injection
+    - keyword: "safe_query is sql injection"
+    # 不应误报 XSS（这个 PR 完全没 XSS 内容）
+    - keyword: "xss vulnerability detected"
+
+  performance:
+    max_duration_seconds: 120
+    max_total_tokens: 200000
+
+  quality:
+    # ≥66% must_find 命中算合格（W4 单 agent，LLM 不确定性较高）
+    min_must_find_hit_rate: 0.66

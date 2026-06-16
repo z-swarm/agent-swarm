@@ -35,6 +35,7 @@ from agent_swarm.observability import (
     emit,
 )
 from agent_swarm.providers import get_provider
+from agent_swarm.skills import SkillRegistry
 from agent_swarm.tools import build_per_agent_tools, build_shared_tools
 
 log = logging.getLogger(__name__)
@@ -326,7 +327,20 @@ def _parse_agent(cfg: dict[str, Any]) -> Agent:
     if not isinstance(tools, list):
         raise ValueError(f"agent {agent_id} 'tools' must be a list")
 
-    capabilities = AgentCapabilities.worker(set(tools))
+    # W4: skills 字段（可选，默认空）
+    skills = cfg.get("skills") or []
+    if not isinstance(skills, list):
+        raise ValueError(f"agent {agent_id} 'skills' must be a list")
+
+    # 自动并入 skill required_tools——避免用户必须重复声明
+    # （未注册的 skill 仅 warning，不阻断；与 AgentRunner 的处理保持一致）
+    auto_tools: set[str] = set(tools)
+    for sid in skills:
+        s = SkillRegistry.get(sid)
+        if s is not None:
+            auto_tools.update(s.required_tools)
+
+    capabilities = AgentCapabilities.worker(auto_tools)
 
     raw_iter = cfg.get("max_iterations", 10)
     try:
@@ -347,7 +361,8 @@ def _parse_agent(cfg: dict[str, Any]) -> Agent:
         provider=provider,
         model=model,
         capabilities=capabilities,
-        tools=tools,
+        tools=list(auto_tools),
+        skills=skills,
         max_iterations=max_iter,
     )
 

@@ -46,6 +46,9 @@ packages = ["src/agent_swarm"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+extend-exclude = [
+    "tests/golden/cases/**",  # Golden case 物料含故意写错/有问题的代码
+]
 
 [tool.ruff.lint]
 select = [

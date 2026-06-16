@@ -1,0 +1,26 @@
+# G-001: PR 安全审查 swarm 配置
+name: g001-pr-security-review
+
+agents:
+  - id: sec-reviewer
+    role: security expert
+    persona: |
+      You meticulously review code for security vulnerabilities.
+      Cite exact file:line for every finding.
+    provider: openai
+    model: gpt-4o-mini
+    skills:
+      - code-review:security
+    # tools 字段省略——code-review:security 的 required_tools (read_file)
+    # 会被自动并入；无需手动重复声明
+    max_iterations: 6
+
+tasks:
+  - id: T-review-auth
+    title: Review auth.py for security issues
+    description: |
+      Read the file 'auth.py' in workspace and produce findings using the
+      format from your security skill prompt:
+        - [<severity>] <file>:<line> <category>: <description>
+      Cover SQL injection, command injection, and hardcoded credentials.
+    assigned_to: sec-reviewer

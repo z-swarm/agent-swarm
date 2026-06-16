@@ -93,6 +93,7 @@ class Agent:
     provider: str  # "openai" / "anthropic"
     capabilities: AgentCapabilities
     tools: list[str] = field(default_factory=list)  # 工具 id 列表
+    skills: list[str] = field(default_factory=list)  # W4: skill id 列表
     max_iterations: int = 10  # 单任务最多 OTAR 轮次（防死循环）
 
 
