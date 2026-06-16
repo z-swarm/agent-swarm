@@ -123,25 +123,25 @@ def compose_system_prompt(
     @param agent_id      agent.id
     @param skills        已解析的 Skill 实例列表
     """
-    sections = [
-        f"You are {role} (id: {agent_id}).",
-        base_persona.strip() if base_persona else "",
-    ]
-    if skills:
-        sections.append("")
-        sections.append("# Skills")
-        for s in skills:
-            sections.append(f"\n## {s.id} (v{s.version})")
-            sections.append(s.description.strip())
-            if s.system_prompt_extension.strip():
-                sections.append("")
-                sections.append(s.system_prompt_extension.strip())
+    parts: list[str] = [f"You are {role} (id: {agent_id})."]
 
-    sections.append("")
-    sections.append(
+    persona = (base_persona or "").strip()
+    if persona:
+        parts.append(persona)
+
+    if skills:
+        parts.append("# Skills")
+        for s in skills:
+            block = [f"## {s.id} (v{s.version})", s.description.strip()]
+            ext = s.system_prompt_extension.strip()
+            if ext:
+                block.append(ext)
+            parts.append("\n\n".join(block))
+
+    parts.append(
         "Use the provided tools to gather information and collaborate "
         "with other agents when needed. "
         "When you have completed the task, provide your final answer "
         "without calling any more tools."
     )
-    return "\n".join(s for s in sections if s is not None)
+    return "\n\n".join(parts)

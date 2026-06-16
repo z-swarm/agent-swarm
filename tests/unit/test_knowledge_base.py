@@ -133,6 +133,26 @@ async def test_search_code_language_detected(code_workspace: Path) -> None:
     assert all(r.language == "python" for r in py_results)
 
 
+async def test_search_code_skips_unreadable_file(
+    code_workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """W4-ZT12: search_code OSError 分支——读取异常应被吞，不影响其他文件"""
+    real_read = Path.read_text
+
+    def boom(self, *args, **kwargs):
+        if self.name == "main.py":
+            raise OSError("permission denied")
+        return real_read(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", boom)
+    kb = KnowledgeBase(workspace=code_workspace)
+    results = await kb.search_code("SELECT", file_pattern="**/*.py")
+    # main.py 不可读但 auth.py 仍能搜到
+    paths = {r.file_path for r in results}
+    assert "main.py" not in paths
+    assert "auth.py" in paths
+
+
 # ---------------------------------------------------------------------------
 # 缓存——基础读写
 # ---------------------------------------------------------------------------

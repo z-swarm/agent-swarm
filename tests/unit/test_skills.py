@@ -152,6 +152,58 @@ def test_compose_includes_tool_use_instruction() -> None:
     assert "tools" in out.lower()
 
 
+def test_compose_no_blank_lines_with_empty_persona() -> None:
+    """W4-ZT5 回归：空 persona 不应产生空行"""
+    out = compose_system_prompt(
+        base_persona="",
+        role="reviewer",
+        agent_id="a-1",
+        skills=[],
+    )
+    # 不应有连续两个换行（空段落）
+    assert "\n\n\n" not in out
+    # 也不应有以空行开头/结尾
+    assert not out.startswith("\n")
+    assert not out.endswith("\n\n")
+
+
+def test_compose_skills_block_format(monkeypatch: pytest.MonkeyPatch) -> None:
+    """W4-ZT6 回归：skills 段格式良好——# Skills 标题 + ## skill_id 子块"""
+    s = Skill(
+        id="test:format", description="desc here", version="1.0",
+        category="develop", system_prompt_extension="ext line",
+    )
+    SkillRegistry.register(s)
+    try:
+        out = compose_system_prompt(
+            base_persona="careful", role="r", agent_id="a", skills=[s]
+        )
+        # 必含的标题
+        assert "# Skills" in out
+        assert "## test:format (v1.0)" in out
+        # 不应有连续 3 个换行
+        assert "\n\n\n" not in out
+    finally:
+        SkillRegistry.unregister("test:format")
+
+
+def test_compose_skill_with_empty_extension() -> None:
+    """skill extension 为空字符串时不应产生空行"""
+    s = Skill(
+        id="test:empty-ext", description="desc", version="1.0",
+        category="develop", system_prompt_extension="",
+    )
+    SkillRegistry.register(s)
+    try:
+        out = compose_system_prompt(
+            base_persona="p", role="r", agent_id="a", skills=[s]
+        )
+        assert "\n\n\n" not in out
+        assert "test:empty-ext" in out
+    finally:
+        SkillRegistry.unregister("test:empty-ext")
+
+
 # ---------------------------------------------------------------------------
 # Skill validate hooks（默认实现）
 # ---------------------------------------------------------------------------

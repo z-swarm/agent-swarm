@@ -136,3 +136,22 @@ def fake_llm() -> FakeLLMProvider:
 def use_real_llm(request: pytest.FixtureRequest) -> bool:
     """单测可读 --llm-real 标志（多用于 e2e）"""
     return bool(request.config.getoption("--llm-real"))
+
+
+@pytest.fixture(autouse=True)
+def _isolate_skill_registry():
+    """
+    W4-ZT4 修复：每个测试前后保护 SkillRegistry 内置项不被污染
+
+    - 记录测试开始前的 skill id 集合
+    - 测试结束时清理掉新增的（用户注册）skill
+    - 内置 skill 在 review.py import 时注册——保留
+    """
+    from agent_swarm.skills.base import SkillRegistry
+
+    snapshot = set(SkillRegistry._instances.keys())
+    yield
+    current = set(SkillRegistry._instances.keys())
+    leaked = current - snapshot
+    for sid in leaked:
+        SkillRegistry.unregister(sid)

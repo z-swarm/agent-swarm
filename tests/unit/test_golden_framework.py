@@ -224,6 +224,20 @@ def test_evaluate_summary_format() -> None:
     assert "1234" in s
 
 
+def test_evaluate_summary_includes_violations() -> None:
+    """W4-ZT12 覆盖：summary() 列出 must_not / perf 违规"""
+    exp = _make_exp(
+        must_find=[{"keyword": "x"}],
+        must_not_claim=[{"keyword": "bad"}],
+        performance={"max_duration_seconds": 1.0},
+    )
+    v = evaluate(exp, "got x but bad", duration_seconds=10.0, total_tokens=100)
+    s = v.summary()
+    # 应同时含 must_not 和 perf 违规说明
+    assert "must_not" in s
+    assert "perf" in s
+
+
 def test_evaluate_location_does_not_match_substring() -> None:
     """W4-Z6 回归：location='auth.py' 不应误中 'author.py'"""
     exp = _make_exp(must_find=[{"keyword": "vuln", "location": "auth.py"}])
