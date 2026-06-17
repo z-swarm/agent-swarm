@@ -271,3 +271,58 @@ def test_g001_kb_cache_hit_rate_with_real_swarm_runs(
     # 第二次的局部命中率 = 3/(3+0) = 100% ≥ 60%
     second_run_hit_rate = new_hits / (new_hits + new_misses) if new_hits else 0
     assert second_run_hit_rate >= 0.60
+
+# ---------------------------------------------------------------------------
+# P1-8 F-3: G-001 KB API 真实调用——证明 KB cache 行为而非手写编排
+# ---------------------------------------------------------------------------
+
+
+def test_g001_kb_cache_real_api_behavior(tmp_path: Path) -> None:
+    """
+    @brief P1-8 F-3: KB 缓存真实行为 (非手写编排)
+
+    验证:
+      - cache_analysis 写后, get_cached_analysis 拿到原值 (真缓存)
+      - stats 的 hits/misses 计数真反映 API 调用 (非手填)
+      - 不同 key 隔离, 写 A 不影响 B
+    """
+    import asyncio
+
+    async def _run() -> None:
+        kb_registry = KnowledgeBaseRegistry()
+        kb = await kb_registry.get_or_create("local", workspace=tmp_path)
+
+        # 1) miss 状态: get 返回 None, stats.hits=0, misses=1
+        v = await kb.get_cached_analysis("k-A")
+        assert v is None
+        s = await kb.stats()
+        assert s["hits"] == 0 and s["misses"] == 1
+
+        # 2) write 后 get 命中: 返回原值
+        await kb.cache_analysis("k-A", "cached-value-A")
+        v2 = await kb.get_cached_analysis("k-A")
+        assert v2 == "cached-value-A", "真缓存应返回写入的值, 不是 None"
+        s2 = await kb.stats()
+        assert s2["hits"] == 1 and s2["misses"] == 1, "hits 应真增加"
+
+        # 3) 不同 key 隔离
+        v3 = await kb.get_cached_analysis("k-B")
+        assert v3 is None
+        await kb.cache_analysis("k-B", "value-B")
+        assert await kb.get_cached_analysis("k-B") == "value-B"
+        # k-A 不被 k-B 覆盖
+        assert await kb.get_cached_analysis("k-A") == "cached-value-A"
+
+        # 4) 真命中率 (5 hit + 2 miss)
+        for _ in range(4):
+            await kb.get_cached_analysis("k-A")
+        s3 = await kb.stats()
+        # 累计: 1 miss (A) + 1 hit (A) + 1 miss (B) + 1 hit (B) + 1 hit (A 检查) + 4 hit (A 重复) = 7 hit + 2 miss
+        assert s3["hits"] == 7, f"hits={s3['hits']}, expected 7"
+        assert s3["misses"] == 2, f"misses={s3['misses']}, expected 2"
+        # hit rate = 6 / 8 = 0.75 >= 0.6 (DoD)
+        rate = s3["hits"] / (s3["hits"] + s3["misses"])
+        assert rate >= 0.6, f"hit rate {rate:.2%} < 60% (DoD)"
+
+    asyncio.run(_run())
+

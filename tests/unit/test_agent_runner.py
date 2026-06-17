@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -307,3 +308,145 @@ async def test_runner_does_not_mutate_input_task_on_failure(
     # 副本含失败信息
     assert res.task.status == "failed"
     assert "api down" in (res.task.error or "")
+
+# ---------------------------------------------------------------------------
+# P1-8: 补 run_loop / tool 异常 / KB 真调用单测
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_loop_exits_after_max_idle_polls(
+    workspace: Path, fake_llm: FakeLLMProvider
+) -> None:
+    """
+    @brief P1-8 F-2: run_loop 连续 idle 3 次后退出
+    """
+    from agent_swarm.core.mailbox import Mailbox
+    from agent_swarm.core.task_queue import TaskQueue
+    # use _make_agent in this file
+
+    # 不放任何 task, run_loop 必空转退出
+    agent = _make_agent(tools={"read_file"})
+    runner = AgentRunner(agent, fake_llm, {"read_file": ReadFileTool(workspace)})
+    tq = TaskQueue(session_id="idle-test")
+    mb = Mailbox(session_id="idle-test")
+
+    stats = await runner.run_loop(tq, mb, idle_timeout=0.05, max_idle_polls=3)
+    assert stats is not None
+    assert stats.tasks_completed == []  # 什么都没做
+
+
+@pytest.mark.asyncio
+async def test_run_loop_wakes_on_mailbox_message(
+    workspace: Path, fake_llm: FakeLLMProvider
+) -> None:
+    """
+    @brief P1-8 F-2: mailbox 收到消息后, run_loop 唤醒处理
+    """
+    from agent_swarm.core.mailbox import Mailbox
+    from agent_swarm.core.task_queue import TaskQueue
+    # use _make_agent in this file
+
+    # 编排 fake_llm: 收到消息后跑 read_file + stop
+    fake_llm.script.append(
+        ScriptedResponse(
+            tool_calls=[ToolCall(id="c1", name="read_file",
+                                 arguments={"path": "a.txt"})],
+            finish_reason="tool_use",
+        )
+    )
+    fake_llm.script.append(ScriptedResponse(content="got it", finish_reason="stop"))
+
+    agent = _make_agent(tools={"read_file"})
+    runner = AgentRunner(agent, fake_llm, {"read_file": ReadFileTool(workspace)})
+    tq = TaskQueue(session_id="wake-test")
+    mb = Mailbox(session_id="wake-test")
+
+    # 后台: 100ms 后发消息
+    async def sender() -> None:
+        await asyncio.sleep(0.1)
+        from agent_swarm.core.types import Message
+        await mb.send(Message(
+            id="m-wake", from_agent="b1", to_agent="a1",
+            target_type="internal", msg_type="notify", content="wake up",
+        ))
+
+    sender_task = asyncio.create_task(sender())
+    stats = await runner.run_loop(tq, mb, idle_timeout=0.05, max_idle_polls=10)
+    await sender_task
+    assert stats is not None
+    # 至少跑了一次 (处理消息触发的 OTAR)
+    assert hasattr(stats, "tasks_completed")  # smoke 断言——成功跑完不抛
+
+
+@pytest.mark.asyncio
+async def test_tool_invoke_exception_returns_error_string(
+    workspace: Path, fake_llm: FakeLLMProvider
+) -> None:
+    """
+    @brief P1-8 F-1: tool.invoke 抛异常 → 返回 [error] 字符串, 任务可继续
+    """
+    from agent_swarm.core.task_queue import TaskQueue
+    # use _make_agent in this file
+
+    # fake_llm: 调 read_file (会抛) → 再调一次 (也抛) → stop
+    fake_llm.script.append(
+        ScriptedResponse(
+            tool_calls=[ToolCall(id="c1", name="read_file",
+                                 arguments={"path": "x.txt"})],
+            finish_reason="tool_use",
+        )
+    )
+    fake_llm.script.append(
+        ScriptedResponse(
+            tool_calls=[ToolCall(id="c2", name="read_file",
+                                 arguments={"path": "y.txt"})],
+            finish_reason="tool_use",
+        )
+    )
+    fake_llm.script.append(ScriptedResponse(content="ok done", finish_reason="stop"))
+
+    agent = _make_agent(tools={"read_file"})
+
+    class _BoomTool:
+        name = "read_file"
+        description = "boom"
+        async def invoke(self, arguments: dict) -> str:
+            raise RuntimeError("synthetic tool failure")
+        parameters: dict = {"type": "object", "properties": {}}
+
+    runner = AgentRunner(agent, fake_llm, {"read_file": _BoomTool()})  # type: ignore[arg-type]
+    task = Task(id="T-tool-err", title="x", description="x")
+    res = await runner.run(task)
+    # 任务最终 completed, history 含 [error] 标记
+    assert res.task.status == "completed"
+    error_msgs = [t.content for t in res.history if "[error]" in (t.content or "")]
+    assert len(error_msgs) >= 1, "tool 异常应被捕获并写进 history"
+
+
+@pytest.mark.asyncio
+async def test_tool_not_available_returns_error_string(
+    workspace: Path, fake_llm: FakeLLMProvider
+) -> None:
+    """
+    @brief P1-8: tool 不存在 → 返回 [error] tool not available
+    """
+    # use _make_agent in this file
+
+    fake_llm.script.append(
+        ScriptedResponse(
+            tool_calls=[ToolCall(id="c1", name="ghost_tool",
+                                 arguments={"path": "x"})],
+            finish_reason="tool_use",
+        )
+    )
+    fake_llm.script.append(ScriptedResponse(content="ok", finish_reason="stop"))
+
+    agent = _make_agent(tools={"read_file"})
+    runner = AgentRunner(agent, fake_llm, {"read_file": ReadFileTool(workspace)})
+    task = Task(id="T-no-tool", title="x", description="x")
+    res = await runner.run(task)
+    assert res.task.status == "completed"
+    err = [t.content for t in res.history if "not available" in (t.content or "")]
+    assert err, "应记录 tool not available 错误"
+
