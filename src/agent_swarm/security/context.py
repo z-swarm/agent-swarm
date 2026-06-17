@@ -46,6 +46,17 @@ class SecurityContext:
     user: Any | None = None
     request_id: str | None = None
 
+    def asyncio_context(self) -> contextvars.Context:
+        """
+        @brief 返回一个 contextvars.Context 副本——用于 asyncio.create_task(context=...)
+
+        @note 调用方应已在 SecurityContextManager.scope/async_scope 内, 此时
+              _current_security_ctx 已 set, copy_context() 自然包含
+        @note Python 3.11+ asyncio.create_task 默认会复制, 但显式传更稳
+              且与 3.10 兼容 (3.10 不会自动复制)
+        """
+        return contextvars.copy_context()
+
 
 # 全局 context var——underscore 前缀防止外部直接访问
 _current_security_ctx: contextvars.ContextVar[SecurityContext] = contextvars.ContextVar(

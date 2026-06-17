@@ -35,6 +35,10 @@ from agent_swarm.observability import (
     emit,
 )
 from agent_swarm.providers import get_provider
+from agent_swarm.security.context import (
+    SecurityContext,
+    SecurityContextManager,
+)
 from agent_swarm.skills import SkillRegistry
 from agent_swarm.tools import build_per_agent_tools, build_shared_tools
 
@@ -147,6 +151,9 @@ class Swarm:
           4. 所有 agent 退出后汇总
 
         @raise RuntimeError 同一 Swarm 实例的 run() 被调用第二次（W2-B8）
+
+        @note F-01/F-09: 整个 run() 包在 SecurityContextManager.async_scope 内;
+              asyncio.create_task 显式传 context= 避免跨 task 边界丢 ctx
         """
         # W2-B8: 防止重复 run——TaskQueue 状态会污染，必须新建 Swarm 重跑
         if self._run_called:
@@ -156,6 +163,21 @@ class Swarm:
             )
         self._run_called = True
 
+        # F-01: 从 ctx 隐式取 tenant_id, 用 self.session_id 显式覆盖
+        existing = SecurityContextManager.current_or_default(session_id=self.session_id)
+        ctx = SecurityContext(
+            tenant_id=existing.tenant_id,
+            session_id=self.session_id,
+            user=existing.user,
+            request_id=existing.request_id,
+        )
+
+        # F-09: 整个 run() 在 async_scope 内
+        async with SecurityContextManager.async_scope(ctx):
+            return await self._run_impl()
+
+    async def _run_impl(self) -> SwarmResult:
+        """@brief Swarm.run 的实际实现——F-09 在 async_scope 内调用"""
         t0 = time.monotonic()
         log.info(
             "swarm=%s session=%s start (%d agent(s), %d task(s))",
@@ -207,11 +229,16 @@ class Swarm:
                     return
 
         try:
+            # F-09: create_task 显式传 context——防跨 task 边界丢 ctx
+            ctx_var = SecurityContextManager.current().asyncio_context()
             loop_tasks = [
-                asyncio.create_task(r.run_loop(self.task_queue, self.mailbox))
+                asyncio.create_task(
+                    r.run_loop(self.task_queue, self.mailbox),
+                    context=ctx_var,
+                )
                 for r in runners
             ]
-            watcher_task = asyncio.create_task(_watcher(loop_tasks))
+            watcher_task = asyncio.create_task(_watcher(loop_tasks), context=ctx_var)
 
             stats_list: list[AgentLoopStats] = []
             for lp in loop_tasks:

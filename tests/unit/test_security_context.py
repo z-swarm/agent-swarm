@@ -103,3 +103,42 @@ def test_security_context_frozen() -> None:
     ctx = SecurityContext(tenant_id="A", session_id="B")
     with pytest.raises(Exception):  # FrozenInstanceError
         ctx.tenant_id = "C"  # type: ignore[misc]
+
+# ---------------------------------------------------------------------------
+# F-09: asyncio.create_task 跨 task 边界 SecurityContext 传播
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_task_with_context_preserves_tenant() -> None:
+    """
+    @brief F-09: 显式 context=ctx.asyncio_context() 时, 子 task 内的 ctx 不丢
+    """
+    captured_tenant: list[str] = []
+
+    async def child_task() -> None:
+        from agent_swarm.security.context import SecurityContextManager
+        captured_tenant.append(SecurityContextManager.current().tenant_id)
+
+    ctx = SecurityContext(tenant_id="T-X", session_id="S-X")
+    async with SecurityContextManager.async_scope(ctx):
+        # 不传 context: Python 3.11+ 默认复制, 但显式传更稳
+        task_ctx = ctx.asyncio_context()
+        task = asyncio.create_task(child_task(), context=task_ctx)
+        await task
+
+    assert captured_tenant == ["T-X"]
+
+
+
+
+
+def test_security_context_asyncio_context_returns_context() -> None:
+    """
+    @brief SecurityContext.asyncio_context() 返回 contextvars.Context 实例
+    """
+    import contextvars
+    ctx = SecurityContext(tenant_id="T", session_id="S")
+    result = ctx.asyncio_context()
+    assert isinstance(result, contextvars.Context)
+

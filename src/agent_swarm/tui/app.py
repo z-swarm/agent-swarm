@@ -294,9 +294,20 @@ class SwarmDashboardApp(App):
     # 生命周期
     # ------------------------------------------------------------------
     async def on_mount(self) -> None:
-        """@brief App 挂载时启动后台协程"""
-        self._pump_task = asyncio.create_task(self._pump_events())
-        self._refresh_task = asyncio.create_task(self._refresh_loop())
+        """@brief App 挂载时启动后台协程 (F-09: 显式 context 防 ctx 丢)"""
+        # F-09: TUI 后台 task 显式传 ctx——TUI 启动时通常无 SecurityContext 包裹
+        try:
+            from agent_swarm.security.context import SecurityContextManager
+            ctx = SecurityContextManager.current_or_default(session_id="tui")
+        except Exception:
+            ctx = None
+        if ctx is not None:
+            task_ctx = ctx.asyncio_context()
+            self._pump_task = asyncio.create_task(self._pump_events(), context=task_ctx)
+            self._refresh_task = asyncio.create_task(self._refresh_loop(), context=task_ctx)
+        else:
+            self._pump_task = asyncio.create_task(self._pump_events())
+            self._refresh_task = asyncio.create_task(self._refresh_loop())
 
     async def on_unmount(self) -> None:
         """@brief App 卸载时取消后台协程"""
@@ -436,7 +447,14 @@ async def run_dashboard(
 
     app = SwarmDashboardApp(sink, swarm_name=swarm.name)
     try:
-        swarm_task = asyncio.create_task(swarm.run())
+        # F-09: 显式传 ctx 给 swarm.run() 任务
+        try:
+            from agent_swarm.security.context import SecurityContextManager
+            ctx = SecurityContextManager.current_or_default(session_id=swarm.session_id)
+            task_ctx = ctx.asyncio_context()
+            swarm_task = asyncio.create_task(swarm.run(), context=task_ctx)
+        except Exception:
+            swarm_task = asyncio.create_task(swarm.run())
         await app.run_async()
         # TUI 退出后, 等 swarm 也跑完（如果还活着）
         if not swarm_task.done():
