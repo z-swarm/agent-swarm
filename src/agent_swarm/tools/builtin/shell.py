@@ -14,7 +14,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from agent_swarm.security import SandboxManager, SecurityPolicy
+from agent_swarm.security import (
+    ApprovalFlow,
+    SandboxManager,
+    SecurityContextManager,
+    SecurityPolicy,
+)
 
 log = logging.getLogger(__name__)
 
@@ -24,7 +29,8 @@ class RunCommandTool:
     执行受限 shell 命令——W5 新增
 
     @note 必须注入 policy + sandbox；否则构造抛 RuntimeError
-    @note 强制走 SecurityPolicy → SandboxManager 链路
+    @note 强制走 SecurityPolicy → ApprovalFlow → SandboxManager 链路
+    @note approval_flow 可选——None 时 REQUIRE_APPROVAL 默认拒绝
     """
 
     name = "run_command"
@@ -52,6 +58,7 @@ class RunCommandTool:
         self,
         policy: SecurityPolicy,
         sandbox: SandboxManager,
+        approval_flow: ApprovalFlow | None = None,
     ) -> None:
         if policy is None:
             raise RuntimeError("RunCommandTool requires SecurityPolicy")
@@ -59,6 +66,7 @@ class RunCommandTool:
             raise RuntimeError("RunCommandTool requires SandboxManager")
         self._policy = policy
         self._sandbox = sandbox
+        self._approval = approval_flow
 
     async def invoke(self, arguments: dict[str, Any]) -> str:
         command = arguments.get("command")
@@ -70,10 +78,10 @@ class RunCommandTool:
         if decision.decision == "DENY":
             return f"[error] policy denied: {decision.reason}"
         if decision.decision == "REQUIRE_APPROVAL":
-            return (
-                f"[error] requires approval: {decision.reason} "
-                "(W5+ 接 ApprovalFlow)"
-            )
+            # P0-4: 走 ApprovalFlow (默认 deny, 注入 approver 可放行)
+            ctx = SecurityContextManager.current_or_default()
+            if self._approval is None or not self._approval.request_approval(decision, ctx):
+                return f"[error] requires approval denied: {decision.reason}"
 
         # 2) 走 sandbox 实际执行
         timeout = float(arguments.get("timeout", 30.0))
