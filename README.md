@@ -32,8 +32,11 @@
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
+# 设置 API key (任选其一)
+export OPENAI_API_KEY=sk-...          # 方式 1: 环境变量
+# agent-swarm run --api-key sk-...   # 方式 2: CLI flag (高于 env)
+
 # W1：单 agent 读 README 并总结
-export OPENAI_API_KEY=sk-...
 agent-swarm run examples/w1_hello.yaml
 
 # W2：双 agent 协作
@@ -61,18 +64,25 @@ agent-swarm tui examples/w6_tui.yaml
 预期输出：CLI 打印任务结果表格 + agent 给出的一句话摘要。
 W6 TUI 显示 4 面板：Status / Tasks / Messages / Token Budget。
 
+> @note examples 数量: 当前 5 个 (w1/w2/w3/w5/w6)。DESIGN §17.2 Phase 1 DoD ⑤ 写
+> "3 个 examples"——Phase 1 完结时数量已超最低要求, §17.2 文字未同步
+> (Phase 2+ 文档校对时一并改)。
+
 ## 开发
 
 ```bash
-# 全套测试 (453 项, < 30 秒)
-pytest tests/unit/ tests/e2e/
+# 全套测试 (501 项, < 30 秒)
+pytest tests/unit/ tests/e2e/ tests/golden/ tests/security/
 
-# 覆盖率（Phase 1 门槛 75%, 当前 93.33%）
+# 覆盖率 (Phase 1 门槛 75%, 当前 93.36%)
 pytest --cov=src/agent_swarm --cov-report=term-missing
 
 # Lint + 类型
-ruff check src/ tests/
+ruff check src/ tests/ tools/
 mypy src/
+
+# 性能基线 (DESIGN §17.5)
+python tools/benchmark.py --cases tests/golden/cases --baseline tests/golden/baseline.yaml
 ```
 
 ## 项目结构（Phase 1 收尾）
@@ -81,20 +91,22 @@ mypy src/
 agent-swarm-g1/
 ├── DESIGN.md                       # 架构设计 v4.2
 ├── pyproject.toml                  # 依赖 + ruff + mypy + pytest 配置
+├── tools/benchmark.py              # §17.5 性能基线
 ├── src/agent_swarm/
 │   ├── core/                       # Agent / Task / Swarm / Mailbox / TokenBudget
 │   ├── providers/                  # OpenAI / Anthropic Provider
 │   ├── tools/builtin/              # read_file / run_command / send_message
-│   ├── security/                   # SecurityContext / Policy / Sandbox
-│   ├── observability/              # Bus / JsonLog / InMemory / Sqlite
+│   ├── security/                   # SecurityContext / Policy / Sandbox / ApprovalFlow
+│   ├── observability/              # Bus / JsonLog / InMemory / Sqlite (含 tenant_id)
 │   ├── skills/                     # Skill 系统
 │   ├── golden.py                   # Golden Case runner
 │   ├── tui/                        # Textual 4 面板仪表盘
-│   └── cli/                        # agent-swarm CLI (run/session/tui)
+│   └── cli/                        # agent-swarm CLI (run/session/tui, --api-key)
 ├── tests/
 │   ├── unit/                       # 单测
 │   ├── e2e/                        # Weekly Slice DoD
-│   ├── security/                   # 攻击套件
+│   ├── security/                   # 攻击套件 (25 条)
+│   ├── golden/                     # P1 Golden Case (G-001..G-010) + baseline.yaml
 │   └── conftest.py                 # FakeLLMProvider 脚本回放
 └── examples/
     ├── w1_hello.yaml               # W1

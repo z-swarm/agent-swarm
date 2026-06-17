@@ -85,17 +85,30 @@ def cli() -> None:
     is_flag=True,
     help="同时输出结构化 JSON 事件流到 stderr",
 )
+@click.option(
+    "--api-key",
+    "api_key",
+    type=str,
+    default=None,
+    envvar="OPENAI_API_KEY",
+    help="LLM provider API key (默认从 OPENAI_API_KEY env 读)",
+)
 def run(
     config: Path,
     verbose: bool,
     db_path: Path | None,
     json_log: bool,
+    api_key: str | None,
 ) -> None:
     """运行 swarm（从 YAML 配置启动）"""
     _configure_logging(verbose)
 
     db = db_path or DEFAULT_DB_PATH
     bus, sink = _setup_observability(db, json_log=json_log)
+    # CLI 注入 api_key 到 OpenAI provider (--api-key 优先于 env)
+    if api_key:
+        import os
+        os.environ["OPENAI_API_KEY"] = api_key
 
     console.print(f"[bold cyan]agent-swarm[/] loading [yellow]{config}[/]")
     try:
@@ -149,7 +162,15 @@ def run(
 @cli.command()
 @click.argument("config", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option("-v", "--verbose", is_flag=True, help="显示 DEBUG 级日志")
-def tui(config: Path, verbose: bool) -> None:
+@click.option(
+    "--api-key",
+    "api_key",
+    type=str,
+    default=None,
+    envvar="OPENAI_API_KEY",
+    help="LLM provider API key (默认从 OPENAI_API_KEY env 读)",
+)
+def tui(config: Path, verbose: bool, api_key: str | None) -> None:
     """
     @brief  在 TUI 仪表盘中运行 swarm（DESIGN.md §17.1 W6 DoD）
 
@@ -157,6 +178,9 @@ def tui(config: Path, verbose: bool) -> None:
           不持久化到 SQLite——TUI 是观察工具, session 历史请用 run + session show
     """
     _configure_logging(verbose)
+    if api_key:
+        import os
+        os.environ["OPENAI_API_KEY"] = api_key
 
     # TUI 自己的轻量 bus: 1 个 JsonLogSink (stderr) + 1 个 TUISink
     from agent_swarm.observability import (
