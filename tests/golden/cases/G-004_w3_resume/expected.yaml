@@ -1,0 +1,13 @@
+id: G-004
+title: W3 中断恢复 (kill -9 → resume)
+phase: 1
+swarm_config: input.yaml
+expected:
+  must_find:
+    - keyword: 'completed'
+  must_not_claim:
+    - keyword: 'session not found'
+  quality:
+    min_must_find_hit_rate: 0.5
+  performance:
+    max_duration_seconds: 30

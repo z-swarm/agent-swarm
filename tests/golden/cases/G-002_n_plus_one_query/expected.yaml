@@ -1,0 +1,14 @@
+id: G-002
+title: N+1 query 性能问题检出
+phase: 1
+swarm_config: input.yaml
+expected:
+  must_find:
+    - keyword: 'N+1'
+    - keyword: 'select'
+  must_not_claim:
+    - keyword: 'SQL injection'
+  quality:
+    min_must_find_hit_rate: 0.5
+  performance:
+    max_duration_seconds: 30

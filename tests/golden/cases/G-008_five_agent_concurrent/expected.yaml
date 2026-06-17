@@ -1,0 +1,13 @@
+id: G-008
+title: 5 agent 并发 + CAS 冲突不重复处理
+phase: 1
+swarm_config: input.yaml
+expected:
+  must_find:
+    - keyword: 'completed'
+  must_not_claim:
+    - keyword: 'cas_conflict_deadlock'
+  quality:
+    min_must_find_hit_rate: 0.5
+  performance:
+    max_duration_seconds: 30

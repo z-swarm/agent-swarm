@@ -1,0 +1,13 @@
+id: G-006
+title: W6 TUI 4 面板 5 秒内完整渲染
+phase: 1
+swarm_config: input.yaml
+expected:
+  must_find:
+    - keyword: 'running'
+  must_not_claim:
+    - keyword: 'tui error'
+  quality:
+    min_must_find_hit_rate: 0.5
+  performance:
+    max_duration_seconds: 30

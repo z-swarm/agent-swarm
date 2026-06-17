@@ -1,0 +1,13 @@
+id: G-007
+title: 大文件 (10MB) 读取应截断不崩溃
+phase: 1
+swarm_config: input.yaml
+expected:
+  must_find:
+    - keyword: 'truncated'
+  must_not_claim:
+    - keyword: 'out of memory'
+  quality:
+    min_must_find_hit_rate: 0.5
+  performance:
+    max_duration_seconds: 30
