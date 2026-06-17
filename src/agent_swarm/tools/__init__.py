@@ -49,14 +49,10 @@ def build_per_agent_tools(
 
 
 # W1 兼容别名——保持向后兼容（test_w1_hello 仍引用）
-build_default_tools = build_shared_tools
-
-
 __all__ = [
     "ReadFileTool",
     "RunCommandTool",
     "SendMessageTool",
-    "build_default_tools",
     "build_per_agent_tools",
     "build_shared_tools",
 ]

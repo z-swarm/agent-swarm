@@ -190,7 +190,7 @@ class SqliteEventSink(ObservabilitySink):
         if row is None:
             return
         async with conn.execute("PRAGMA table_info(sessions)") as cur:
-            cols = {r[1] async for r in cur}  # type: ignore[misc]
+            cols = {r[1] async for r in cur}
         if "tenant_id" in cols:
             return
         log.info("SqliteEventSink: 检测到 V1 schema, 执行 V1→V2 migration")

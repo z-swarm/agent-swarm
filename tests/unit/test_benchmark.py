@@ -12,10 +12,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 import yaml
 
-from tools.benchmark import Benchmark, BenchmarkReport, CaseSample, Regression
+from tools.benchmark import Benchmark, BenchmarkReport, CaseSample
 
 CASES_ROOT = Path(__file__).parent.parent / "golden" / "cases"
 

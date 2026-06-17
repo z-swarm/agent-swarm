@@ -101,8 +101,9 @@ def test_default_local_context_factory() -> None:
 def test_security_context_frozen() -> None:
     """SecurityContext 是 frozen——不可变（线程安全 + 安全）"""
     ctx = SecurityContext(tenant_id="A", session_id="B")
-    with pytest.raises(Exception):  # FrozenInstanceError
+    with pytest.raises((AttributeError, Exception)):
         ctx.tenant_id = "C"  # type: ignore[misc]
+
 
 # ---------------------------------------------------------------------------
 # F-09: asyncio.create_task 跨 task 边界 SecurityContext 传播

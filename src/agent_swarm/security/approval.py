@@ -19,7 +19,7 @@ Phase 2+ 扩展:
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 from agent_swarm.security.context import SecurityContext
 from agent_swarm.security.policy import PolicyDecision

@@ -386,7 +386,6 @@ async def test_tool_invoke_exception_returns_error_string(
     """
     @brief P1-8 F-1: tool.invoke 抛异常 → 返回 [error] 字符串, 任务可继续
     """
-    from agent_swarm.core.task_queue import TaskQueue
     # use _make_agent in this file
 
     # fake_llm: 调 read_file (会抛) → 再调一次 (也抛) → stop

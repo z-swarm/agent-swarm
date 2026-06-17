@@ -248,14 +248,14 @@ class SandboxManager:
                 candidate = Path(token).resolve()
             else:
                 candidate = (self.workspace / token).resolve()
-        except (OSError, RuntimeError):
-            raise PermissionError(f"path resolve failed: {token!r}")
+        except (OSError, RuntimeError) as e:
+            raise PermissionError(f"path resolve failed: {token!r}") from e
         try:
             candidate.relative_to(self.workspace)
-        except ValueError:
+        except ValueError as e:
             raise PermissionError(
                 f"path escape workspace: {token!r} -> {candidate} not under {self.workspace}"
-            )
+            ) from e
 
 
 # ---------------------------------------------------------------------------
