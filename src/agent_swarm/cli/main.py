@@ -142,6 +142,52 @@ def run(
 
 
 # ---------------------------------------------------------------------------
+# tui 子命令（W6: 实时仪表盘）
+# ---------------------------------------------------------------------------
+
+
+@cli.command()
+@click.argument("config", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("-v", "--verbose", is_flag=True, help="显示 DEBUG 级日志")
+def tui(config: Path, verbose: bool) -> None:
+    """
+    @brief  在 TUI 仪表盘中运行 swarm（DESIGN.md §17.1 W6 DoD）
+
+    @note 与 run 不同: 实时显示 4 面板 (Status / Tasks / Messages / Budget)
+          不持久化到 SQLite——TUI 是观察工具, session 历史请用 run + session show
+    """
+    _configure_logging(verbose)
+
+    # TUI 自己的轻量 bus: 1 个 JsonLogSink (stderr) + 1 个 TUISink
+    from agent_swarm.observability import (
+        JsonLogSink,
+        ObservabilityBus,
+        set_global_bus,
+    )
+    from agent_swarm.tui import run_dashboard
+
+    bus = ObservabilityBus()
+    bus.register_sink(JsonLogSink())
+    set_global_bus(bus)
+
+    try:
+        swarm = Swarm.from_yaml(config)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Failed to load config:[/] {exc}")
+        sys.exit(2)
+
+    console.print(
+        f"[bold cyan]TUI launching[/] swarm=[yellow]{swarm.name}[/] "
+        f"session={swarm.session_id}"
+    )
+    try:
+        asyncio.run(run_dashboard(swarm))
+    except KeyboardInterrupt:
+        console.print("[yellow]tui interrupted[/]")
+        sys.exit(130)
+
+
+# ---------------------------------------------------------------------------
 # session 子命令组
 # ---------------------------------------------------------------------------
 

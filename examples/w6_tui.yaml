@@ -1,0 +1,67 @@
+# Weekly Slice W6 演示配置
+# DESIGN.md §17.1 W6 DoD: TUI 仪表盘实时显示 swarm 状态
+#
+# 用法:
+#   export OPENAI_API_KEY=sk-...
+#   agent-swarm tui examples/w6_tui.yaml
+#
+# 预期 TUI 视图:
+#   - 4 面板 (Status / Tasks / Messages / Budget)
+#   - Status 显示 2 个 agent / 4 个 task
+#   - Tasks 实时流转: pending → in_progress → completed/failed
+#   - Messages 显示 agent 间通信
+#   - Budget 随 task.completed 累加（粗估）
+
+name: w6-tui
+
+agents:
+  - id: researcher
+    role: information retriever
+    persona: |
+      You are a focused researcher. Read files and report key findings concisely.
+    provider: openai
+    model: gpt-4o-mini
+    tools:
+      - read_file
+      - send_message
+    max_iterations: 3
+
+  - id: writer
+    role: report composer
+    persona: |
+      You write clear, structured reports. Always cite your sources.
+    provider: openai
+    model: gpt-4o-mini
+    tools:
+      - read_file
+      - send_message
+    max_iterations: 3
+
+tasks:
+  - id: T-overview
+    title: Read project overview
+    description: |
+      Use read_file to read README.md and report in one sentence what the project does.
+    assigned_to: researcher
+
+  - id: T-design
+    title: Summarize architecture
+    description: |
+      Use read_file to read DESIGN.md (top 50 lines) and summarize the core architecture
+      in 2 sentences.
+    assigned_to: researcher
+
+  - id: T-cross-check
+    title: Cross-check researcher's findings
+    description: |
+      Read README.md again and verify whether the researcher's summary is accurate.
+      If accurate, complete. Otherwise, send a correction message to the researcher.
+    assigned_to: writer
+
+  - id: T-final-report
+    title: Compose final report
+    description: |
+      Write a short 3-sentence project report combining research and cross-check results.
+    assigned_to: writer
+    depends_on:
+      - T-cross-check
