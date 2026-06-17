@@ -17,9 +17,9 @@ def test_sandbox_mode_workspace_only_is_default() -> None:
 
 
 async def test_sandbox_workspace_must_exist(tmp_path: Path) -> None:
-    sb = SandboxManager(workspace=tmp_path / "nonexistent")
+    """F-05: 构造时 strict resolve——workspace 不存在直接抛 ValueError"""
     with pytest.raises(ValueError, match="workspace invalid"):
-        await sb.execute("echo hello")
+        SandboxManager(workspace=tmp_path / "nonexistent")
 
 
 async def test_sandbox_execute_simple(tmp_path: Path) -> None:
@@ -64,8 +64,8 @@ async def test_sandbox_output_truncated(tmp_path: Path) -> None:
     fake_proc.kill = MagicMock()
     fake_proc.returncode = 0
 
-    orig = sb_mod._subprocess_run
-    sb_mod._subprocess_run = lambda *a, **kw: fake_proc
+    orig = sb_mod._popen_no_shell
+    sb_mod._popen_no_shell = lambda *a, **kw: fake_proc
     try:
         sb = SandboxManager(workspace=tmp_path)
         result = await sb.execute("echo x", max_output_bytes=100)
@@ -73,7 +73,7 @@ async def test_sandbox_output_truncated(tmp_path: Path) -> None:
         assert len(result.stdout) <= 200
         assert "[truncated]" in result.stdout
     finally:
-        sb_mod._subprocess_run = orig
+        sb_mod._popen_no_shell = orig
 
 
 async def test_sandbox_timeout(tmp_path: Path) -> None:
@@ -120,3 +120,91 @@ async def test_sandbox_is_allowed_handles_whitespace(tmp_path: Path) -> None:
     # 前缀相似但不等于——不应误中
     assert not sb._is_allowed("lsblk")
     assert not sb._is_allowed("lsof")
+
+
+# ---------------------------------------------------------------------------
+# F-03 / F-04 / F-05 / P1-9 攻击套件
+# ---------------------------------------------------------------------------
+
+
+async def test_sandbox_blocks_shell_metachar_semicolon(tmp_path: Path) -> None:
+    """F-03: ; 应被拒绝——白名单首词 ls 命中, 但 ; 注入 cat"""
+    sb = SandboxManager(workspace=tmp_path)
+    with pytest.raises(PermissionError, match="metachar"):
+        await sb.execute("ls;cat /etc/passwd")
+
+
+async def test_sandbox_blocks_shell_metachar_pipe(tmp_path: Path) -> None:
+    """F-03: pipe 也应被拒绝"""
+    sb = SandboxManager(workspace=tmp_path)
+    with pytest.raises(PermissionError, match="metachar"):
+        await sb.execute("ls|cat")
+
+
+async def test_sandbox_blocks_shell_metachar_redirect(tmp_path: Path) -> None:
+    """F-03: 重定向符 > 也应被拒绝"""
+    sb = SandboxManager(workspace=tmp_path)
+    with pytest.raises(PermissionError, match="metachar"):
+        await sb.execute("echo x>passwd")
+
+
+async def test_sandbox_blocks_absolute_path_escape(tmp_path: Path) -> None:
+    """F-04: 绝对路径 /etc/passwd 应被 workspace 验证拒绝"""
+    sb = SandboxManager(workspace=tmp_path)
+    with pytest.raises(PermissionError, match="path escape workspace"):
+        await sb.execute("cat /etc/passwd")
+
+
+async def test_sandbox_blocks_parent_dir_escape(tmp_path: Path) -> None:
+    """F-04: ../ 跳出 workspace 应被拒绝"""
+    sb = SandboxManager(workspace=tmp_path)
+    with pytest.raises(PermissionError, match="path escape workspace"):
+        await sb.execute("cat ../../../etc/passwd")
+
+
+async def test_sandbox_blocks_symlink_escape(tmp_path: Path) -> None:
+    """F-04: workspace 内 symlink 指向 /etc/passwd 应被拒绝"""
+    leak = tmp_path / "leak"
+    try:
+        leak.symlink_to("/etc/passwd")
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink not supported in this env")
+    sb = SandboxManager(workspace=tmp_path)
+    with pytest.raises(PermissionError, match="path escape workspace"):
+        await sb.execute("cat leak")
+
+
+async def test_sandbox_blocks_python_command(tmp_path: Path) -> None:
+    """F-03: 图灵完备命令 python 应被白名单拒绝"""
+    sb = SandboxManager(workspace=tmp_path)
+    with pytest.raises(PermissionError, match="not in sandbox whitelist"):
+        await sb.execute("python foo.py")
+
+
+async def test_sandbox_blocks_find_command(tmp_path: Path) -> None:
+    """F-03: 全盘搜索 find 应被白名单拒绝"""
+    sb = SandboxManager(workspace=tmp_path)
+    with pytest.raises(PermissionError, match="not in sandbox whitelist"):
+        await sb.execute("find . -name x")
+
+
+async def test_sandbox_blocks_awk_command(tmp_path: Path) -> None:
+    """F-03: awk 应被白名单拒绝"""
+    sb = SandboxManager(workspace=tmp_path)
+    with pytest.raises(PermissionError, match="not in sandbox whitelist"):
+        await sb.execute("awk foo")
+
+
+async def test_sandbox_workspace_strict_resolve(tmp_path: Path) -> None:
+    """F-05: workspace 不存在应 ValueError——构造时 strict resolve"""
+    with pytest.raises(ValueError, match="workspace invalid"):
+        SandboxManager(workspace=tmp_path / "nope")
+
+
+async def test_sandbox_timeout_does_not_double_communicate(tmp_path: Path) -> None:
+    """P1-9: 修 EBADF 确定性 bug——kill 后只 wait() 不 communicate"""
+    sb = SandboxManager(workspace=tmp_path)
+    sb.allowed_command_prefixes = ("sleep",)
+    result = await sb.execute("sleep 5", timeout=0.2)
+    assert result.timed_out is True
+    # 不应抛 OSError EBADF
