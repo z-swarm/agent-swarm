@@ -176,6 +176,136 @@ async def test_in_memory_db(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# F-02: 多租户隔离（tenant_id 隐式从 SecurityContextManager 取）
+# ---------------------------------------------------------------------------
+
+
+async def test_tenant_isolation_blocks_cross_tenant_read(tmp_path: Path) -> None:
+    """
+    @brief F-02: tenant A 写, tenant B 读——B 读不到 A 的事件流
+    """
+    from agent_swarm.security.context import SecurityContext, SecurityContextManager
+
+    # 单库: 同一 SqliteEventSink 实例, 切 ctx 测
+    sink = SqliteEventSink(tmp_path / "events.db")
+
+    # tenant A 写
+    with SecurityContextManager.scope(SecurityContext(tenant_id="A", session_id="S-A")):
+        await sink.register_session("S-A", "swarmA")
+        await sink.consume(_evt("task.created", "S-A", 0, {"secret": "A_DATA"}))
+
+    # tenant B 在同一实例下读——应读不到
+    with SecurityContextManager.scope(SecurityContext(tenant_id="B", session_id="S-B")):
+        events = await sink.get_events("S-A")
+        assert events == [], "tenant B 不应读到 tenant A 的事件"
+        info = await sink.get_session("S-A")
+        assert info is None, "tenant B 不应读到 tenant A 的 session 元数据"
+        sessions = await sink.list_sessions()
+        assert sessions == [], "tenant B 不应列出 tenant A 的 session"
+
+    await sink.aclose()
+
+
+async def test_tenant_isolation_in_separate_db_files(tmp_path: Path) -> None:
+    """
+    @brief 多个 sink 实例（每个租户独立 db）——互不影响
+
+    @note 模拟生产多租户: 每个 tenant 一个 db 文件
+    """
+    from agent_swarm.security.context import SecurityContext, SecurityContextManager
+
+    sink_a = SqliteEventSink(tmp_path / "tenant_a.db")
+    sink_b = SqliteEventSink(tmp_path / "tenant_b.db")
+
+    with SecurityContextManager.scope(SecurityContext(tenant_id="A", session_id="S-A")):
+        await sink_a.register_session("S-A", "swarmA")
+        await sink_a.consume(_evt("task.created", "S-A", 0, {"who": "A"}))
+
+    with SecurityContextManager.scope(SecurityContext(tenant_id="B", session_id="S-B")):
+        await sink_b.register_session("S-B", "swarmB")
+        await sink_b.consume(_evt("task.created", "S-B", 0, {"who": "B"}))
+
+    # 切到 A 读 A 的库——应只看到 A
+    with SecurityContextManager.scope(SecurityContext(tenant_id="A", session_id="S-A")):
+        a_events = await sink_a.get_events("S-A")
+        assert len(a_events) == 1
+        assert a_events[0].payload["who"] == "A"
+
+    # 切到 B 读 B 的库
+    with SecurityContextManager.scope(SecurityContext(tenant_id="B", session_id="S-B")):
+        b_events = await sink_b.get_events("S-B")
+        assert len(b_events) == 1
+        assert b_events[0].payload["who"] == "B"
+
+    await sink_a.aclose()
+    await sink_b.aclose()
+
+
+async def test_tenant_default_local_when_no_ctx(tmp_path: Path) -> None:
+    """
+    @brief 无 SecurityContext 时回退 tenant_id='local'——单租户兜底
+    """
+    from agent_swarm.security.context import SecurityContextManager, default_local_context
+
+    sink = SqliteEventSink(tmp_path / "events.db")
+    # 单租户模式: 用 default_local_context 显式设置 (Phase 1 全程场景)
+    with SecurityContextManager.scope(default_local_context("S")):
+        await sink.consume(_evt("x", "S", 0, {"ok": True}))
+        events = await sink.get_events("S")
+        assert len(events) == 1
+    await sink.aclose()
+
+
+async def test_v1_to_v2_migration_preserves_data(tmp_path: Path) -> None:
+    """
+    @brief V1 schema (无 tenant_id) 自动迁移到 V2, tenant_id 默认 'local'
+    """
+    import aiosqlite
+
+    db_path = tmp_path / "legacy.db"
+    # 1) 手动建 V1 schema + 写数据
+    async with aiosqlite.connect(str(db_path)) as conn:
+        await conn.executescript("""
+            CREATE TABLE session_events (
+                session_id TEXT NOT NULL,
+                seq        INTEGER NOT NULL,
+                event_name TEXT NOT NULL,
+                timestamp  REAL NOT NULL,
+                payload    TEXT NOT NULL,
+                request_id TEXT,
+                PRIMARY KEY (session_id, seq)
+            );
+            CREATE TABLE sessions (
+                session_id   TEXT PRIMARY KEY,
+                swarm_name   TEXT NOT NULL,
+                created_at   REAL NOT NULL,
+                ended_at     REAL,
+                state        TEXT,
+                config_yaml  TEXT
+            );
+        """)
+        await conn.execute(
+            "INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?)",
+            ("S-legacy", "swarm-legacy", 1234.0, None, "completed", None),
+        )
+        await conn.execute(
+            "INSERT INTO session_events VALUES (?, ?, ?, ?, ?, ?)",
+            ("S-legacy", 0, "task.created", 1234.0, '{"k":"v"}', None),
+        )
+        await conn.commit()
+
+    # 2) 打开新 SqliteEventSink——应自动迁移
+    sink = SqliteEventSink(db_path)
+    info = await sink.get_session("S-legacy")
+    assert info is not None
+    assert info["swarm_name"] == "swarm-legacy"
+    events = await sink.get_events("S-legacy")
+    assert len(events) == 1
+    assert events[0].event_name == "task.created"
+    await sink.aclose()
+
+
+# ---------------------------------------------------------------------------
 # 与 ObservabilityBus 集成
 # ---------------------------------------------------------------------------
 

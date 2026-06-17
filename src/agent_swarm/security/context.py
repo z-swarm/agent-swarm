@@ -79,14 +79,17 @@ class SecurityContextManager:
         session_id: str = "default",
     ) -> SecurityContext:
         """
-        获取上下文；未设置时返回单租户默认（W1-W4 路径走此分支）
+        获取上下文；未设置或被显式 set(None) 时返回单租户默认（W1-W4 路径走此分支）
         """
         try:
-            return _current_security_ctx.get()
+            ctx = _current_security_ctx.get()
         except LookupError:
+            ctx = None
+        if ctx is None:
             return SecurityContext(
                 tenant_id=tenant_id, session_id=session_id, user=None
             )
+        return ctx
 
     @staticmethod
     @contextmanager
