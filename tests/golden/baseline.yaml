@@ -1,0 +1,68 @@
+# Golden Case Baseline (DESIGN §17.5)
+#
+# 人工维护——每次 Benchmark.run_all() 后用 --update-baseline 写新值, 人工 review 后 commit
+# 报警规则: duration/tokens p95 +20% 警告 / +50% 阻塞; quality_score -5% 警告 / -15% 阻塞
+#
+# last_updated: 2026-06-18 (Phase 1 完结)
+
+G-001_pr_security_review:
+  duration_seconds: { p50: 45, p95: 80 }
+  total_tokens: { p50: 120000, p95: 180000 }
+  cost_usd: { p50: 0.35, p95: 0.55 }
+  quality_score: { min: 0.66 }
+  last_updated: 2026-06-18
+  last_updated_by: "@phase1-closing"
+
+G-002_n_plus_one_query:
+  duration_seconds: { p50: 30, p95: 60 }
+  total_tokens: { p50: 80000, p95: 120000 }
+  quality_score: { min: 0.50 }
+  last_updated: 2026-06-18
+
+G-003_clean_pr_no_findings:
+  duration_seconds: { p50: 25, p95: 50 }
+  total_tokens: { p50: 60000, p95: 90000 }
+  quality_score: { min: 0.50 }
+  last_updated: 2026-06-18
+
+G-004_w3_resume:
+  duration_seconds: { p50: 20, p95: 40 }
+  total_tokens: { p50: 40000, p95: 60000 }
+  quality_score: { min: 0.50 }
+  last_updated: 2026-06-18
+
+G-005_w5_attack_blocked:
+  duration_seconds: { p50: 5, p95: 10 }
+  total_tokens: { p50: 1000, p95: 2000 }
+  quality_score: { min: 0.50 }
+  last_updated: 2026-06-18
+
+G-006_w6_tui_4panel:
+  duration_seconds: { p50: 5, p95: 10 }
+  total_tokens: { p50: 1000, p95: 2000 }
+  quality_score: { min: 0.50 }
+  last_updated: 2026-06-18
+
+G-007_large_file_truncated:
+  duration_seconds: { p50: 5, p95: 15 }
+  total_tokens: { p50: 2000, p95: 5000 }
+  quality_score: { min: 0.50 }
+  last_updated: 2026-06-18
+
+G-008_five_agent_concurrent:
+  duration_seconds: { p50: 30, p95: 60 }
+  total_tokens: { p50: 80000, p95: 120000 }
+  quality_score: { min: 0.50 }
+  last_updated: 2026-06-18
+
+G-009_openai_rate_limit_fallback:
+  duration_seconds: { p50: 30, p95: 60 }
+  total_tokens: { p50: 60000, p95: 90000 }
+  quality_score: { min: 0.50 }
+  last_updated: 2026-06-18
+
+G-010_w3_resume_state_match:
+  duration_seconds: { p50: 20, p95: 40 }
+  total_tokens: { p50: 40000, p95: 60000 }
+  quality_score: { min: 0.50 }
+  last_updated: 2026-06-18
