@@ -15,6 +15,7 @@ from agent_swarm.core.mailbox import Mailbox
 from agent_swarm.core.types import Tool
 from agent_swarm.tools.builtin.file_ops import ReadFileTool
 from agent_swarm.tools.builtin.messaging import SendMessageTool
+from agent_swarm.tools.builtin.shell import RunCommandTool
 
 
 def build_shared_tools(workspace: Path | str | None = None) -> dict[str, Tool]:
@@ -53,6 +54,7 @@ build_default_tools = build_shared_tools
 
 __all__ = [
     "ReadFileTool",
+    "RunCommandTool",
     "SendMessageTool",
     "build_default_tools",
     "build_per_agent_tools",

@@ -1,0 +1,43 @@
+# Weekly Slice W5 演示配置
+# DESIGN.md §15 W5 DoD: SecurityContext + SandboxManager + 20 条攻击全拦截
+#
+# 用法:
+#   export OPENAI_API_KEY=sk-...
+#   agent-swarm run examples/w5_secure.yaml
+#
+# 预期:
+#   - read_file / list_files 等 LOW 工具直接执行
+#   - run_command 因 HIGH risk + command 本身在白名单——REQUIRE_APPROVAL
+#   - 任何访问 ~/.ssh / /etc/passwd 等敏感路径——DENY
+#   - 任何 rm -rf / 等恶意命令——DENY
+
+name: w5-secure
+
+agents:
+  - id: security-worker
+    role: security-conscious engineer
+    persona: |
+      You work in a sandboxed environment. Always validate your inputs;
+      never assume tools will succeed silently.
+    provider: openai
+    model: gpt-4o-mini
+    tools:
+      - read_file
+      - list_files
+    max_iterations: 4
+
+tasks:
+  - id: T-readme
+    title: Read project README and summarize
+    description: |
+      Use read_file to read 'README.md' in the workspace, then summarize
+      what the project is. The file should exist and be readable.
+    assigned_to: security-worker
+
+  - id: T-protect
+    title: Demonstrate policy blocks sensitive access
+    description: |
+      Attempt to read the file '/etc/passwd' using read_file. The SecurityPolicy
+      should DENY this access and return an error. Report the exact error message
+      you received.
+    assigned_to: security-worker

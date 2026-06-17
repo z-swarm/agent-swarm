@@ -98,3 +98,45 @@ async def test_read_file_directory(workspace: Path) -> None:
     out = await tool.invoke({"path": "sub"})
     assert out.startswith("[error]")
     assert "regular file" in out.lower() or "not a regular" in out.lower()
+
+
+# ---------------------------------------------------------------------------
+# W5: SecurityPolicy 集成
+# ---------------------------------------------------------------------------
+
+
+async def test_read_file_with_policy_denies_sensitive(workspace: Path) -> None:
+    """W5: policy DENY 敏感路径——即使 workspace 合法也返回 [error]"""
+    from agent_swarm.security import SecurityPolicy
+
+    policy = SecurityPolicy(workspace=str(workspace))
+    tool = ReadFileTool(workspace=workspace, policy=policy)
+    out = await tool.invoke({"path": "/etc/passwd"})
+    assert out.startswith("[error]")
+    assert "policy denied" in out.lower() or "sensitive" in out.lower()
+
+
+async def test_read_file_with_policy_requires_approval(workspace: Path) -> None:
+    """W5: policy REQUIRE_APPROVAL——read_file 默认 LOW，但 require_approval_for 强制"""
+    from agent_swarm.security import SecurityPolicy
+
+    (workspace / "ok.txt").write_text("content", encoding="utf-8")
+    policy = SecurityPolicy(
+        workspace=str(workspace),
+        require_approval_for={"read_file"},
+    )
+    tool = ReadFileTool(workspace=workspace, policy=policy)
+    out = await tool.invoke({"path": "ok.txt"})
+    assert "requires approval" in out.lower()
+
+
+async def test_read_file_with_policy_custom_deny(workspace: Path) -> None:
+    """W5: 用户自定义路径黑名单生效"""
+    from agent_swarm.security import SecurityPolicy
+
+    (workspace / "secret.txt").write_text("data", encoding="utf-8")
+    policy = SecurityPolicy(workspace=str(workspace))
+    policy.add_sensitive_path("secret.txt")
+    tool = ReadFileTool(workspace=workspace, policy=policy)
+    out = await tool.invoke({"path": "secret.txt"})
+    assert out.startswith("[error]")

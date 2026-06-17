@@ -80,7 +80,11 @@ class SqliteEventSink(ObservabilitySink):
     """
 
     def __init__(self, db_path: str | Path) -> None:
-        self.db_path = Path(db_path).resolve()
+        # ``:memory:`` 是 SQLite 的内存库特殊标识，不能当成路径 resolve（否则会变成 cwd/:memory: 物理文件）
+        if isinstance(db_path, str) and db_path == ":memory:":
+            self.db_path: Path | str = ":memory:"
+        else:
+            self.db_path = Path(db_path).resolve()
         self._conn: aiosqlite.Connection | None = None
         self._init_lock = asyncio.Lock()
 
@@ -96,7 +100,7 @@ class SqliteEventSink(ObservabilitySink):
                 return self._conn
             # 父目录不存在则建（:memory: 跳过）
             if str(self.db_path) != ":memory:":
-                self.db_path.parent.mkdir(parents=True, exist_ok=True)
+                Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
             conn = await aiosqlite.connect(str(self.db_path))
             # WAL 仅对实体库生效；:memory: 会忽略
             await conn.execute("PRAGMA journal_mode=WAL")
