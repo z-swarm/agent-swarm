@@ -29,8 +29,7 @@ from agent_swarm.core.types import (
     Verdict,
 )
 
-if TYPE_CHECKING:
-    pass
+from agent_swarm.core.protocols import CollaborationProtocol, ProtocolResult
 
 log = logging.getLogger(__name__)
 
@@ -304,11 +303,264 @@ def check_convergence(
     )
 
 
+
+# ---------------------------------------------------------------------------
+# W8-4: AdversarialVerifier 协议实现
+# ---------------------------------------------------------------------------
+
+
+class VerifierStallError(RuntimeError):
+    """连续 2 轮所有 agent 都失败 → 整个验证 stall（DESIGN §6.2.5）"""
+
+
+class AdversarialVerifier(CollaborationProtocol):
+    """
+    对抗式验证协议——DESIGN §6.2
+
+    @param min_survivors       目标存活假设数（默认 1）
+    @param max_rounds          最大轮数（默认 5）
+    @param eliminate_threshold 淘汰分数阈值（默认 -0.5）
+    @param per_round_timeout   单轮 LLM 调用超时（DESIGN §6.2.6，默认 120s）
+    """
+
+    def __init__(
+        self,
+        min_survivors: int = 1,
+        max_rounds: int = 5,
+        eliminate_threshold: float = -0.5,
+        per_round_timeout: float = 120.0,
+    ) -> None:
+        if min_survivors < 0:
+            raise ValueError(f"min_survivors must be >= 0, got {min_survivors}")
+        if max_rounds < 1:
+            raise ValueError(f"max_rounds must be >= 1, got {max_rounds}")
+        self._min_survivors = min_survivors
+        self._max_rounds = max_rounds
+        self._eliminate_threshold = eliminate_threshold
+        self._per_round_timeout = per_round_timeout
+        self._rounds_run: int = 0
+        self._all_failed_streak: int = 0
+
+    async def verify(
+        self,
+        hypotheses: list[str],
+        agents: list[Agent],
+        judge_fn: "JudgeFn | None" = None,
+    ) -> Verdict:
+        """跑一轮对抗式验证（DESIGN §6.2.6）"""
+        if not hypotheses:
+            raise ValueError("hypotheses must be non-empty")
+        if not agents:
+            raise ValueError("agents must be non-empty")
+
+        states: list[HypothesisState] = [
+            HypothesisState(id=f"h{i}", statement=stmt)
+            for i, stmt in enumerate(hypotheses)
+        ]
+        history: list[Judgement] = []
+        _judge_fn = judge_fn or _default_judge_fn
+        prev_stances: dict[tuple[str, str], Stance] = {}
+
+        for round_no in range(1, self._max_rounds + 1):
+            self._rounds_run = round_no
+            judgements = await gather_round(agents, states, round_no, _judge_fn)
+            attach_judgements(states, judgements)
+            history.extend(judgements)
+
+            all_failed = self._round_all_failed(states, round_no)
+            if all_failed:
+                self._all_failed_streak += 1
+                if self._all_failed_streak >= 2:
+                    raise VerifierStallError(
+                        f"AdversarialVerifier stalled: round {round_no} "
+                        f"(consecutive {self._all_failed_streak} all-failed rounds)"
+                    )
+                _rollback_round(states, round_no)
+                history = [j for j in history if j.round_no != round_no]
+                log.warning(
+                    "adversarial.round %d: all agents failed; rolling back (streak=%d)",
+                    round_no, self._all_failed_streak,
+                )
+                continue
+            self._all_failed_streak = 0
+
+            scores = compute_support_scores(states, round_no)
+            result = eliminate(states, scores, self._eliminate_threshold)
+            log.debug(
+                "adversarial.round %d: alive=%s, eliminated=%s",
+                round_no,
+                [h.id for h in result.still_alive],
+                [h.id for h in result.just_eliminated],
+            )
+
+            curr_stances = _build_stance_dict(states, round_no)
+            cc = check_convergence(
+                states, round_no,
+                min_survivors=self._min_survivors,
+                max_rounds=self._max_rounds,
+                prev_round_stances=prev_stances,
+                curr_round_stances=curr_stances,
+            )
+            if cc.converged:
+                return self._build_verdict(
+                    states, history, rounds_used=round_no,
+                    convergence_reason=cc.reason or "max_rounds_exhausted",
+                )
+            prev_stances = curr_stances
+
+        return self._build_verdict(
+            states, history, rounds_used=self._max_rounds,
+            convergence_reason="max_rounds_exhausted",
+        )
+
+    async def execute(self, swarm: "Swarm") -> ProtocolResult:  # type: ignore[override]
+        """
+        按协议驱动 swarm 跑对抗式验证
+
+        @param swarm 假设从 swarm.tasks[*].title 收集；judge agents 优先选
+                     plan_only 角色（capabilities.can_execute_actions=False），
+                     缺则退化用所有 agent。
+        @note W8 骨架：假设/agent 提取用最简规则；W8-5 Golden Case 时细化。
+        """
+        from agent_swarm.core.swarm import Swarm  # 局部 import 避免循环
+
+        hypotheses = [t.title for t in swarm.tasks if t.title]
+        judges = [
+            a for a in swarm.agents
+            if not a.capabilities.can_execute_actions
+        ]
+        if not judges:
+            judges = list(swarm.agents)
+        try:
+            verdict = await self.verify(hypotheses, judges)
+        except VerifierStallError as exc:
+            return ProtocolResult(
+                success=False,
+                error=f"VerifierStallError: {exc}",
+                artifacts={"protocol": "AdversarialVerifier"},
+            )
+
+        success = bool(verdict.survivors) and verdict.convergence_reason != "all_eliminated"
+        return ProtocolResult(
+            success=success,
+            summary=(
+                f"AdversarialVerifier: {len(verdict.survivors)} survivor(s) "
+                f"after {verdict.rounds_used} round(s) "
+                f"(reason={verdict.convergence_reason})"
+            ),
+            artifacts={
+                "protocol": "AdversarialVerifier",
+                "survivors": [h.id for h in verdict.survivors],
+                "eliminated": [h.id for h in verdict.eliminated],
+                "rounds_used": verdict.rounds_used,
+                "convergence_reason": verdict.convergence_reason,
+                "root_cause": verdict.root_cause,
+                "confidence": verdict.confidence,
+            },
+        )
+
+    @staticmethod
+    def _round_all_failed(states: list[HypothesisState], round_no: int) -> bool:
+        """本轮所有 (agent, hyp) 都 UNCERTAIN 视作全员失败"""
+        for h in states:
+            if h.eliminated:
+                continue
+            js = h.judgements_by_round.get(round_no, [])
+            if not js:
+                return True
+            if not all(j.stance == Stance.UNCERTAIN for j in js):
+                return False
+        return True
+
+    @staticmethod
+    def _build_verdict(
+        states: list[HypothesisState],
+        history: list[Judgement],
+        rounds_used: int,
+        convergence_reason: "ConvergenceReason",
+    ) -> Verdict:
+        """构造 Verdict——survivors 按最后一轮 support_score 降序排"""
+        survivors = [h for h in states if not h.eliminated]
+        eliminated = [h for h in states if h.eliminated]
+
+        def _sort_key(h: HypothesisState) -> float:
+            rounds = sorted(h.judgements_by_round.keys())
+            if not rounds:
+                return float("-inf")
+            return h.support_score(rounds[-1])
+        survivors.sort(key=_sort_key, reverse=True)
+
+        root_cause: str | None = None
+        confidence = 0.0
+        if convergence_reason == "all_eliminated":
+            if eliminated:
+                latest = max(
+                    eliminated,
+                    key=lambda h: h.eliminated_at_round or 0,
+                )
+                root_cause = (
+                    f"all hypotheses eliminated; weak recommendation: {latest.statement}"
+                )
+                confidence = 0.1
+        elif len(survivors) == 1:
+            root_cause = survivors[0].statement
+            last_round = max(survivors[0].judgements_by_round.keys())
+            supports = [
+                j.confidence for j in survivors[0].judgements_by_round[last_round]
+                if j.stance == Stance.SUPPORT
+            ]
+            confidence = sum(supports) / len(supports) if supports else 0.0
+
+        return Verdict(
+            survivors=survivors,
+            eliminated=eliminated,
+            rounds_used=rounds_used,
+            convergence_reason=convergence_reason,
+            root_cause=root_cause,
+            confidence=confidence,
+            full_history=history,
+        )
+
+
+def _build_stance_dict(
+    states: list[HypothesisState], round_no: int,
+) -> dict[tuple[str, str], Stance]:
+    """构造 (agent_id, hyp_id) -> Stance 字典（供 consensus_stable 判定）"""
+    out: dict[tuple[str, str], Stance] = {}
+    for h in states:
+        for j in h.judgements_by_round.get(round_no, []):
+            out[(j.agent_id, j.hypothesis_id)] = j.stance
+    return out
+
+
+def _rollback_round(states: list[HypothesisState], round_no: int) -> None:
+    """该轮作废时把 judgements_by_round[round_no] 清掉"""
+    for h in states:
+        h.judgements_by_round.pop(round_no, None)
+
+
+async def _default_judge_fn(
+    agent: Agent, hypothesis_id: str, round_no: int,
+) -> Judgement:
+    """
+    默认 judge_fn——若用户未注入则抛错（强制 caller 接真 LLM）
+
+    @note W8 骨架：默认空实现防止"忘了传 judge_fn 静默跑通"；W8-5 Golden
+          Case 时用 FakeLLMProvider 脚本构造确定性 judge_fn。
+    """
+    raise NotImplementedError(
+        "AdversarialVerifier.verify() requires judge_fn; "
+        "W8 骨架不绑死 LLM provider，调用方需注入。"
+    )
+
+
 __all__ = [
+    "AdversarialVerifier",
     "ConvergenceCheck",
     "ConvergenceReason",
     "EliminationResult",
     "JudgeFn",
+    "VerifierStallError",
     "attach_judgements",
     "check_convergence",
     "compute_support_scores",
