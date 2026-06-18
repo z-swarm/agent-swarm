@@ -138,7 +138,8 @@ class ClaimResult:
       - task_not_found
       - version_mismatch (CAS 冲突——其他 agent 抢先更新)
       - already_claimed
-      - dependency_blocked
+      - dependency_blocked (status=blocked,依赖未满足)
+      - task_terminal  (status=completed/failed,终态)
     """
 
     success: bool
@@ -149,6 +150,7 @@ class ClaimResult:
         "version_mismatch",
         "already_claimed",
         "dependency_blocked",
+        "task_terminal",
     ] = "ok"
 
 

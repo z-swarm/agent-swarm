@@ -189,6 +189,11 @@ class Swarm:
             {
                 "name": self.name,
                 "agent_ids": [a.id for a in self.agents],
+                # P-3 修复:TUI 之前只显示 (?),因为 payload 里没 model
+                "agents": [
+                    {"id": a.id, "model": a.model, "role": a.role}
+                    for a in self.agents
+                ],
                 "task_count": len(self.tasks),
             },
         )
@@ -228,6 +233,8 @@ class Swarm:
                             lp.cancel()
                     return
 
+        stats_list: list[AgentLoopStats] = []
+        watcher_task: asyncio.Task | None = None
         try:
             # F-09: create_task 显式传 context——防跨 task 边界丢 ctx
             ctx_var = SecurityContextManager.current().asyncio_context()
@@ -240,16 +247,12 @@ class Swarm:
             ]
             watcher_task = asyncio.create_task(_watcher(loop_tasks), context=ctx_var)
 
-            stats_list: list[AgentLoopStats] = []
             for lp in loop_tasks:
                 try:
                     stats_list.append(await lp)
                 except asyncio.CancelledError:
                     # 被 watcher 取消——视为正常完成，stats 不可用
                     log.debug("agent loop cancelled by watcher")
-            watcher_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await watcher_task
         except Exception as exc:  # noqa: BLE001
             log.exception("swarm crashed: %s", exc)
             # W3-Z1 修复：crash 路径也要 emit swarm.failed，保证事件流完整
@@ -273,6 +276,14 @@ class Swarm:
                 tasks_unfinished=len(self.tasks),
                 error=str(exc),
             )
+        finally:
+            # BUG-2 修复:watcher 协程在 crash 路径必须被 cancel + await,
+            # 否则它会在 _watcher() 里持续 await asyncio.sleep(0.05) 轮询,
+            # 嵌入长生命周期进程(IM/REST 场景)会协程泄露
+            if watcher_task is not None and not watcher_task.done():
+                watcher_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await watcher_task
 
         # 4) 汇总
         all_run_results: list[AgentRunResult] = []

@@ -81,14 +81,18 @@ class TokenBudgetManager:
         """
         used = self._estimate_chars(system_prompt)
         for m in messages:
-            used += self._estimate_chars(m.get("content") or "")
+            content = m.get("content")
+            if isinstance(content, list):
+                # Anthropic 风格的 content blocks——逐 block 估算
+                for block in content:
+                    if isinstance(block, dict):
+                        used += self._estimate_chars(str(block))
+            else:
+                # 字符串/None 路径
+                used += self._estimate_chars(content or "")
             # tool_calls / tool_use 也会消耗
             for tc in m.get("tool_calls") or []:
                 used += self._estimate_chars(str(tc))
-            # Anthropic 风格的 content blocks
-            for block in m.get("content") or []:
-                if isinstance(block, dict):
-                    used += self._estimate_chars(str(block))
         # tool schemas
         if tool_schemas:
             used += self._estimate_chars(str(tool_schemas))

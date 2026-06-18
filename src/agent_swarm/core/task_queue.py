@@ -70,6 +70,11 @@ class TaskQueue:
             payload = {
                 "task_id": task.id,
                 "title": task.title,
+                # BUG-1 修复:加 description——SessionManager 重放靠事件 payload
+                # 重建 Task(description=...)。缺这个字段时,恢复后 task.description
+                # 永远是空,Phase 2+ 计划做的"session resume 接着跑"会让 LLM 看不到
+                # 原任务描述。
+                "description": task.description,
                 "status": task.status,
                 "depends_on": list(task.depends_on),
                 "assigned_to": task.assigned_to,
@@ -163,7 +168,17 @@ class TaskQueue:
                 result = ClaimResult(success=False, reason="version_mismatch")
             elif t.status == "in_progress":
                 result = ClaimResult(success=False, reason="already_claimed")
+            elif t.status == "blocked":
+                # BUG-3 修复:显式返回 dependency_blocked 而非误导的
+                # version_mismatch——agent 能从 reason 直接判断是依赖未完成
+                # (重试无用)还是真 CAS 冲突(应重读 task_queue)
+                result = ClaimResult(success=False, reason="dependency_blocked")
+            elif t.status in ("completed", "failed"):
+                # 终态任务不能再 claim——给一个明确 reason
+                result = ClaimResult(success=False, reason="task_terminal")
             elif t.status != "pending":
+                # 兜底:未来若新增 status 而漏改这里,仍走 version_mismatch
+                # 而不是静默成功
                 result = ClaimResult(success=False, reason="version_mismatch")
             elif not self._deps_satisfied(t):
                 result = ClaimResult(success=False, reason="dependency_blocked")

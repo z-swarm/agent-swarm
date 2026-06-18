@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os  # P-4 修复:从函数内 inline import 提升到顶部
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -107,7 +108,6 @@ def run(
     bus, sink = _setup_observability(db, json_log=json_log)
     # CLI 注入 api_key 到 OpenAI provider (--api-key 优先于 env)
     if api_key:
-        import os
         os.environ["OPENAI_API_KEY"] = api_key
 
     console.print(f"[bold cyan]agent-swarm[/] loading [yellow]{config}[/]")
@@ -179,7 +179,6 @@ def tui(config: Path, verbose: bool, api_key: str | None) -> None:
     """
     _configure_logging(verbose)
     if api_key:
-        import os
         os.environ["OPENAI_API_KEY"] = api_key
 
     # TUI 自己的轻量 bus: 1 个 JsonLogSink (stderr) + 1 个 TUISink

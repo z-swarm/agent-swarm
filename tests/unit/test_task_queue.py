@@ -128,18 +128,46 @@ async def test_claim_already_claimed() -> None:
 
 
 async def test_claim_blocked_returns_dependency_blocked() -> None:
-    """直接 claim blocked 任务应返回 dependency_blocked"""
+    """直接 claim blocked 任务应返回 dependency_blocked（BUG-3 修复后）"""
     q = TaskQueue()
     await q.add(_t("a"))
     await q.add(_t("b", depends_on=["a"]))
     b = await q.get("b")
     assert b is not None and b.status == "blocked"
 
-    # 强行 claim b——版本号正确，但状态不是 pending
+    # 强行 claim b——版本号正确，但状态是 blocked
     res = await q.claim("b", "agent-1", expected_version=b.version)
     assert res.success is False
-    # blocked 不是 pending，进入 version_mismatch 分支
-    assert res.reason == "version_mismatch"
+    # BUG-3 修复后:blocked 显式返回 dependency_blocked 而非 version_mismatch
+    assert res.reason == "dependency_blocked"
+
+
+async def test_claim_completed_task_returns_task_terminal() -> None:
+    """claim 终态任务(completed)应返回 task_terminal——不要 claim 一个已完成的"""
+    q = TaskQueue()
+    await q.add(_t("a"))
+    claimed = await q.claim("a", "a-1", expected_version=0)
+    assert claimed.success
+    completed = await q.complete("a", "ok", expected_version=claimed.task.version)  # type: ignore[union-attr]
+    assert completed.success
+
+    # 另一个 agent 想 claim 已完成的——应明确知道这是终态
+    res = await q.claim("a", "a-2", expected_version=completed.task.version)  # type: ignore[union-attr]
+    assert res.success is False
+    assert res.reason == "task_terminal"
+
+
+async def test_claim_failed_task_returns_task_terminal() -> None:
+    """claim 终态任务(failed)同理"""
+    q = TaskQueue()
+    await q.add(_t("a"))
+    claimed = await q.claim("a", "a-1", expected_version=0)
+    failed = await q.fail("a", "boom", expected_version=claimed.task.version)  # type: ignore[union-attr]
+    assert failed.success
+
+    res = await q.claim("a", "a-2", expected_version=failed.task.version)  # type: ignore[union-attr]
+    assert res.success is False
+    assert res.reason == "task_terminal"
 
 
 # ---------------------------------------------------------------------------

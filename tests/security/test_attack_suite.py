@@ -196,10 +196,37 @@ async def test_run_command_requires_approval_by_default(tmp_path: Path) -> None:
 
 
 def test_attack_suite_covers_at_least_20_cases() -> None:
-    """确保 parametrize 至少 20 条——这是 W5 DoD 的数字目标"""
-    # 通过检查：手动从 @pytest.mark.parametrize 收集
-    # 简化：直接用数字确认
-    # 5 + 5 + 5 + 5 = 20（path + cmd_blacklist + pipe + case_bypass）= 20
+    """确保 parametrize 至少 20 条——这是 W5 DoD 的数字目标
+
+    不再用 hardcoded 5+5+5+5——用 ast 真的解析本文件,数所有
+    @pytest.mark.parametrize 块第二个参数(List)的长度之和
+    """
+    import ast
+    from pathlib import Path
+
     expected_min = 20
-    actual = 5 + 5 + 5 + 5  # 4 组 × 5 条
-    assert actual >= expected_min, f"only {actual} cases; need ≥{expected_min}"
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+
+    total = 0
+    # 找所有 @pytest.mark.parametrize("...", [...]) 装饰器
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        for dec in node.decorator_list:
+            if not isinstance(dec, ast.Call):
+                continue
+            # 匹配 pytest.mark.parametrize(...)
+            func = dec.func
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr == "parametrize"
+                and isinstance(func.value, ast.Attribute)
+                and func.value.attr == "mark"
+            ):
+                # 第二个参数是 argvalues list
+                if len(dec.args) >= 2 and isinstance(dec.args[1], ast.List):
+                    total += len(dec.args[1].elts)
+
+    assert total >= expected_min, (
+        f"only {total} parametrize cases in this file; need ≥{expected_min}"
+    )

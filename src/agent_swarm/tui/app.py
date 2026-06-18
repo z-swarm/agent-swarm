@@ -359,8 +359,18 @@ class SwarmDashboardApp(App):
         self._status_data.state = "running"
         self._status_data.started_at = evt.timestamp
         self._status_data.tasks_total = p.get("task_count", 0)
+        # P-3 修复:优先用 agents[] 拿 model/role(Phase 1 后 payload 含此字段);
+        # 回退到 agent_ids 仅拿 id——保持向后兼容旧 event log 重放
+        for ag in p.get("agents", []):
+            aid = ag.get("id", "?")
+            self._status_data.agents[aid] = AgentInfo(
+                agent_id=aid,
+                model=ag.get("model", "?"),
+                status="idle",
+            )
         for aid in p.get("agent_ids", []):
-            self._status_data.agents[aid] = AgentInfo(agent_id=aid)
+            if aid not in self._status_data.agents:
+                self._status_data.agents[aid] = AgentInfo(agent_id=aid)
 
     def _on_swarm_done(self, evt: SessionEvent, state: str) -> None:
         self._status_data.state = state
