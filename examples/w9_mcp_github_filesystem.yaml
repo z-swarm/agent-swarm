@@ -1,0 +1,65 @@
+# Weekly Slice W9 演示配置（DESIGN §15 Phase 2 W3 / MCP 集成）
+#
+# DoD (Phase 2 DoD ③):
+#   - MCPRegistry 至少注册 2 个 server：filesystem + GitHub
+#   - Swarm 启动时连接 server，list_tools 成功
+#   - worker agent 的 tools 包含 2 个 MCP 工具（mcp.filesystem.* + mcp.github.*）
+#
+# 用法:
+#   # 前置：安装 Node.js + npx
+#   export GITHUB_PERSONAL_ACCESS_TOKEN=ghp_xxx
+#   agent-swarm run examples/w9_mcp_github_filesystem.yaml
+#
+# @note W9 骨架：filesystem / GitHub server 需 npx 拉取（首次跑会下包）；
+#       e2e 测试用 mock server 验证"≥2 server 注册可达"，不依赖真 npx。
+
+name: w9-mcp
+
+agents:
+  - id: worker
+    role: repo analyst
+    role_type: worker
+    persona: |
+      You are a code analyst. Use the MCP tools to read files from
+      /tmp and search GitHub repositories. Compose a brief report.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 4
+
+# MCP server 配置（DESIGN §7.3 YAML 配置示例）
+mcp_servers:
+  filesystem:
+    transport: stdio
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-filesystem"
+      - /tmp
+    reliability:
+      auto_reconnect: true
+      max_reconnect_attempts: 5
+      circuit_breaker_threshold: 3
+
+  github:
+    transport: stdio
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-github"
+    env:
+      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+    risk_overrides:
+      create_issue: high
+      create_pull_request: critical
+    reliability:
+      auto_reconnect: true
+      max_reconnect_attempts: 3
+      circuit_breaker_threshold: 3
+
+tasks:
+  - id: T-list-fs
+    title: List /tmp directory
+    description: |
+      Use mcp.filesystem.list_directory to enumerate /tmp and report
+      the top 5 entries (name + size).
+    assigned_to: worker

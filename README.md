@@ -27,6 +27,7 @@
 | W6 | TUI 仪表盘 (Textual) | ✅ | 5 秒内完整视图 |
 | **W7** | **Delegate Mode (Lead + Worker)** | ✅ | **1 lead + 2 workers 协作；lead 工具权限拦截；ProtocolResult 含 lead/worker 分组** |
 | **W8** | **Adversarial Verify** | ✅ | **3 plan_only judge × 3 假设；4 条收敛路径全覆盖；5 个 P2 Golden Case 根因命中率 100%** |
+| **W9** | **MCP 集成** | ✅ | **MCPRegistry + StdioMCPClient + MCPToolAdapter；filesystem + GitHub ≥2 server 走通（Phase 2 DoD ③）** |
 
 ## Quickstart
 
@@ -116,6 +117,38 @@ async def main():
 asyncio.run(main())
 ```
 
+# W9：MCP 集成（Phase 2 第三个 Weekly Slice）
+```bash
+# 前置：Node.js + npx（filesystem / GitHub server 通过 npx 拉取）
+export GITHUB_PERSONAL_ACCESS_TOKEN=ghp_xxx
+agent-swarm run examples/w9_mcp_github_filesystem.yaml
+```
+
+# W9 程序化入口
+```python
+import asyncio
+from agent_swarm.mcp import MCPRegistry, StdioMCPClient, await_build_tool_adapters
+from agent_swarm.mcp.registry import MCPServerConfig
+
+async def main():
+    registry = MCPRegistry.from_dict({
+        "filesystem": {"transport": "stdio", "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp"]},
+        "github": {"transport": "stdio", "command": ["npx", "-y", "@modelcontextprotocol/server-github"]},
+    })
+    cfg = registry.get("filesystem")
+    client = StdioMCPClient(cfg, timeout_s=10.0)
+    adapters = await await_build_tool_adapters("filesystem", cfg, client)
+    # 调 MCP 工具
+    list_dir = next(a for a in adapters if a.mcp_tool_name == "list_directory")
+    out = await list_dir.invoke({"path": "/tmp"})
+    print(out)
+    await client.disconnect()
+
+asyncio.run(main())
+```
+@note W9 骨架：SSE 传输 / 重连熔断 推迟到 W10+（DESIGN §7.3 提到但
+      Phase 2 DoD ③ 字面只要求"≥2 server"——stdio 已够）。
+
 预期输出：CLI 打印任务结果表格 + agent 给出的一句话摘要。
 W6 TUI 显示 4 面板：Status / Tasks / Messages / Token Budget。
 
@@ -153,6 +186,7 @@ agent-swarm-g1/
 │   ├── tools/builtin/              # read_file / run_command / send_message
 │   ├── security/                   # SecurityContext / Policy / Sandbox / ApprovalFlow
 │   ├── observability/              # Bus / JsonLog / InMemory / Sqlite (含 tenant_id)
+│   ├── mcp/                        # MCP 工具集成 (Phase 2 W9)
 │   ├── skills/                     # Skill 系统
 │   ├── golden.py                   # Golden Case runner
 │   ├── tui/                        # Textual 4 面板仪表盘
@@ -170,7 +204,8 @@ agent-swarm-g1/
     ├── w5_secure.yaml              # W5
     ├── w6_tui.yaml                 # W6
     ├── w7_delegate.yaml            # W7 (Phase 2 Delegate Mode)
-    └── w8_adversarial.yaml          # W8 (Phase 2 Adversarial Verify)
+    ├── w8_adversarial.yaml          # W8 (Phase 2 Adversarial Verify)
+    └── w9_mcp_github_filesystem.yaml # W9 (Phase 2 MCP)
 ```
 
 后续 Weekly Slice 会持续扩展（参见 [DESIGN.md §15](./DESIGN.md#15-mvp-分阶段计划)）。
