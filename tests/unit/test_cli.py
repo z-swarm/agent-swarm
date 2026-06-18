@@ -613,3 +613,182 @@ def test_cli_tui_help_documents_provider_option() -> None:
     res = runner.invoke(cli, ["tui", "--help"])
     assert res.exit_code == 0
     assert "--provider" in res.stdout
+
+
+# ---------------------------------------------------------------------------
+# P2-3.6 (REVIEW-2026-06-19 §3.6) session DB 路径 fail-fast
+# ---------------------------------------------------------------------------
+
+
+def test_cli_run_fails_fast_when_db_dir_not_exists(tmp_path: Path) -> None:
+    """--db 父目录不存在 → fail-fast exit 2（不再静默创建空文件）"""
+    cfg_yaml = """
+name: db-test
+agents:
+  - id: a
+    role: r
+    provider: openai
+    model: gpt-4o-mini
+    tools: []
+tasks:
+  - title: t
+"""
+    cfg = tmp_path / "x.yaml"
+    cfg.write_text(cfg_yaml, encoding="utf-8")
+
+    runner = CliRunner()
+    # 父目录不存在的 db 路径
+    missing_dir = tmp_path / "no_such_dir" / "subdir" / "sessions.db"
+    res = runner.invoke(cli, ["run", "--db", str(missing_dir), str(cfg)])
+    assert res.exit_code == 2
+    combined = res.stdout + (res.stderr or "")
+    assert "parent directory does not exist" in combined
+    assert "mkdir" in combined  # 给出 hint
+
+
+def test_cli_run_fails_fast_when_db_is_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--db 指向一个目录 → fail-fast exit 2"""
+    from agent_swarm.core.swarm import SwarmResult
+
+    cfg_yaml = """
+name: db-dir
+agents:
+  - id: a
+    role: r
+    provider: openai
+    model: gpt-4o-mini
+    tools: []
+tasks:
+  - title: t
+"""
+    cfg = tmp_path / "x.yaml"
+    cfg.write_text(cfg_yaml, encoding="utf-8")
+
+    db_dir = tmp_path / "sessions_dir"
+    db_dir.mkdir()
+
+    runner = CliRunner()
+    res = runner.invoke(cli, ["run", "--db", str(db_dir), str(cfg)])
+    assert res.exit_code == 2
+    assert "is a directory" in (res.stdout + (res.stderr or ""))
+
+
+def test_cli_run_fails_fast_when_db_not_writable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--db 文件存在但当前用户无写权限 → fail-fast exit 2"""
+    from agent_swarm.core.swarm import SwarmResult
+
+    cfg_yaml = """
+name: db-ro
+agents:
+  - id: a
+    role: r
+    provider: openai
+    model: gpt-4o-mini
+    tools: []
+tasks:
+  - title: t
+"""
+    cfg = tmp_path / "x.yaml"
+    cfg.write_text(cfg_yaml, encoding="utf-8")
+
+    db = tmp_path / "readonly.db"
+    db.write_text("")  # 存在但空
+
+    # 模拟不可写：os.access 永远 False
+    import os as _os
+    orig_access = _os.access
+
+    def fake_access(path, mode, *args, **kwargs):
+        if str(path) == str(db) and mode == _os.W_OK:
+            return False
+        return orig_access(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(_os, "access", fake_access)
+
+    runner = CliRunner()
+    res = runner.invoke(cli, ["run", "--db", str(db), str(cfg)])
+    assert res.exit_code == 2
+    combined = res.stdout + (res.stderr or "")
+    assert "not writable" in combined
+
+
+def test_cli_session_list_fails_fast_on_unwritable_db(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """session list 子命令也应 fail-fast on unwritable db"""
+    import os as _os
+    orig_access = _os.access
+
+    db = tmp_path / "ro.db"
+    db.write_text("")
+
+    def fake_access(path, mode, *args, **kwargs):
+        if str(path) == str(db) and mode == _os.W_OK:
+            return False
+        return orig_access(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(_os, "access", fake_access)
+
+    runner = CliRunner()
+    res = runner.invoke(cli, ["session", "list", "--db", str(db)])
+    assert res.exit_code == 2
+    assert "not writable" in (res.stdout + (res.stderr or ""))
+
+
+def test_cli_session_show_fails_fast_on_unwritable_db(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """session show 子命令也应 fail-fast"""
+    import os as _os
+    orig_access = _os.access
+
+    db = tmp_path / "ro.db"
+    db.write_text("")
+
+    def fake_access(path, mode, *args, **kwargs):
+        if str(path) == str(db) and mode == _os.W_OK:
+            return False
+        return orig_access(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(_os, "access", fake_access)
+
+    runner = CliRunner()
+    res = runner.invoke(cli, ["session", "show", "x", "--db", str(db)])
+    assert res.exit_code == 2
+    assert "not writable" in (res.stdout + (res.stderr or ""))
+
+
+def test_cli_run_writable_db_path_proceeds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """happy path：可写 db 路径不被 fail-fast 阻断"""
+    from agent_swarm.core.swarm import SwarmResult
+
+    cfg_yaml = """
+name: writable
+agents:
+  - id: a
+    role: r
+    provider: openai
+    model: gpt-4o-mini
+    tools: []
+tasks:
+  - title: t
+"""
+    cfg = tmp_path / "x.yaml"
+    cfg.write_text(cfg_yaml, encoding="utf-8")
+
+    db = tmp_path / "fresh.db"  # 文件不存在但父目录可写
+
+    async def fake_run(self):  # type: ignore[no-untyped-def]
+        return SwarmResult(
+            name="writable", state="completed", duration_seconds=0.1,
+            tasks_completed=1, tasks_failed=0, tasks_unfinished=0,
+        )
+    monkeypatch.setattr("agent_swarm.core.swarm.Swarm.run", fake_run)
+
+    runner = CliRunner()
+    res = runner.invoke(cli, ["run", "--db", str(db), str(cfg)])
+    assert res.exit_code == 0, f"可写 db 路径应通过 fail-fast: {res.stdout}"

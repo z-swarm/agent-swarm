@@ -235,6 +235,45 @@ async def test_update_task_rejects_invalid_status() -> None:
     assert "[error]" in out
 
 
+@pytest.mark.asyncio
+async def test_update_task_swarm_api_rejects_invalid_status(tmp_path) -> None:
+    """P3-3.8a (REVIEW-2026-06-19 §3.8)：Swarm.update_task_status 显式枚举校验
+
+    之前用 type: ignore[assignment] 跳过 Literal 检查；现在用 frozenset
+    显式校验非法 status 抛 ValueError。
+    """
+    import yaml
+
+    from agent_swarm.core.swarm import Swarm
+
+    cfg = {
+        "name": "enum-test",
+        "agents": [{
+            "id": "a", "role": "r", "provider": "openai",
+            "model": "gpt-4o-mini", "tools": [],
+        }],
+        "tasks": [{"id": "t-1", "title": "t", "description": "d",
+                    "assigned_to": "a"}],
+    }
+    cfg_path = tmp_path / "x.yaml"
+    cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    swarm = Swarm.from_yaml(cfg_path)
+
+    # 1) 合法 status → True
+    assert swarm.update_task_status("t-1", "completed") is True
+    assert swarm.tasks[0].status == "completed"
+
+    # 2) 非法 status → ValueError
+    import pytest
+    with pytest.raises(ValueError, match="invalid status"):
+        swarm.update_task_status("t-1", "exploded")
+    with pytest.raises(ValueError, match="invalid status"):
+        swarm.update_task_status("t-1", "")
+
+    # 3) task_id 不存在 → False（不抛）
+    assert swarm.update_task_status("ghost", "pending") is False
+
+
 # ---------------------------------------------------------------------------
 # review_plan
 # ---------------------------------------------------------------------------

@@ -73,6 +73,78 @@ def _resolve_api_key_env(provider: str | None, api_key: str | None) -> str | Non
     return PROVIDER_ENV_VARS[p]
 
 
+# P2-3.6 (REVIEW-2026-06-19 §3.6)：session DB 路径 fail-fast
+# 多人共用机器 / CI runner 时，~ 路径可能不可写或被其他人读到；
+# CLI 应在打开 db 之前显式校验，否则会 create 一个无权限空文件
+def _validate_db_writable(db_path: Path) -> None:
+    """
+    校验 session db 路径可写
+
+    @raise click.UsageError 路径无写权限 / 父目录不存在 / 路径指向不可写文件
+    """
+    if str(db_path) == ":memory:":
+        return  # SQLite 内存库特殊标识
+    db_path = db_path.resolve()
+
+    # 1) 文件已存在 → 检查是否可写
+    if db_path.exists():
+        if db_path.is_dir():
+            raise click.UsageError(
+                f"session db path {db_path} is a directory, not a file"
+            )
+        if not db_path.is_file():
+            raise click.UsageError(
+                f"session db path {db_path} exists but is not a regular file"
+            )
+        if not _is_writable_file(db_path):
+            raise click.UsageError(
+                f"session db {db_path} is not writable "
+                f"(permissions={oct(db_path.stat().st_mode)})"
+            )
+        return
+
+    # 2) 文件不存在 → 检查父目录可写
+    parent = db_path.parent
+    if not parent.exists():
+        raise click.UsageError(
+            f"session db parent directory does not exist: {parent}\n"
+            f"  hint: mkdir -p {parent}"
+        )
+    if not parent.is_dir():
+        raise click.UsageError(
+            f"session db parent {parent} is not a directory"
+        )
+    if not _is_writable_dir(parent):
+        raise click.UsageError(
+            f"session db parent directory {parent} is not writable"
+        )
+
+
+def _is_writable_file(path: Path) -> bool:
+    """@brief 校验文件当前用户可写（用 os.access）"""
+    import os as _os
+    return _os.access(str(path), _os.W_OK)
+
+
+def _is_writable_dir(path: Path) -> bool:
+    """@brief 校验目录当前用户可写（os.access W_OK + 实际能创建 .write_test）"""
+    import os as _os
+    import tempfile
+    if not _os.access(str(path), _os.W_OK):
+        return False
+    # 真创建一次临时文件——避免 sticky bit 等情况
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix=".agent_swarm_write_test_",
+            dir=str(path),
+            delete=True,
+        ):
+            pass
+        return True
+    except (OSError, PermissionError):
+        return False
+
+
 def _configure_logging(verbose: bool) -> None:
     """统一日志配置——使用 rich 美化"""
     level = logging.DEBUG if verbose else logging.INFO
@@ -151,6 +223,7 @@ def run(
     _configure_logging(verbose)
 
     db = db_path or DEFAULT_DB_PATH
+    _validate_db_writable(db)  # P2-3.6 fail-fast
     bus, sink = _setup_observability(db, json_log=json_log)
     # P1-3.2：根据 --provider 把 api_key 注入到正确的环境变量
     env_var = _resolve_api_key_env(provider, api_key)
@@ -289,6 +362,7 @@ def session() -> None:
 def session_list(db_path: Path | None) -> None:
     """列出已知 session"""
     db = db_path or DEFAULT_DB_PATH
+    _validate_db_writable(db)  # P2-3.6
     if not db.exists():
         console.print(f"[yellow]No session database at {db}[/]")
         sys.exit(0)
@@ -348,6 +422,7 @@ def session_show(
 ) -> None:
     """显示 session 详情 + 事件流"""
     db = db_path or DEFAULT_DB_PATH
+    _validate_db_writable(db)  # P2-3.6
     if not db.exists():
         console.print(f"[red]Session database not found:[/] {db}")
         sys.exit(2)
@@ -415,6 +490,7 @@ def session_resume(session_id: str, db_path: Path | None) -> None:
     @note W3 范围：仅展示恢复后的状态；继续执行（接着跑剩余任务）留待 W4
     """
     db = db_path or DEFAULT_DB_PATH
+    _validate_db_writable(db)  # P2-3.6
     if not db.exists():
         console.print(f"[red]Session database not found:[/] {db}")
         sys.exit(2)

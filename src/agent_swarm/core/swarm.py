@@ -36,6 +36,13 @@ from agent_swarm.observability import (
     emit,
 )
 from agent_swarm.providers import get_provider
+
+# P3-3.8a (REVIEW-2026-06-19 §3.8)：Task.status 合法值集合
+# 改用 frozenset 显式校验，删 type: ignore[assignment]
+# 与 Task.status Literal["pending", "blocked", "in_progress", "completed", "failed"] 保持一致
+_VALID_TASK_STATUSES: frozenset[str] = frozenset({
+    "pending", "blocked", "in_progress", "completed", "failed",
+})
 from agent_swarm.security.context import (
     SecurityContext,
     SecurityContextManager,
@@ -136,7 +143,16 @@ class Swarm:
         return False
 
     def update_task_status(self, task_id: str, status: str) -> bool:
-        """Lead 工具 update_task 用——同步给 self.tasks"""
+        """Lead 工具 update_task 用——同步给 self.tasks
+
+        @raise ValueError status 不在 Task 合法枚举内（P3-3.8a 枚举校验）
+        @return 找到并更新返回 True；task_id 不存在返回 False
+        """
+        if status not in _VALID_TASK_STATUSES:
+            raise ValueError(
+                f"update_task_status: invalid status {status!r}; "
+                f"valid: {sorted(_VALID_TASK_STATUSES)}"
+            )
         for t in self.tasks:
             if t.id == task_id:
                 t.status = status  # type: ignore[assignment]

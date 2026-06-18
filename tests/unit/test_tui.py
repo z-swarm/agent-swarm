@@ -261,3 +261,178 @@ async def test_app_dispatches_task_completed_updates_budget() -> None:
         assert app._budget_data.last_task_id == "T1"  # noqa: SLF001
         app._is_finished = True                       # noqa: SLF001
         await pilot.pause(0.1)
+
+
+# ---------------------------------------------------------------------------
+# P3-3.7 (REVIEW-2026-06-19 §3.7) TUI 边界场景测试
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_tui_handles_very_many_agents_without_crash() -> None:
+    """大量 agent 涌入（100 个）——TUI 不崩不挂"""
+    sink = TUISink(maxsize=200)
+    app = SwarmDashboardApp(sink, swarm_name="many-agents")
+    base = time.time()
+    # 1) 先注入 swarm.started（带 100 个 agent_ids）——填充 status.agents
+    await sink.consume(
+        SessionEvent(
+            event_name="swarm.started",
+            session_id="s",
+            timestamp=base,
+            payload={
+                "name": "many-agents",
+                "agent_ids": [f"agent-{i:03d}" for i in range(100)],
+                "task_count": 100,
+            },
+            seq=0,
+        )
+    )
+    # 2) 再注入 100 个 task.claimed 事件
+    for i in range(100):
+        await sink.consume(
+            SessionEvent(
+                event_name="task.claimed",
+                session_id="s",
+                timestamp=base + 0.01 * (i + 1),
+                payload={"task_id": f"T{i}", "title": f"task-{i}",
+                         "agent_id": f"agent-{i:03d}"},
+                seq=i + 1,
+            )
+        )
+
+    async with app.run_test() as pilot:
+        # 给 pump 时间把队列处理完
+        await pilot.pause(0.5)
+        # 100 个 agent 都被注册
+        assert len(app._status_data.agents) == 100  # noqa: SLF001
+        # 100 个 task row（dict 长度）
+        assert len(app._task_panel.data) == 100  # noqa: SLF001
+        # 显式结束
+        app._is_finished = True  # noqa: SLF001
+        await pilot.pause(0.1)
+
+
+@pytest.mark.asyncio
+async def test_tui_handles_no_color_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """NO_COLOR=1 环境变量下 TUI 不应崩溃（颜色禁用是 accessibility 需求）"""
+    monkeypatch.setenv("NO_COLOR", "1")
+    sink = TUISink()
+    app = SwarmDashboardApp(sink)
+    await sink.consume(
+        SessionEvent(
+            event_name="swarm.started",
+            session_id="s",
+            timestamp=time.time(),
+            payload={"name": "no-color", "agent_ids": ["a"], "task_count": 0},
+            seq=0,
+        )
+    )
+
+    async with app.run_test() as pilot:
+        await pilot.pause(0.2)
+        # App 仍然正常处理了事件
+        assert app._status_data.name == "no-color"  # noqa: SLF001
+        app._is_finished = True  # noqa: SLF001
+        await pilot.pause(0.1)
+
+
+@pytest.mark.asyncio
+async def test_tui_quick_reconnect_drain_old_queue() -> None:
+    """快速重连场景：注入一波事件 → 立即再注入新事件，TUI 不卡死旧事件"""
+    sink = TUISink(maxsize=10)
+    app = SwarmDashboardApp(sink, swarm_name="reconnect")
+
+    # 第一波：50 个事件（队列 size=10 → 触发 drop 路径）
+    for i in range(50):
+        await sink.consume(
+            SessionEvent(
+                event_name="task.created",
+                session_id="s1",
+                timestamp=time.time(),
+                payload={"task_id": f"T{i}", "title": f"t{i}"},
+                seq=i,
+            )
+        )
+    # 第二波：新的 session_id + 5 个事件
+    for i in range(5):
+        await sink.consume(
+            SessionEvent(
+                event_name="task.created",
+                session_id="s2",
+                timestamp=time.time(),
+                payload={"task_id": f"T2_{i}", "title": f"t2_{i}"},
+                seq=100 + i,
+            )
+        )
+
+    async with app.run_test() as pilot:
+        await pilot.pause(0.5)
+        # drop 计数 > 0（验证丢最旧逻辑生效）
+        assert sink.dropped > 0
+        # 新事件仍被收下（data 是 dict[str, TaskRow]）
+        task_ids = set(app._task_panel.data.keys())  # noqa: SLF001
+        assert any(t.startswith("T2_") for t in task_ids), "新 session 事件未进入"
+        app._is_finished = True  # noqa: SLF001
+        await pilot.pause(0.1)
+
+
+@pytest.mark.asyncio
+async def test_tui_handles_terminal_resize_event() -> None:
+    """终端 resize 事件——TUI 不崩（resize 是常见边界）"""
+    sink = TUISink()
+    app = SwarmDashboardApp(sink)
+    await sink.consume(
+        SessionEvent(
+            event_name="swarm.started",
+            session_id="s",
+            timestamp=time.time(),
+            payload={"name": "resize", "agent_ids": ["a"], "task_count": 0},
+            seq=0,
+        )
+    )
+
+    async with app.run_test() as pilot:
+        # 模拟 resize
+        await pilot.resize_terminal(40, 20)  # noqa: SLF001
+        await pilot.resize_terminal(200, 60)
+        await pilot.pause(0.2)
+        # 不应抛异常
+        assert app._status_data.name == "resize"  # noqa: SLF001
+        app._is_finished = True  # noqa: SLF001
+        await pilot.pause(0.1)
+
+
+@pytest.mark.asyncio
+async def test_tui_handles_malformed_event_gracefully() -> None:
+    """畸形事件（payload 缺字段）——TUI 不应崩"""
+    sink = TUISink()
+    app = SwarmDashboardApp(sink)
+    # 缺 task_id 字段
+    await sink.consume(
+        SessionEvent(
+            event_name="task.completed",
+            session_id="s",
+            timestamp=time.time(),
+            payload={"title": "no-task-id"},  # 缺 task_id
+            seq=0,
+        )
+    )
+    # 缺 agent_ids
+    await sink.consume(
+        SessionEvent(
+            event_name="swarm.started",
+            session_id="s",
+            timestamp=time.time(),
+            payload={"name": "no-agents"},  # 缺 agent_ids
+            seq=1,
+        )
+    )
+
+    async with app.run_test() as pilot:
+        await pilot.pause(0.2)
+        # 关键：不抛 IndexError/KeyError 类的崩
+        # App 仍处于有效状态
+        assert app._status_data is not None  # noqa: SLF001
+        app._is_finished = True  # noqa: SLF001
+        await pilot.pause(0.1)

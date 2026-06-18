@@ -158,6 +158,32 @@ W6 TUI 显示 4 面板：Status / Tasks / Messages / Token Budget。
 > "3 个 examples"——Phase 1 完结时数量已超最低要求, §17.2 文字未同步
 > (Phase 2+ 文档校对时一并改)。
 
+## 审批流程（ApprovalFlow，DESIGN §8.3）
+
+> **状态**: P2-3.4 落地（脚本模式）。飞书/邮件卡片等 ChannelAdapter 留待 Phase 2 W6+。
+
+任何 `SecurityPolicy.check_tool()` 返回 `REQUIRE_APPROVAL` 的工具调用都必须经过 `ApprovalFlow.request_approval(decision, ctx)` 链——任一 approver 返回 `True` 即放行。
+
+**默认行为（fail-closed）**：
+- 未注入 approver → **拒绝** + audit log（`approval.denied tenant=... session=... reason=...`）
+- 适合生产环境默认安全姿态
+
+**脚本模式（auto-grant / 自动化）**：
+```python
+from agent_swarm.security import ApprovalFlow, SecurityContext
+
+flow = ApprovalFlow()
+flow.append_approver(lambda decision, ctx: True)  # auto-allow-all
+# 或基于 decision 条件放行：
+flow.append_approver(lambda d, c: d.reason.startswith("whitelist:"))
+```
+
+**使用入口**：
+- `RunCommandTool(policy, sandbox, approval_flow=flow)` — 注入到 `run_command` 工具
+- 未来 ChannelAdapter 接入：`flow.append_approver(feishu_card_approver(timeout=300))`
+
+**端到端 e2e**：`tests/e2e/test_w10_approval_e2e.py`（11 个场景）。
+
 ## 开发
 
 ```bash
@@ -174,6 +200,54 @@ mypy src/
 # 性能基线 (DESIGN §17.5)
 python tools/benchmark.py --cases tests/golden/cases --baseline tests/golden/baseline.yaml
 ```
+
+## 跨平台支持（Windows / WSL / Linux / macOS）
+
+> **P2-3.5 落地**：审计报告指出 `.venv/bin/` 是 Linux 路径 + WSL pytest cache 权限问题。
+> 实际跑通需按平台选择虚拟环境激活脚本。
+
+### Linux / macOS / WSL
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate          # bash/zsh
+pip install -e ".[dev]"
+agent-swarm run examples/w1_hello.yaml
+```
+
+### Windows (PowerShell)
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
+agent-swarm run examples\w1_hello.yaml
+```
+
+### Windows (cmd.exe)
+
+```cmd
+py -3.11 -m venv .venv
+.\.venv\Scripts\activate.bat
+pip install -e ".[dev]"
+```
+
+### WSL 下的两个常见坑
+
+1. **pytest cache 写权限**：从 Windows 浏览器打开 WSL 项目，`.pytest_cache/v/cache/nodeids` 可能写不进去
+   → **解法**：始终在 WSL 内跑测试（`wsl` 进 shell 再 `pytest`），不要从 Windows 端跨边界
+
+2. **.ruff_cache 同样问题**：`ruff check` 也会写 cache 到 `.ruff_cache/`
+   → **解法**：设环境变量 `RUFF_CACHE_DIR=/tmp/ruff-cache` 写到 /tmp；或同步用 `wsl` 跑
+
+### .gitignore 已覆盖的跨平台产物
+
+```
+.pytest_cache/     .coverage  .coverage.*  .mypy_cache/  .ruff_cache/
+__pycache__/       *.py[cod]  *.egg-info/  *.egg
+```
+
+完整 `.gitignore` 见项目根目录。所有 cache / 覆盖数据 / DB 都被排除，**不会污染 Windows + WSL 双向同步的 git status**。
 
 ## 项目结构（Phase 1 收尾）
 
