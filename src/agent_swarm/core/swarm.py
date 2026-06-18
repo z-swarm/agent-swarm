@@ -97,6 +97,51 @@ class Swarm:
         self._run_called: bool = False  # W2-B8: 防止 run() 被调多次
         # W7: 协作协议——None 表示不启用协议（走 Phase 1 run() 直跑模式）
         self.protocol: CollaborationProtocol | None = None
+        # W7: lead 工具按 id O(1) 查 agent；与 self.agents list 同步维护
+        self._agents_by_id: dict[str, Agent] = {a.id: a for a in agents}
+
+    # ------------------------------------------------------------------
+    # LeadToolContext 协议实现（W7-6：让 Swarm 自身实现 lead 工具所需的 ctx）
+    # ------------------------------------------------------------------
+    def add_agent(self, agent: Agent) -> None:
+        """Lead 工具 spawn_agent 用——注册到 swarm"""
+        if agent.id in self._agents_by_id:
+            raise ValueError(f"agent {agent.id!r} already exists in swarm")
+        self.agents.append(agent)
+        self._agents_by_id[agent.id] = agent
+
+    def remove_agent(self, agent_id: str) -> bool:
+        """Lead 工具 shutdown_agent 用——注销 agent"""
+        a = self._agents_by_id.pop(agent_id, None)
+        if a is None:
+            return False
+        self.agents = [x for x in self.agents if x.id != agent_id]
+        return True
+
+    def get_agent(self, agent_id: str) -> Agent | None:
+        """Lead 工具 caller 校验用——按 id 查 agent"""
+        return self._agents_by_id.get(agent_id)
+
+    def list_agents(self) -> list[Agent]:
+        """Lead 工具审计用——列所有 agent"""
+        return list(self.agents)
+
+    def assign_task_to(self, task_id: str, agent_id: str) -> bool:
+        """Lead 工具 assign_task 用——同步给 self.tasks（运行时 task_queue 镜像）"""
+        for t in self.tasks:
+            if t.id == task_id:
+                t.assigned_to = agent_id
+                t.status = "in_progress"
+                return True
+        return False
+
+    def update_task_status(self, task_id: str, status: str) -> bool:
+        """Lead 工具 update_task 用——同步给 self.tasks"""
+        for t in self.tasks:
+            if t.id == task_id:
+                t.status = status  # type: ignore[assignment]
+                return True
+        return False
 
     # ------------------------------------------------------------------
     # 协议注册（W7 入口）
@@ -244,7 +289,8 @@ class Swarm:
         # 1) 任务入队
         await self.task_queue.add_many(self.tasks)
 
-        # 2) 构造 runner——共享 read_file，per-agent send_message
+        # 2) 构造 runner——共享 read_file + per-agent send_message；
+        #    W7：lead/plan_only 角色额外注入 lead 工具集（self 即 LeadToolContext）
         shared_tools = build_shared_tools(workspace=self.workspace)
         agent_ids = {a.id for a in self.agents}
         runners: list[AgentRunner] = []
@@ -255,6 +301,11 @@ class Swarm:
                 known_agents=agent_ids,
             )
             tools = {**shared_tools, **per_agent_tools}
+            # W7: lead 工具按角色注入——spawn/shutdown/assign 三个能力位
+            if agent.capabilities.can_spawn_agents or agent.capabilities.can_assign_tasks:
+                from agent_swarm.tools.builtin.lead import build_lead_tools
+                for lt in build_lead_tools(agent.id, self):
+                    tools[lt.name] = lt
             provider = self._build_provider(agent)
             runners.append(AgentRunner(agent, provider, tools))
 
@@ -421,7 +472,26 @@ def _parse_agent(cfg: dict[str, Any]) -> Agent:
         if s is not None:
             auto_tools.update(s.required_tools)
 
-    capabilities = AgentCapabilities.worker(auto_tools)
+    # W7: 角色类型由 YAML agent.role_type 决定（默认 worker，向后兼容 Phase 1）
+    role_type = str(cfg.get("role_type", "worker")).lower()
+    if role_type == "lead":
+        capabilities = AgentCapabilities.lead()
+        # lead 工具集（spawn_agent/shutdown_agent/assign_task/update_task/
+        # review_plan）由 _run_impl 在构造 Runner 时按 capabilities 注入；
+        # 这里把 lead 工具 id 并入 auto_tools，让 AgentRunner 不剔除
+        auto_tools.update({
+            "spawn_agent", "shutdown_agent",
+            "assign_task", "update_task", "review_plan",
+        })
+    elif role_type == "plan_only":
+        capabilities = AgentCapabilities.plan_only()
+    elif role_type == "worker":
+        capabilities = AgentCapabilities.worker(auto_tools)
+    else:
+        raise ValueError(
+            f"agent {agent_id}: role_type must be one of lead/worker/plan_only, "
+            f"got {role_type!r}"
+        )
 
     raw_iter = cfg.get("max_iterations", 10)
     try:

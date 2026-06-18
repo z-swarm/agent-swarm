@@ -15,6 +15,7 @@
 ## 状态
 
 🟢 **Phase 1 完成** — 6 周垂直切片全部 DoD 通过；TUI 仪表盘实时观测
+🟡 **Phase 2 W7 (Delegate Mode) 完成** — Lead + Worker 分离端到端跑通
 
 | 周 | 切片 | 状态 | DoD |
 |---|------|-----|-----|
@@ -24,6 +25,7 @@
 | W4 | KB + Skill + Golden Case G-001 | ✅ | G-001 通过 + KB 命中 ≥60% |
 | W5 | SecurityContext + Sandbox + TokenBudget | ✅ | 25/25 攻击拦截 + 截断不崩溃 |
 | W6 | TUI 仪表盘 (Textual) | ✅ | 5 秒内完整视图 |
+| **W7** | **Delegate Mode (Lead + Worker)** | ✅ | **1 lead + 2 workers 协作；lead 工具权限拦截；ProtocolResult 含 lead/worker 分组** |
 
 ## Quickstart
 
@@ -61,10 +63,31 @@ agent-swarm tui examples/w6_tui.yaml
 # ↑ 退出按 q
 ```
 
+# W7：Lead + Worker Delegate（Phase 2 第一个 Weekly Slice）
+```bash
+agent-swarm run examples/w7_delegate.yaml
+# 预期: 退出码 0；ProtocolResult.success=True
+```
+
+# W7 程序化入口（自驱 agent / Phase 2+ 协议接入用）
+```python
+import asyncio
+from agent_swarm.core.swarm import Swarm
+from agent_swarm.core.protocols import DelegateMode
+
+async def main():
+    swarm = Swarm.from_yaml("examples/w7_delegate.yaml")
+    swarm.set_protocol(DelegateMode())
+    result = await swarm.run_with_protocol()
+    print(result.summary)
+
+asyncio.run(main())
+```
+
 预期输出：CLI 打印任务结果表格 + agent 给出的一句话摘要。
 W6 TUI 显示 4 面板：Status / Tasks / Messages / Token Budget。
 
-> @note examples 数量: 当前 5 个 (w1/w2/w3/w5/w6)。DESIGN §17.2 Phase 1 DoD ⑤ 写
+> @note examples 数量: 当前 6 个 (w1/w2/w3/w5/w6/w7)。DESIGN §17.2 Phase 1 DoD ⑤ 写
 > "3 个 examples"——Phase 1 完结时数量已超最低要求, §17.2 文字未同步
 > (Phase 2+ 文档校对时一并改)。
 
@@ -113,7 +136,8 @@ agent-swarm-g1/
     ├── w2_two_agents.yaml          # W2
     ├── w3_resume.yaml              # W3
     ├── w5_secure.yaml              # W5
-    └── w6_tui.yaml                 # W6
+    ├── w6_tui.yaml                 # W6
+    └── w7_delegate.yaml            # W7 (Phase 2 Delegate Mode)
 ```
 
 后续 Weekly Slice 会持续扩展（参见 [DESIGN.md §15](./DESIGN.md#15-mvp-分阶段计划)）。

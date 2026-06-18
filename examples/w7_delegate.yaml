@@ -1,0 +1,72 @@
+# Weekly Slice W7 演示配置（DESIGN §15 Phase 2 W1 / Delegate Mode）
+#
+# DoD:
+#   - 1 lead + 2 workers 协作
+#   - Lead 至少 spawn 1 个动态 worker（spawn_agent 工具）
+#   - Lead 派活给 worker（assign_task 工具）
+#   - Lead 非法调用被 capabilities 拦截（如试图 spawn 的 worker 没有 can_spawn_agents）
+#
+# 用法:
+#   export OPENAI_API_KEY=sk-...
+#   agent-swarm run examples/w7_delegate.yaml
+#
+# 预期 CLI 输出: 退出码 0，ProtocolResult.success=True，
+#               summary 含 "Delegated to 2 worker(s) by 1 lead(s)"
+#
+# @note 此 example 演示 DelegateMode 协议入口；lead 工具（spawn_agent 等）
+#       在 W7 骨架内已落地但需 LLM 真调用才能"动态 spawn"。W7-6 E2E 用
+#       fake provider 模拟完整 spawn→assign→execute 闭环。
+
+name: w7-delegate
+
+agents:
+  - id: lead
+    role: project coordinator
+    role_type: lead
+    persona: |
+      You are the lead coordinator. You don't execute tasks directly —
+      you spawn workers and assign them work. Always reason about which
+      worker to use and what to assign.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 8
+
+  - id: reader
+    role: file reader
+    role_type: worker
+    persona: |
+      You read files and report key findings concisely.
+    provider: openai
+    model: gpt-4o-mini
+    tools:
+      - read_file
+      - send_message
+    max_iterations: 4
+
+  - id: summarizer
+    role: summary writer
+    role_type: worker
+    persona: |
+      You write clear, structured summaries based on information from teammates.
+    provider: openai
+    model: gpt-4o-mini
+    tools:
+      - send_message
+    max_iterations: 4
+
+tasks:
+  - id: T-spawn-reader
+    title: Spawn a dynamic reader worker
+    description: |
+      Use spawn_agent to dynamically create a worker named "scout" with
+      read_file tool, then assign it a small sub-task via assign_task.
+    assigned_to: lead
+
+  - id: T-summarize
+    title: Summarize README
+    description: |
+      Use read_file to read README.md (top 30 lines), then write a
+      2-sentence project summary in your final message.
+    assigned_to: reader
+    depends_on:
+      - T-spawn-reader
