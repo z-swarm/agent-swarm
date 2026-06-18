@@ -1,0 +1,63 @@
+# Weekly Slice W8 演示配置（DESIGN §15 Phase 2 W2 / Adversarial Verify）
+#
+# DoD:
+#   - 1 群 judge agents（plan_only）对一组假设做对抗式验证
+#   - AdversarialVerifier 在 1-2 轮内收敛到根因
+#   - ProtocolResult 携带 survivors / eliminated / convergence_reason
+#
+# 用法:
+#   export OPENAI_API_KEY=sk-...
+#   agent-swarm run examples/w8_adversarial.yaml
+#
+# @note W8 骨架：judge_fn 默认抛 NotImplementedError，调用方需注入；
+#       本 example 仅展示 YAML 配置形态（不真跑 LLM），真调试根因
+#       定位用 tests/golden/test_golden_p2.py 注入确定性 judge_fn。
+
+name: w8-adversarial
+
+agents:
+  - id: judge-a
+    role: senior backend engineer
+    role_type: plan_only
+    persona: |
+      You are a senior backend engineer with 15 years of experience debugging
+      production incidents. You favor evidence-based diagnosis and look for
+      specific file:line references.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 3
+
+  - id: judge-b
+    role: database specialist
+    role_type: plan_only
+    persona: |
+      You are a database specialist. When debugging performance or data
+      issues, you immediately suspect N+1 queries, missing indexes, and
+      transaction scope problems.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 3
+
+  - id: judge-c
+    role: observability engineer
+    role_type: plan_only
+    persona: |
+      You are an observability engineer. You look for missing metrics, log
+      gaps, and event listener leaks before assuming application logic bugs.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 3
+
+tasks:
+  - id: h-001
+    title: API endpoint /users returns 504 timeout under load
+    description: |
+      Hypothesis: The N+1 query in get_user_posts triggers SELECT per row.
+  - id: h-002
+    title: Database CPU is saturated during peak hours
+    description: |
+      Hypothesis: A long-running migration job is blocking the connection pool.
+  - id: h-003
+    title: Load balancer health check fails intermittently
+    description: |
+      Hypothesis: Health check endpoint hits a different code path that has a deadlock.
