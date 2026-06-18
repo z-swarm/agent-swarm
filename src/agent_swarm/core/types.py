@@ -3,13 +3,19 @@
 @brief  W1 核心数据类型——按 DESIGN.md §A 附录的子集落地
 
 W1 范围：Agent、Task、Turn、ToolCall、Tool、AgentCapabilities、LLMResponse
-       后续 Weekly Slice 扩展 Message / SessionEvent / Verdict 等
+W2+ 扩展：Message / SessionEvent / Verdict 等
+W7 扩展：AgentCapabilities.lead() / .plan_only() 预设（DESIGN §7.1）
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
+
+# security 模块定义 ToolRisk——types.py 反向引用
+# 安全模块不依赖 core.types，依赖方向 core→security 不会形成循环
+if TYPE_CHECKING:
+    from agent_swarm.security.policy import ToolRisk
 
 # ---------------------------------------------------------------------------
 # 工具相关（最简版本，W5 才接 SecurityPolicy）
@@ -51,19 +57,70 @@ class AgentCapabilities:
     """
     能力清单——单一权威来源（DESIGN.md §7.1）
 
-    W1 仅使用 worker 预设；lead/plan_only 留待 Phase 2
+    W1/W2/W3/W4/W5/W6 仅使用 worker 预设。
+    W7 落地 lead / plan_only 预设（Phase 2 Delegate Mode 基础）。
     """
 
     allowed_tools: set[str] = field(default_factory=set)
-    can_spawn_agents: bool = False
-    can_assign_tasks: bool = False
-    can_execute_actions: bool = True
+    can_spawn_agents: bool = False       # 编排能力：等价于旧 mode=delegate
+    can_shutdown_agents: bool = False    # W7 新增：lead 关闭临时 worker 用
+    can_assign_tasks: bool = False       # 编排能力：派发任务给 worker
+    can_execute_actions: bool = True     # False 等价于旧 mode=plan_only
     max_tokens_per_task: int = 100_000
+    # max_tool_risk: 工具风险等级上限（DESIGN §7.1）——运行时类型是 ToolRisk
+    # 此处仅声明为对象引用，实际类型检查在 SecurityPolicy.evaluate() 内
+    # 用 TYPE_CHECKING 避免 types.py 运行时 import security 模块
+    max_tool_risk: Any = None  # ToolRisk.MEDIUM 推荐默认
 
     @classmethod
-    def worker(cls, tools: set[str]) -> AgentCapabilities:
-        """预设：执行者（W1 唯一用到的预设）"""
-        return cls(allowed_tools=set(tools), can_execute_actions=True)
+    def worker(cls, tools: set[str], max_risk: Any = None) -> "AgentCapabilities":
+        """预设：执行者——只执行不编排
+
+        @param tools 允许使用的工具 id 集合（被复制，避免外部污染）
+        @param max_risk 工具风险等级上限；None 表示 MEDIUM
+        """
+        if max_risk is None:
+            from agent_swarm.security.policy import ToolRisk
+
+            max_risk = ToolRisk.MEDIUM
+        return cls(
+            allowed_tools=set(tools),
+            can_execute_actions=True,
+            max_tool_risk=max_risk,
+        )
+
+    @classmethod
+    def lead(cls) -> "AgentCapabilities":
+        """预设：协调者——只编排不执行（DESIGN §7.1）
+
+        允许工具：send_message / review_plan / update_task
+        禁止 can_execute_actions（不能直接 read_file / run_command 等）
+        """
+        from agent_swarm.security.policy import ToolRisk
+
+        return cls(
+            allowed_tools={"send_message", "review_plan", "update_task", "spawn_agent", "shutdown_agent", "assign_task"},
+            can_spawn_agents=True,
+            can_shutdown_agents=True,
+            can_assign_tasks=True,
+            can_execute_actions=False,
+            max_tool_risk=ToolRisk.LOW,
+        )
+
+    @classmethod
+    def plan_only(cls) -> "AgentCapabilities":
+        """预设：只规划不动手（DESIGN §7.1）——只读工具集
+
+        允许工具：read_file / search_code / send_message
+        不能 spawn / assign / execute
+        """
+        from agent_swarm.security.policy import ToolRisk
+
+        return cls(
+            allowed_tools={"read_file", "search_code", "send_message"},
+            can_execute_actions=False,
+            max_tool_risk=ToolRisk.LOW,
+        )
 
 
 @dataclass
