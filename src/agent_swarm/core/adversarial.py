@@ -461,7 +461,15 @@ class AdversarialVerifier(CollaborationProtocol):
 
     @staticmethod
     def _round_all_failed(states: list[HypothesisState], round_no: int) -> bool:
-        """本轮所有 (agent, hyp) 都 UNCERTAIN 视作全员失败"""
+        """本轮所有 (agent, hyp) 都 UNCERTAIN 视作全员失败
+
+        H2 fix：当本轮已无存活假设（gather_round 跳过所有 eliminated），
+        judgements_by_round 全部为空——这不算"全员失败"，而是
+        "无需 judge"——直接 return False 避免误触发 stall。
+        """
+        # H2: 无存活假设 → 视作"无需 judge"，不算全员失败
+        if not any(not h.eliminated for h in states):
+            return False
         for h in states:
             if h.eliminated:
                 continue

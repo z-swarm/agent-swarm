@@ -73,6 +73,12 @@ class AgentCapabilities:
     # 用 TYPE_CHECKING 避免 types.py 运行时 import security 模块
     max_tool_risk: Any = None  # ToolRisk.MEDIUM 推荐默认
 
+    def __post_init__(self) -> None:
+        """M4 fix：max_tool_risk=None 时默认为 ToolRisk.MEDIUM（防 SecurityPolicy NPE）"""
+        if self.max_tool_risk is None:
+            from agent_swarm.security.policy import ToolRisk
+            self.max_tool_risk = ToolRisk.MEDIUM
+
     @classmethod
     def worker(cls, tools: set[str], max_risk: Any = None) -> "AgentCapabilities":
         """预设：执行者——只执行不编排

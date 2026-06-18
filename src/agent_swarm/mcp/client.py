@@ -132,9 +132,21 @@ class StdioMCPClient(MCPClient):
     # 生命周期
     # ------------------------------------------------------------------
     async def connect(self) -> None:
-        """启动子进程 + 启动后台 reader task"""
+        """启动子进程 + 启动后台 reader task + stderr drain
+
+        H3 fix：重复调用 connect() 时清空旧 _pending（防内存泄漏 +
+        旧 future 误命中新 id）；重置 _next_id=1 让 id 序列干净。
+        """
         if self.is_connected():
             return
+        # H3: 防 _pending 状态泄漏
+        for f in self._pending.values():
+            if not f.done():
+                f.set_exception(MCPConnectionError(
+                    f"MCP {self._config.name} reconnecting; old request cancelled"
+                ))
+        self._pending.clear()
+        self._next_id = 1
         # W9-2 简化：env 透传 config.env（不展开 SecretManager——DESIGN §7.3
         # "凭证管理" 留给 SecretManager 集成，本类只接 dict 形式 env）
         full_env = dict(self._config.env) if self._config.env else None
@@ -159,18 +171,27 @@ class StdioMCPClient(MCPClient):
         self._reader_task = asyncio.create_task(
             self._read_loop(), name=f"mcp-stdio-reader-{self._config.name}",
         )
+        # M1: 并行 stderr drain——server stderr 输出（npm 启动日志等）
+        # 累积到 OS pipe buffer 满后阻塞 server，进而阻塞 stdout readline；
+        # 持续 drain 让 stderr 不会撑爆 buffer
+        self._stderr_task = asyncio.create_task(
+            self._stderr_drain_loop(),
+            name=f"mcp-stdio-stderr-{self._config.name}",
+        )
         log.info("MCP stdio client connected: %s (pid=%d)",
                  self._config.name, self._process.pid)
 
     async def disconnect(self) -> None:
-        """关闭 reader + 终止子进程"""
-        if self._reader_task is not None:
-            self._reader_task.cancel()
-            try:
-                await self._reader_task
-            except (asyncio.CancelledError, Exception):  # noqa: BLE001
-                pass
-            self._reader_task = None
+        """关闭 reader + stderr drain + 终止子进程"""
+        for task_attr in ("_reader_task", "_stderr_task"):
+            t = getattr(self, task_attr, None)
+            if t is not None:
+                t.cancel()
+                try:
+                    await t
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
+                setattr(self, task_attr, None)
         if self._process is not None:
             try:
                 self._process.terminate()
@@ -266,6 +287,28 @@ class StdioMCPClient(MCPClient):
     # ------------------------------------------------------------------
     # 内部：reader loop + pending 字典
     # ------------------------------------------------------------------
+    async def _stderr_drain_loop(self) -> None:
+        """M1 fix：持续读 stderr 防 buffer 满阻塞 server
+
+        @note stderr 内容只记 log（避免刷屏），不向上抛——MCP 协议本身只用 stdout
+        """
+        try:
+            while self.is_connected() and self._process is not None:
+                if self._process.stderr is None:
+                    break
+                line = await self._process.stderr.readline()
+                if not line:
+                    break
+                log.debug(
+                    "MCP %s stderr: %s",
+                    self._config.name, line.decode("utf-8", errors="replace").rstrip(),
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            log.warning("MCP %s stderr drain crashed: %s",
+                        self._config.name, exc)
+
     async def _read_loop(self) -> None:
         """后台 task：持续读 stdout，按 id 派发到 pending future"""
         try:

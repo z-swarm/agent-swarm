@@ -11,6 +11,7 @@ from agent_swarm.core.adversarial import (
 from agent_swarm.core.types import (
     Agent,
     AgentCapabilities,
+    HypothesisState,
     Judgement,
     Stance,
 )
@@ -237,3 +238,20 @@ async def test_root_cause_confidence_from_support_confidences() -> None:
         judge_fn=_make_judge_fn({"h0": Stance.SUPPORT}, confidence=0.8),
     )
     assert verdict.confidence == pytest.approx(0.8)
+
+
+# ---------------------------------------------------------------------------
+# H2 fix: _round_all_failed 无存活假设时返 False（不触发 stall）
+# ---------------------------------------------------------------------------
+
+
+def test_round_all_failed_false_when_no_alive_hypotheses() -> None:
+    """H2 fix：所有假设已 eliminated → _round_all_failed 返 False（不算 stall）"""
+    h1 = HypothesisState(id="h1", statement="x")
+    h1.eliminated = True
+    h1.eliminated_at_round = 1
+    h2 = HypothesisState(id="h2", statement="y")
+    h2.eliminated = True
+    h2.eliminated_at_round = 1
+    # 无 alive 假设
+    assert AdversarialVerifier._round_all_failed([h1, h2], round_no=2) is False

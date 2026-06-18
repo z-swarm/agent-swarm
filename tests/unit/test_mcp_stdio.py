@@ -216,3 +216,73 @@ async def test_serial_request_response(fake_mcp_script: Path) -> None:
     assert r2[0]["text"] == "two"
     assert r3[0]["text"] == "three"
     await client.disconnect()
+
+
+# ---------------------------------------------------------------------------
+# H3 fix: connect() 重复调用清理 _pending
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_repeated_connect_clears_pending_state(fake_mcp_script: Path) -> None:
+    """connect() 重复调用清空旧 _pending + 重置 _next_id（H3 fix）"""
+    cfg = _config_for(fake_mcp_script)
+    client = StdioMCPClient(cfg, timeout_s=5.0)
+    await client.connect()
+    # 模拟有 in-flight 请求
+    fut: asyncio.Future = asyncio.get_event_loop().create_future()
+    client._pending[1] = fut
+    client._next_id = 99
+    # 重连
+    await client.disconnect()
+    await client.connect()
+    assert client._pending == {}
+    assert client._next_id == 1
+    # 旧 future 收到 MCPConnectionError（防泄漏）
+    with pytest.raises(Exception):  # noqa: BLE001
+        await fut
+    await client.disconnect()
+
+
+# ---------------------------------------------------------------------------
+# M1 fix: stderr drain 防 buffer 满
+# ---------------------------------------------------------------------------
+
+
+_VERBOSE_FAKE_SCRIPT = r"""
+import sys, json, time
+
+# 先往 stderr 写大量数据（模拟 npm 启动日志），再响应 JSON-RPC
+for i in range(50):
+    print(f"verbose log line {i} " + "x" * 200, file=sys.stderr, flush=True)
+
+def handle(req):
+    method, req_id = req.get("method"), req.get("id")
+    if method == "initialize":
+        return {"jsonrpc": "2.0", "id": req_id, "result": {
+            "protocolVersion": "2024-11-05",
+            "serverInfo": {"name": "verbose", "version": "0"},
+        }}
+    if method == "tools/list":
+        return {"jsonrpc": "2.0", "id": req_id, "result": {"tools": [
+            {"name": "ok", "description": "ok", "inputSchema": {"type": "object"}},
+        ]}}
+for line in sys.stdin:
+    line = line.strip()
+    if not line: continue
+    req = json.loads(line)
+    print(json.dumps(handle(req)), flush=True)
+"""
+
+
+@pytest.mark.asyncio
+async def test_verbose_stderr_does_not_block_stdio(tmp_path: Path) -> None:
+    """M1 fix：server stderr 大量输出不阻塞 stdout readline"""
+    script = tmp_path / "verbose.py"
+    script.write_text(_VERBOSE_FAKE_SCRIPT, encoding="utf-8")
+    cfg = MCPServerConfig(name="v", transport="stdio",
+                          command=[sys.executable, str(script)])
+    client = StdioMCPClient(cfg, timeout_s=5.0)
+    tools = await client.list_tools()
+    assert {t["name"] for t in tools} == {"ok"}
+    await client.disconnect()

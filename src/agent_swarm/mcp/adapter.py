@@ -74,41 +74,24 @@ def _serialize_content(content: Any) -> str:
     return json.dumps(content, ensure_ascii=False)
 
 
-def build_tool_adapters(
+async def build_tool_adapters(
     server_name: str,
     config: MCPServerConfig,
     client: MCPClient,  # type: ignore[valid-type]
     risk_overrides: dict[str, ToolRiskStr] | None = None,
 ) -> list[MCPToolAdapter]:
     """
-    从 MCP client 的 list_tools() 构造 MCPToolAdapter 列表
+    异步工厂：从 MCP client 的 list_tools() 构造 MCPToolAdapter 列表
 
-    @note 异步工厂：list_tools 是异步调用——本函数必须是 async
-    """
-    raise NotImplementedError(
-        "build_tool_adapters 实际是 async——使用 await_build_tool_adapters"
-    )
+    @param risk_overrides tool_name → risk 字符串覆写；None 时从
+           config.risk_overrides 读取（H1 fix：让 YAML 配置生效）
 
-
-async def await_build_tool_adapters(
-    server_name: str,
-    config: MCPServerConfig,
-    client: MCPClient,  # type: ignore[valid-type]
-    risk_overrides: dict[str, ToolRiskStr] | None = None,
-) -> list[MCPToolAdapter]:
-    """
-    异步版 build_tool_adapters——先 connect 拉 tool schema 再包装
-
-    @param server_name  server 名（用于 Tool.name 前缀）
-    @param config       server 配置（保留占位，便于未来 risk_overrides 从 config 取）
-    @param client       已构造的 MCPClient（可能是 connected 也可能未连接）
-    @param risk_overrides tool_name → risk 字符串 的覆写（DESIGN §7.3 配置示例）
-    @return MCPToolAdapter 列表
+    @note 原 await_build_tool_adapters 是这个函数的别名（向后兼容）
     """
     if not client.is_connected():
         await client.connect()
     schemas = await client.list_tools()
-    overrides = risk_overrides or {}
+    overrides = dict(risk_overrides) if risk_overrides else dict(config.risk_overrides)
     adapters: list[MCPToolAdapter] = []
     for schema in schemas:
         mcp_name = schema.get("name", "")
@@ -123,6 +106,10 @@ async def await_build_tool_adapters(
             risk=overrides.get(mcp_name, "medium"),
         ))
     return adapters
+
+
+# 向后兼容别名（W9-3 早期版本 + 验收脚本都引用此名）
+await_build_tool_adapters = build_tool_adapters
 
 
 __all__ = [

@@ -42,6 +42,8 @@ class MCPServerConfig:
     auto_reconnect: bool = True
     max_reconnect_attempts: int = 5
     circuit_breaker_threshold: int = 3
+    # 工具风险覆写（DESIGN §7.3 risk_overrides：create_issue: high）
+    risk_overrides: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """配置校验：transport 决定必填字段"""
@@ -153,6 +155,12 @@ class MCPRegistry:
                 )
             # 提取可靠性配置（与 MCP 字段同级）
             reliability = server_cfg.get("reliability", {}) or {}
+            raw_overrides = server_cfg.get("risk_overrides") or {}
+            if not isinstance(raw_overrides, dict):
+                raise ValueError(
+                    f"mcp_servers[{name!r}].risk_overrides must be a dict, "
+                    f"got {type(raw_overrides).__name__}"
+                )
             config = MCPServerConfig(
                 name=name,
                 transport=transport,
@@ -165,6 +173,7 @@ class MCPRegistry:
                 auto_reconnect=reliability.get("auto_reconnect", True),
                 max_reconnect_attempts=reliability.get("max_reconnect_attempts", 5),
                 circuit_breaker_threshold=reliability.get("circuit_breaker_threshold", 3),
+                risk_overrides={str(k): str(v) for k, v in raw_overrides.items()},
             )
             registry.register(config)
         return registry

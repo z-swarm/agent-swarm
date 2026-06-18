@@ -109,3 +109,24 @@ def test_llm_response_minimal() -> None:
         model="gpt-4o-mini",
     )
     assert r.tokens_prompt + r.tokens_completion == 15
+
+
+# ---------------------------------------------------------------------------
+# M4 fix: max_tool_risk=None 时默认 ToolRisk.MEDIUM
+# ---------------------------------------------------------------------------
+
+
+def test_max_tool_risk_default_is_medium_when_none() -> None:
+    """AgentCapabilities() 裸构造 max_tool_risk 默认 MEDIUM（M4 fix）"""
+    from agent_swarm.security.policy import ToolRisk
+
+    caps = AgentCapabilities()
+    assert caps.max_tool_risk == ToolRisk.MEDIUM
+
+
+def test_max_tool_risk_explicit_value_preserved() -> None:
+    """显式给定 max_tool_risk 不被 __post_init__ 覆盖"""
+    from agent_swarm.security.policy import ToolRisk
+
+    caps = AgentCapabilities(max_tool_risk=ToolRisk.HIGH)
+    assert caps.max_tool_risk == ToolRisk.HIGH

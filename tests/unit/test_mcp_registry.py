@@ -184,3 +184,47 @@ def test_from_yaml_round_trip(tmp_path) -> None:
     assert g.transport == "stdio"
     assert g.env["GITHUB_TOKEN"] == "${GITHUB_TOKEN}"
     assert g.max_reconnect_attempts == 5
+
+
+# ---------------------------------------------------------------------------
+# H1 fix: risk_overrides 字段 + YAML 解析（H1 regression）
+# ---------------------------------------------------------------------------
+
+
+def test_risk_overrides_field_default_empty() -> None:
+    """MCPServerConfig.risk_overrides 默认 {}（H1 fix）"""
+    c = MCPServerConfig(name="x", transport="stdio", command=["x"])
+    assert c.risk_overrides == {}
+
+
+def test_from_dict_parses_risk_overrides() -> None:
+    """YAML risk_overrides.create_issue: high 加载后生效（H1 fix）"""
+    cfg = {
+        "github": {
+            "transport": "stdio",
+            "command": ["x"],
+            "risk_overrides": {
+                "create_issue": "high",
+                "create_pull_request": "critical",
+            },
+        },
+    }
+    r = MCPRegistry.from_dict(cfg)
+    gh = r.get("github")
+    assert gh.risk_overrides == {
+        "create_issue": "high",
+        "create_pull_request": "critical",
+    }
+
+
+def test_from_dict_rejects_non_dict_risk_overrides() -> None:
+    """risk_overrides 必须是 dict（fail-fast）"""
+    cfg = {
+        "github": {
+            "transport": "stdio",
+            "command": ["x"],
+            "risk_overrides": "high",  # 错类型
+        },
+    }
+    with pytest.raises(ValueError, match="risk_overrides must be a dict"):
+        MCPRegistry.from_dict(cfg)
