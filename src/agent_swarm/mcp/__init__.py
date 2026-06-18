@@ -6,6 +6,27 @@
 → W9-4 SSE 客户端 → W9-5 重连/熔断 → W9-6 接 2 server → W9-7 e2e + DoD
 """
 
+from agent_swarm.mcp.adapter import MCPToolAdapter, await_build_tool_adapters
+from agent_swarm.mcp.client import (
+    MCPClient,
+    MCPConnectionError,
+    MCPError,
+    MCPRPCError,
+    MCPTimeoutError,
+    StdioMCPClient,
+)
 from agent_swarm.mcp.registry import MCPRegistry, MCPServerConfig
 
-__all__ = ["MCPRegistry", "MCPServerConfig"]
+__all__ = [
+    "MCPClient",
+    "MCPConnectionError",
+    "MCPError",
+    "MCPRPCError",
+    "MCPRegistry",
+    "MCPRPCError",
+    "MCPServerConfig",
+    "MCPTimeoutError",
+    "MCPToolAdapter",
+    "StdioMCPClient",
+    "await_build_tool_adapters",
+]
