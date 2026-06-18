@@ -29,6 +29,7 @@ import yaml
 
 from agent_swarm.core.agent_runner import AgentLoopStats, AgentRunner, AgentRunResult
 from agent_swarm.core.mailbox import Mailbox
+from agent_swarm.core.protocols import CollaborationProtocol, ProtocolResult
 from agent_swarm.core.task_queue import TaskQueue
 from agent_swarm.core.types import Agent, AgentCapabilities, Task
 from agent_swarm.observability import (
@@ -94,6 +95,48 @@ class Swarm:
         self.task_queue = TaskQueue(session_id=self.session_id)
         self.mailbox = Mailbox(session_id=self.session_id)
         self._run_called: bool = False  # W2-B8: 防止 run() 被调多次
+        # W7: 协作协议——None 表示不启用协议（走 Phase 1 run() 直跑模式）
+        self.protocol: CollaborationProtocol | None = None
+
+    # ------------------------------------------------------------------
+    # 协议注册（W7 入口）
+    # ------------------------------------------------------------------
+    def set_protocol(self, protocol: CollaborationProtocol) -> None:
+        """
+        注册协作协议——例如 DelegateMode() / AdversarialVerifier(...)
+
+        @note 必须在 run_with_protocol() 之前调用；W7 暂只支持注册一次
+              （重复注册抛 ValueError，避免后注册的协议静默覆盖前一个）
+        """
+        if self.protocol is not None:
+            raise ValueError(
+                f"Swarm {self.name!r} already has protocol "
+                f"{type(self.protocol).__name__}; create a new Swarm to switch"
+            )
+        self.protocol = protocol
+
+    async def run_with_protocol(self) -> ProtocolResult:
+        """
+        按协议驱动一轮协作——W7 入口
+
+        行为：
+          - 协议未注册 → 抛 ValueError（强制调用方先 set_protocol）
+          - 协议已注册 → 调用 protocol.execute(self) 并返回其 ProtocolResult
+          - 协议执行抛异常 → 包装成 ProtocolResult(success=False, error=...)
+        """
+        if self.protocol is None:
+            raise ValueError(
+                f"Swarm {self.name!r} has no protocol registered; "
+                "call set_protocol() first or use run() for direct execution"
+            )
+        try:
+            return await self.protocol.execute(self)
+        except Exception as exc:  # noqa: BLE001
+            return ProtocolResult(
+                success=False,
+                error=f"{type(self.protocol).__name__}.execute() raised: {exc!r}",
+                artifacts={"protocol": type(self.protocol).__name__},
+            )
 
     # ------------------------------------------------------------------
     # 加载入口
