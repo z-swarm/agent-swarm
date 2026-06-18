@@ -10,6 +10,7 @@ W7 扩展：AgentCapabilities.lead() / .plan_only() 预设（DESIGN §7.1）
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 # security 模块定义 ToolRisk——types.py 反向引用
@@ -276,3 +277,119 @@ class SessionEvent:
     payload: dict[str, Any] = field(default_factory=dict)
     seq: int = 0  # 单调递增序号——同一 session 内严格有序（事件流回放靠这个）
     request_id: str | None = None  # 关联 SecurityContext.request_id（W5 启用）
+
+
+
+# ---------------------------------------------------------------------------
+# Adversarial Verify 数据结构——DESIGN §6.2.2 / W8-1
+# ---------------------------------------------------------------------------
+
+
+class Stance(Enum):
+    """
+    Agent 对单个假设的立场——DESIGN §6.2.2
+
+    SUPPORT  支持（找到了证据）
+    REFUTE  反驳（找到了反例）
+    UNCERTAIN  不确定（证据不足）
+    """
+
+    SUPPORT = "support"
+    REFUTE = "refute"
+    UNCERTAIN = "uncertain"
+
+
+@dataclass
+class Judgement:
+    """
+    单个 agent 对单个假设在某一轮的判断——DESIGN §6.2.2
+
+    @note 不进入 ConversationContext.history——通过 external_inputs 单独
+          承载（DESIGN §6.6 "对抗式验证的隔离要求"）
+    @note evidence 是引用列表（文件路径/日志片段/工具输出引用），非内联
+    """
+
+    agent_id: str
+    hypothesis_id: str
+    round_no: int
+    stance: Stance
+    confidence: float  # 0.0 ~ 1.0
+    evidence: list[str] = field(default_factory=list)
+    reasoning: str = ""
+
+
+@dataclass
+class HypothesisState:
+    """
+    假设在多轮对抗中的状态——DESIGN §6.2.2
+
+    judgements_by_round 形如 {1: [Judgement, Judgement, ...], 2: [...]}，
+    每轮每个 agent 一个 Judgement。
+    """
+
+    id: str
+    statement: str
+    eliminated: bool = False
+    eliminated_at_round: int | None = None
+    judgements_by_round: dict[int, list["Judgement"]] = field(default_factory=dict)
+
+    def support_score(self, round_no: int) -> float:
+        """
+        加权支持度：support 加分，refute 扣分，按 confidence 加权——DESIGN §6.2.2
+
+        @return 归一化到 [-1.0, 1.0]；该轮无 Judgement 时返回 0.0
+        """
+        js = self.judgements_by_round.get(round_no, [])
+        if not js:
+            return 0.0
+        score = sum(
+            j.confidence
+            * (1 if j.stance == Stance.SUPPORT
+               else -1 if j.stance == Stance.REFUTE
+               else 0)
+            for j in js
+        )
+        return score / len(js)
+
+
+@dataclass
+class Verdict:
+    """
+    对抗式验证的最终结论——DESIGN §6.2.2
+
+    @note survivors 按最后一轮 support_score 降序排（DESIGN §6.2.5）
+    @note convergence_reason 决定 root_cause 是否有效：
+          仅当 survivors 恰有 1 个且 reason != "all_eliminated" 时 root_cause 有意义
+    @note full_history 完整 Judgement 流，可 emit 到 ObservabilityBus
+    """
+
+    survivors: list[HypothesisState]
+    eliminated: list[HypothesisState]
+    rounds_used: int
+    convergence_reason: Literal[
+        "min_survivors_reached",
+        "consensus_stable",
+        "max_rounds_exhausted",
+        "all_eliminated",
+    ]
+    root_cause: str | None = None
+    confidence: float = 0.0
+    full_history: list[Judgement] = field(default_factory=list)
+
+
+# 导出——便于单测和外部 import
+__all__ = [
+    "Agent",
+    "AgentCapabilities",
+    "ClaimResult",
+    "HypothesisState",
+    "Judgement",
+    "LLMResponse",
+    "Message",
+    "SessionEvent",
+    "Stance",
+    "Task",
+    "ToolCall",
+    "Turn",
+    "Verdict",
+]
