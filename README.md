@@ -37,8 +37,10 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
 # 设置 API key (任选其一)
-export OPENAI_API_KEY=sk-...          # 方式 1: 环境变量
-# agent-swarm run --api-key sk-...   # 方式 2: CLI flag (高于 env)
+export OPENAI_API_KEY=sk-...          # OpenAI: 环境变量
+export ANTHROPIC_API_KEY=sk-ant-...   # Anthropic: 环境变量
+# agent-swarm run --provider openai --api-key sk-...    # 方式 2: CLI flag (高于 env)
+# agent-swarm run --provider anthropic --api-key sk-ant-...
 
 # W1：单 agent 读 README 并总结
 agent-swarm run examples/w1_hello.yaml

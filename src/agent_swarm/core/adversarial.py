@@ -31,6 +31,9 @@ from agent_swarm.core.types import (
 
 from agent_swarm.core.protocols import CollaborationProtocol, ProtocolResult
 
+if TYPE_CHECKING:
+    from agent_swarm.core.swarm import Swarm  # 仅类型注解用
+
 log = logging.getLogger(__name__)
 
 
@@ -67,7 +70,8 @@ async def gather_round(
     if not targets or not agents:
         return []
 
-    tasks: list[Awaitable[Judgement]] = []
+    # _safe_judge 异常时返回 None——必须把 None 写进 Awaitable 类型参数
+    tasks: list[Awaitable[Judgement | None]] = []
     task_meta: list[tuple[Agent, str]] = []  # 与 tasks 一一对应，便于错误兜底
     for agent in agents:
         for h in targets:
@@ -413,7 +417,7 @@ class AdversarialVerifier(CollaborationProtocol):
             convergence_reason="max_rounds_exhausted",
         )
 
-    async def execute(self, swarm: "Swarm") -> ProtocolResult:  # type: ignore[override]
+    async def execute(self, swarm: "Swarm") -> ProtocolResult:
         """
         按协议驱动 swarm 跑对抗式验证
 

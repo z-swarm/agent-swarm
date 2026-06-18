@@ -36,6 +36,42 @@ console = Console()
 # 默认 session 数据库路径——CLI 进程内统一一份
 DEFAULT_DB_PATH = Path.home() / ".agent_swarm" / "sessions.db"
 
+# P1-3.2 (REVIEW-2026-06-19 §3.2)：provider ↔ env var 映射
+# 让 CLI 不再硬写 OPENAI_API_KEY，Anthropic 支持真正落地
+PROVIDER_ENV_VARS: dict[str, str] = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+}
+
+
+def _resolve_api_key_env(provider: str | None, api_key: str | None) -> str | None:
+    """
+    解析 API key 注入到哪个环境变量
+
+    @param provider  --provider 选项值；None 时按 api_key 是否给出来推断
+    @param api_key   --api-key 显式值；None 时不做任何环境变量注入
+
+    @return 被设置的环境变量名；未设置时返回 None
+
+    @note 行为约定:
+      - 给了 --api-key 但没给 --provider → 报 Click error（避免误注入）
+      - 没给 --api-key → 留给各 provider 自己读 env（向后兼容）
+    """
+    if api_key is None:
+        return None
+    if provider is None:
+        raise click.UsageError(
+            "--api-key requires --provider (openai|anthropic); "
+            "to set the env var, specify which one."
+        )
+    p = provider.lower()
+    if p not in PROVIDER_ENV_VARS:
+        raise click.UsageError(
+            f"unknown --provider {provider!r}; "
+            f"valid: {sorted(PROVIDER_ENV_VARS.keys())}"
+        )
+    return PROVIDER_ENV_VARS[p]
+
 
 def _configure_logging(verbose: bool) -> None:
     """统一日志配置——使用 rich 美化"""
@@ -87,18 +123,28 @@ def cli() -> None:
     help="同时输出结构化 JSON 事件流到 stderr",
 )
 @click.option(
+    "--provider",
+    "provider",
+    type=click.Choice(["openai", "anthropic"], case_sensitive=False),
+    default=None,
+    help="LLM provider (openai/anthropic); 与 --api-key 配合使用",
+)
+@click.option(
     "--api-key",
     "api_key",
     type=str,
     default=None,
-    envvar="OPENAI_API_KEY",
-    help="LLM provider API key (默认从 OPENAI_API_KEY env 读)",
+    help=(
+        "LLM provider API key（需配合 --provider 决定注入哪个环境变量）；"
+        "省略时各 provider 自动从对应 env 读（OPENAI_API_KEY / ANTHROPIC_API_KEY）"
+    ),
 )
 def run(
     config: Path,
     verbose: bool,
     db_path: Path | None,
     json_log: bool,
+    provider: str | None,
     api_key: str | None,
 ) -> None:
     """运行 swarm（从 YAML 配置启动）"""
@@ -106,9 +152,10 @@ def run(
 
     db = db_path or DEFAULT_DB_PATH
     bus, sink = _setup_observability(db, json_log=json_log)
-    # CLI 注入 api_key 到 OpenAI provider (--api-key 优先于 env)
-    if api_key:
-        os.environ["OPENAI_API_KEY"] = api_key
+    # P1-3.2：根据 --provider 把 api_key 注入到正确的环境变量
+    env_var = _resolve_api_key_env(provider, api_key)
+    if env_var:
+        os.environ[env_var] = api_key  # type: ignore[assignment]
 
     console.print(f"[bold cyan]agent-swarm[/] loading [yellow]{config}[/]")
     try:
@@ -163,14 +210,23 @@ def run(
 @click.argument("config", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option("-v", "--verbose", is_flag=True, help="显示 DEBUG 级日志")
 @click.option(
+    "--provider",
+    "provider",
+    type=click.Choice(["openai", "anthropic"], case_sensitive=False),
+    default=None,
+    help="LLM provider (openai/anthropic); 与 --api-key 配合使用",
+)
+@click.option(
     "--api-key",
     "api_key",
     type=str,
     default=None,
-    envvar="OPENAI_API_KEY",
-    help="LLM provider API key (默认从 OPENAI_API_KEY env 读)",
+    help=(
+        "LLM provider API key（需配合 --provider 决定注入哪个环境变量）；"
+        "省略时各 provider 自动从对应 env 读（OPENAI_API_KEY / ANTHROPIC_API_KEY）"
+    ),
 )
-def tui(config: Path, verbose: bool, api_key: str | None) -> None:
+def tui(config: Path, verbose: bool, provider: str | None, api_key: str | None) -> None:
     """
     @brief  在 TUI 仪表盘中运行 swarm（DESIGN.md §17.1 W6 DoD）
 
@@ -178,8 +234,10 @@ def tui(config: Path, verbose: bool, api_key: str | None) -> None:
           不持久化到 SQLite——TUI 是观察工具, session 历史请用 run + session show
     """
     _configure_logging(verbose)
-    if api_key:
-        os.environ["OPENAI_API_KEY"] = api_key
+    # P1-3.2：与 run 一致的 provider 分发
+    env_var = _resolve_api_key_env(provider, api_key)
+    if env_var:
+        os.environ[env_var] = api_key  # type: ignore[assignment]
 
     # TUI 自己的轻量 bus: 1 个 JsonLogSink (stderr) + 1 个 TUISink
     from agent_swarm.observability import (

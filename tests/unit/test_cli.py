@@ -455,3 +455,161 @@ def test_cli_session_show_with_config_flag(tmp_path: Path) -> None:
     assert res_with.exit_code == 0
     assert "Config YAML" in res_with.stdout
     assert "with-config" in res_with.stdout
+
+
+# ---------------------------------------------------------------------------
+# P1-3.2 (REVIEW-2026-06-19 §3.2) CLI --provider 分发 + ANTHROPIC_API_KEY env
+# ---------------------------------------------------------------------------
+
+
+def _minimal_cfg(tmp_path: Path) -> Path:
+    cfg = """
+name: cli-provider
+agents:
+  - id: a
+    role: r
+    provider: anthropic
+    model: claude-sonnet-4-6
+    tools: []
+tasks:
+  - title: t
+"""
+    p = tmp_path / "x.yaml"
+    p.write_text(cfg, encoding="utf-8")
+    return p
+
+
+def test_cli_run_help_documents_provider_option() -> None:
+    """--help 应包含 --provider 选项（避免 'Anthropic 支持' 再次成为空头支票）"""
+    runner = CliRunner()
+    res = runner.invoke(cli, ["run", "--help"])
+    assert res.exit_code == 0
+    assert "--provider" in res.stdout
+    assert "anthropic" in res.stdout.lower()
+    # api-key 帮助文字应说明需配合 --provider
+    assert "--provider" in res.stdout
+
+
+def test_cli_run_injects_api_key_to_openai_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--api-key + --provider openai → 注入到 OPENAI_API_KEY"""
+    from agent_swarm.core.swarm import SwarmResult
+
+    p = _minimal_cfg(tmp_path)
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+
+    seen: dict[str, str] = {}
+
+    async def fake_run(self):  # type: ignore[no-untyped-def]
+        seen["openai"] = os.environ.get("OPENAI_API_KEY", "")
+        seen["anthropic"] = os.environ.get("ANTHROPIC_API_KEY", "")
+        return SwarmResult(
+            name="x", state="completed", duration_seconds=0.1,
+            tasks_completed=1, tasks_failed=0, tasks_unfinished=0,
+        )
+
+    monkeypatch.setattr("agent_swarm.core.swarm.Swarm.run", fake_run)
+    import os
+
+    runner = CliRunner()
+    res = runner.invoke(
+        cli, ["run", "--provider", "openai", "--api-key", "sk-test-openai", str(p)]
+    )
+    assert res.exit_code == 0
+    assert seen["openai"] == "sk-test-openai"
+    assert seen["anthropic"] == ""  # 不污染 anthropic env
+
+
+def test_cli_run_injects_api_key_to_anthropic_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--api-key + --provider anthropic → 注入到 ANTHROPIC_API_KEY（P1-3.2 主修复）"""
+    from agent_swarm.core.swarm import SwarmResult
+
+    p = _minimal_cfg(tmp_path)
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+
+    seen: dict[str, str] = {}
+
+    async def fake_run(self):  # type: ignore[no-untyped-def]
+        import os as _os
+        seen["openai"] = _os.environ.get("OPENAI_API_KEY", "")
+        seen["anthropic"] = _os.environ.get("ANTHROPIC_API_KEY", "")
+        return SwarmResult(
+            name="x", state="completed", duration_seconds=0.1,
+            tasks_completed=1, tasks_failed=0, tasks_unfinished=0,
+        )
+
+    monkeypatch.setattr("agent_swarm.core.swarm.Swarm.run", fake_run)
+    import os
+
+    runner = CliRunner()
+    res = runner.invoke(
+        cli, ["run", "--provider", "anthropic", "--api-key", "sk-ant-test", str(p)]
+    )
+    assert res.exit_code == 0
+    assert seen["anthropic"] == "sk-ant-test"
+    assert seen["openai"] == ""  # 不污染 openai env
+
+
+def test_cli_run_api_key_without_provider_is_rejected(
+    tmp_path: Path
+) -> None:
+    """--api-key 但没 --provider → Click UsageError exit 2（避免误注入）"""
+    p = _minimal_cfg(tmp_path)
+    runner = CliRunner()
+    res = runner.invoke(cli, ["run", "--api-key", "sk-orphan", str(p)])
+    assert res.exit_code == 2
+    # Click UsageError 信息
+    assert "--provider" in (res.stdout + (res.stderr or ""))
+
+
+def test_cli_run_invalid_provider_value_rejected(
+    tmp_path: Path
+) -> None:
+    """--provider 取值非法（不在 Choice 内）→ Click error exit 2"""
+    p = _minimal_cfg(tmp_path)
+    runner = CliRunner()
+    res = runner.invoke(cli, ["run", "--provider", "gemini", str(p)])
+    assert res.exit_code == 2
+
+
+def test_cli_run_no_api_key_keeps_existing_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """省略 --api-key 时不修改环境变量（向后兼容：让 provider 自己读 env）"""
+    from agent_swarm.core.swarm import SwarmResult
+
+    p = _minimal_cfg(tmp_path)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-pre-set")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-pre-set")
+
+    seen: dict[str, str] = {}
+
+    async def fake_run(self):  # type: ignore[no-untyped-def]
+        import os as _os
+        seen["openai"] = _os.environ.get("OPENAI_API_KEY", "")
+        seen["anthropic"] = _os.environ.get("ANTHROPIC_API_KEY", "")
+        return SwarmResult(
+            name="x", state="completed", duration_seconds=0.1,
+            tasks_completed=1, tasks_failed=0, tasks_unfinished=0,
+        )
+
+    monkeypatch.setattr("agent_swarm.core.swarm.Swarm.run", fake_run)
+    runner = CliRunner()
+    res = runner.invoke(cli, ["run", str(p)])
+    assert res.exit_code == 0
+    # 已有 env 不被覆盖
+    assert seen["anthropic"] == "sk-pre-set"
+    assert seen["openai"] == "sk-openai-pre-set"
+
+
+def test_cli_tui_help_documents_provider_option() -> None:
+    """tui 子命令也应有 --provider（保持 run/tui 一致）"""
+    runner = CliRunner()
+    res = runner.invoke(cli, ["tui", "--help"])
+    assert res.exit_code == 0
+    assert "--provider" in res.stdout
