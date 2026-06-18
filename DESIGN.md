@@ -2320,6 +2320,15 @@ print(f"根因: {verdict.root_cause}, 置信度: {verdict.confidence}")
 | W5 | `tests/security/test_w5_sandbox_escape.py` 通过；20 条 prompt injection / path traversal / command injection 攻击全部被拦截；token 超限场景下能优雅截断不崩溃 |
 | W6 | TUI 启动后 5 秒内显示完整 swarm 视图；Phase 1 全部 §17.3 列入 Phase 1 的 Golden Case 通过；`README.md` quickstart 5 分钟可上手 |
 
+#### Phase 2 Weekly Slice DoD
+
+> v4.2 追加：Phase 2 重排为 W7-W12 六个垂直切片（与 Phase 1 节奏一致）。
+> 当前状态：W7 完成，W8+ 待办。
+
+| Week | 自动化 DoD（CI 必须全绿才算完成） |
+|------|------|
+| **W7** | ① `pytest tests/unit/test_types.py tests/unit/test_protocols.py tests/unit/test_swarm_protocol_api.py tests/unit/test_lead_tools.py tests/e2e/test_w7_delegate_e2e.py` 全过 ② `agent-swarm run examples/w7_delegate.yaml` 退出码=0 ③ Swarm.from_yaml 支持 `role_type: lead / worker / plan_only`（默认 worker，向后兼容 Phase 1 全部 examples） ④ lead agent 的 tools 注入 5 个 lead 工具（spawn_agent / shutdown_agent / assign_task / update_task / review_plan）；worker agent 的 tools **不**含 lead 工具 ⑤ DelegateMode 协议校验：swarm 无 lead / 无 worker → `ProtocolResult.success=False` + 明确 error ⑥ `ProtocolResult.artifacts` 含 `leads` / `workers` / `tasks_total` / `tasks_completed` / `tasks_failed` / `swarm_state` 字段 ⑦ `README.md` quickstart 加 W7 入口（CLI + 程序化） |
+
 #### Phase 级别 DoD
 
 | Phase | DoD 清单（全部满足才算完成） |
