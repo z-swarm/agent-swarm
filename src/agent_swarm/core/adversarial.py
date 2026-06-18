@@ -201,10 +201,116 @@ def _round_has_no_support(h: HypothesisState) -> bool:
     return not any(j.stance == Stance.SUPPORT for j in judgements)
 
 
+
+# ---------------------------------------------------------------------------
+# W8-3: 收敛判定（DESIGN §6.2.4）—— 4 条优先级
+# ---------------------------------------------------------------------------
+
+
+ConvergenceReason = Literal[
+    "min_survivors_reached",
+    "consensus_stable",
+    "max_rounds_exhausted",
+    "all_eliminated",
+]
+
+
+@dataclass
+class ConvergenceCheck:
+    """单次 check_convergence() 的输出：是否收敛 + 原因（如果收敛）"""
+    converged: bool
+    reason: ConvergenceReason | None = None
+    # 调试信息：每条规则的命中情况（供日志 / observability 排查）
+    rule_a_hit: bool = False  # len(survivors) <= min_survivors
+    rule_b_hit: bool = False  # 连续 2 轮无任何淘汰 + 无任何 agent 改变立场
+    rule_c_hit: bool = False  # round_no >= max_rounds
+    rule_d_hit: bool = False  # len(survivors) == 0
+
+
+def check_convergence(
+    hypotheses: list[HypothesisState],
+    round_no: int,
+    min_survivors: int,
+    max_rounds: int,
+    prev_round_stances: dict[tuple[str, str], Stance] | None = None,
+    curr_round_stances: dict[tuple[str, str], Stance] | None = None,
+) -> ConvergenceCheck:
+    """
+    收敛判定（DESIGN §6.2.4，按优先级 1→4）
+
+    规则：
+      1. len(survivors) <= min_survivors
+      2. 连续 2 轮无任何假设被淘汰 + 无任何 agent 改变立场
+         （prev_round_stances vs curr_round_stances；空集合算"未变"）
+      3. round_no >= max_rounds
+      4. len(survivors) == 0（all_eliminated 兜底）
+
+    @param prev_round_stances  上一轮 (agent_id, hyp_id) -> Stance；可空
+    @param curr_round_stances  本轮 (agent_id, hyp_id) -> Stance；可空
+    @note 规则 2 需要"对比两轮 stance"——gather_round 返回 judgements 后
+          调用方构造这两个字典传入；不耦合 LLM
+    """
+    survivors = [h for h in hypotheses if not h.eliminated]
+    n_survivors = len(survivors)
+
+    # 规则 1：survivors 达到 min
+    rule_a = n_survivors <= min_survivors and n_survivors > 0
+    # 规则 4：全淘汰（兜底，单独抽出便于日志区分）
+    rule_d = n_survivors == 0
+
+    # 规则 2：连续 2 轮无任何假设被淘汰 + 无任何 agent 改变立场
+    # "无任何假设被淘汰"——本轮无 just_eliminated
+    # "无任何 agent 改变立场"——prev 与 curr 两个 dict 完全相同
+    rule_b = False
+    if (
+        prev_round_stances is not None
+        and curr_round_stances is not None
+        and prev_round_stances == curr_round_stances
+    ):
+        rule_b = True
+
+    # 规则 3：max_rounds 截断
+    rule_c = round_no >= max_rounds
+
+    if rule_a:
+        return ConvergenceCheck(
+            converged=True, reason="min_survivors_reached",
+            rule_a_hit=rule_a, rule_b_hit=rule_b,
+            rule_c_hit=rule_c, rule_d_hit=rule_d,
+        )
+    if rule_b:
+        return ConvergenceCheck(
+            converged=True, reason="consensus_stable",
+            rule_a_hit=rule_a, rule_b_hit=rule_b,
+            rule_c_hit=rule_c, rule_d_hit=rule_d,
+        )
+    if rule_d:
+        return ConvergenceCheck(
+            converged=True, reason="all_eliminated",
+            rule_a_hit=rule_a, rule_b_hit=rule_b,
+            rule_c_hit=rule_c, rule_d_hit=rule_d,
+        )
+    if rule_c:
+        return ConvergenceCheck(
+            converged=True, reason="max_rounds_exhausted",
+            rule_a_hit=rule_a, rule_b_hit=rule_b,
+            rule_c_hit=rule_c, rule_d_hit=rule_d,
+        )
+
+    return ConvergenceCheck(
+        converged=False, reason=None,
+        rule_a_hit=rule_a, rule_b_hit=rule_b,
+        rule_c_hit=rule_c, rule_d_hit=rule_d,
+    )
+
+
 __all__ = [
+    "ConvergenceCheck",
+    "ConvergenceReason",
     "EliminationResult",
     "JudgeFn",
     "attach_judgements",
+    "check_convergence",
     "compute_support_scores",
     "eliminate",
     "gather_round",
