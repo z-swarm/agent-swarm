@@ -72,14 +72,15 @@ def _stub_policy(decision: PolicyDecision) -> SecurityPolicy:
 # ---------------------------------------------------------------------------
 
 
-def test_default_approval_flow_denies_require_approval() -> None:
+@pytest.mark.asyncio
+async def test_default_approval_flow_denies_require_approval() -> None:
     """无 approver 注入 → REQUIRE_APPROVAL → 默认 deny"""
     flow = ApprovalFlow()  # 只有 _default_approver (返回 False)
     decision = PolicyDecision("REQUIRE_APPROVAL", "high risk tool")
     ctx = default_local_context("S-default-deny")
 
     with SecurityContextManager.scope(ctx):
-        granted = flow.request_approval(decision, ctx)
+        granted = await flow.request_approval(decision, ctx)
 
     assert granted is False, "默认应 deny（P2-3.4 安全默认）"
 
@@ -89,7 +90,8 @@ def test_default_approval_flow_denies_require_approval() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_script_mode_allow_approver_grants() -> None:
+@pytest.mark.asyncio
+async def test_script_mode_allow_approver_grants() -> None:
     """脚本模式：append_approver(return True) → 放行"""
     flow = ApprovalFlow()
     flow.append_approver(lambda d, c: True)  # 模拟 'auto-allow-all' 脚本
@@ -98,12 +100,13 @@ def test_script_mode_allow_approver_grants() -> None:
     ctx = default_local_context("S-script")
 
     with SecurityContextManager.scope(ctx):
-        granted = flow.request_approval(decision, ctx)
+        granted = await flow.request_approval(decision, ctx)
 
     assert granted is True
 
 
-def test_script_mode_deny_approver_blocks() -> None:
+@pytest.mark.asyncio
+async def test_script_mode_deny_approver_blocks() -> None:
     """脚本模式：append_approver(return False) → 拒绝"""
     flow = ApprovalFlow()
     flow.append_approver(lambda d, c: False)  # 模拟 'auto-deny' 脚本
@@ -112,12 +115,13 @@ def test_script_mode_deny_approver_blocks() -> None:
     ctx = default_local_context("S-deny")
 
     with SecurityContextManager.scope(ctx):
-        granted = flow.request_approval(decision, ctx)
+        granted = await flow.request_approval(decision, ctx)
 
     assert granted is False
 
 
-def test_script_mode_decision_specific_approver() -> None:
+@pytest.mark.asyncio
+async def test_script_mode_decision_specific_approver() -> None:
     """脚本模式：approver 决策可基于 decision.reason / tool 上下文"""
     flow = ApprovalFlow()
 
@@ -131,12 +135,12 @@ def test_script_mode_decision_specific_approver() -> None:
     decision_ok = PolicyDecision("REQUIRE_APPROVAL", "whitelist: read_file")
     ctx = default_local_context("S")
     with SecurityContextManager.scope(ctx):
-        assert flow.request_approval(decision_ok, ctx) is True
+        assert await flow.request_approval(decision_ok, ctx) is True
 
     # 非白名单 → 默认 deny
     decision_blocked = PolicyDecision("REQUIRE_APPROVAL", "unknown reason")
     with SecurityContextManager.scope(ctx):
-        assert flow.request_approval(decision_blocked, ctx) is False
+        assert await flow.request_approval(decision_blocked, ctx) is False
 
 
 # ---------------------------------------------------------------------------
@@ -225,7 +229,8 @@ async def test_mcp_tool_critical_risk_always_blocks() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_approval_flow_empty_chain_denies() -> None:
+@pytest.mark.asyncio
+async def test_approval_flow_empty_chain_denies() -> None:
     """所有 approver 抛异常 → 视为全 deny，不破坏调用方"""
     flow = ApprovalFlow()
     # 替换默认 approver
@@ -240,11 +245,12 @@ def test_approval_flow_empty_chain_denies() -> None:
     ctx = default_local_context("S")
     with SecurityContextManager.scope(ctx):
         # 全异常 → 走完链条都没放行 → False
-        granted = flow.request_approval(decision, ctx)
+        granted = await flow.request_approval(decision, ctx)
     assert granted is False
 
 
-def test_approval_flow_audit_log_records_tenant() -> None:
+@pytest.mark.asyncio
+async def test_approval_flow_audit_log_records_tenant() -> None:
     """默认 approver 应记录 audit log（含 tenant_id / session_id / reason）"""
     import logging
 
@@ -262,7 +268,7 @@ def test_approval_flow_audit_log_records_tenant() -> None:
     flow_logger.addHandler(_CaptureHandler())
     try:
         with SecurityContextManager.scope(ctx):
-            flow.request_approval(decision, ctx)
+            await flow.request_approval(decision, ctx)
     finally:
         flow_logger.removeHandler(_CaptureHandler())
 
@@ -292,7 +298,7 @@ async def test_approval_flow_approvers_thread_isolated() -> None:
 
     # flow_a 放行
     with SecurityContextManager.scope(ctx):
-        assert flow_a.request_approval(decision, ctx) is True
+        assert await flow_a.request_approval(decision, ctx) is True
     # flow_b 仍 deny
     with SecurityContextManager.scope(ctx):
-        assert flow_b.request_approval(decision, ctx) is False
+        assert await flow_b.request_approval(decision, ctx) is False

@@ -79,8 +79,9 @@ class RunCommandTool:
             return f"[error] policy denied: {decision.reason}"
         if decision.decision == "REQUIRE_APPROVAL":
             # P0-4: 走 ApprovalFlow (默认 deny, 注入 approver 可放行)
+            # W11: request_approval 是 async（支持 ChannelApprover 异步等待）
             ctx = SecurityContextManager.current_or_default()
-            if self._approval is None or not self._approval.request_approval(decision, ctx):
+            if self._approval is None or not await self._approval.request_approval(decision, ctx):
                 return f"[error] requires approval denied: {decision.reason}"
 
         # 2) 走 sandbox 实际执行

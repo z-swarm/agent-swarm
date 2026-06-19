@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from agent_swarm.security import (
     ApprovalFlow,
     PolicyDecision,
@@ -15,24 +17,27 @@ def _decision(reason: str = "high risk") -> PolicyDecision:
     return PolicyDecision("REQUIRE_APPROVAL", reason, auto_sandbox=False)
 
 
-def test_default_approver_denies() -> None:
+@pytest.mark.asyncio
+async def test_default_approver_denies() -> None:
     """@brief 默认 approver 拒绝 + ctx 包含"""
     flow = ApprovalFlow()
     ctx = default_local_context("S")
     with SecurityContextManager.scope(ctx):
-        assert flow.request_approval(_decision(), ctx) is False
+        assert await flow.request_approval(_decision(), ctx) is False
 
 
-def test_explicit_approver_can_grant() -> None:
+@pytest.mark.asyncio
+async def test_explicit_approver_can_grant() -> None:
     """@brief 注入 approver 返回 True → 放行"""
     flow = ApprovalFlow()
     flow.append_approver(lambda d, c: True)  # 全放行
     ctx = default_local_context("S")
     with SecurityContextManager.scope(ctx):
-        assert flow.request_approval(_decision(), ctx) is True
+        assert await flow.request_approval(_decision(), ctx) is True
 
 
-def test_approver_chain_short_circuits_on_grant() -> None:
+@pytest.mark.asyncio
+async def test_approver_chain_short_circuits_on_grant() -> None:
     """@brief 首个 True approver 即放行, 后续不再调"""
     flow = ApprovalFlow()
     calls: list[int] = []
@@ -45,12 +50,13 @@ def test_approver_chain_short_circuits_on_grant() -> None:
     flow.append_approver(lambda d, c: (calls.append(3), False)[1])
     ctx = default_local_context("S")
     with SecurityContextManager.scope(ctx):
-        assert flow.request_approval(_decision(), ctx) is True
+        assert await flow.request_approval(_decision(), ctx) is True
     # 第二个 approver 调用了, 第三个因为 short circuit 没调用
     assert calls == [2]
 
 
-def test_approver_exception_treated_as_deny_continues_chain() -> None:
+@pytest.mark.asyncio
+async def test_approver_exception_treated_as_deny_continues_chain() -> None:
     """@brief approver 抛异常 → 视为 deny, 不阻断后续 approver"""
     flow = ApprovalFlow()
 
@@ -62,18 +68,35 @@ def test_approver_exception_treated_as_deny_continues_chain() -> None:
     ctx = default_local_context("S")
     with SecurityContextManager.scope(ctx):
         # 第一个抛异常, 第二个放行
-        assert flow.request_approval(_decision(), ctx) is True
+        assert await flow.request_approval(_decision(), ctx) is True
 
 
-def test_reset_approvers_back_to_default() -> None:
+@pytest.mark.asyncio
+async def test_reset_approvers_back_to_default() -> None:
     """@brief reset 后只剩默认 deny"""
     flow = ApprovalFlow()
     flow.append_approver(lambda d, c: True)
-    assert flow.request_approval(_decision(), default_local_context()) is True
+    assert await flow.request_approval(_decision(), default_local_context()) is True
     flow.reset_approvers()
-    assert flow.request_approval(_decision(), default_local_context()) is False
+    assert await flow.request_approval(_decision(), default_local_context()) is False
 
 
+@pytest.mark.asyncio
+async def test_approver_supports_async() -> None:
+    """W11: async approver 也支持（返回 coroutine）"""
+    import asyncio
+
+    flow = ApprovalFlow()
+
+    async def async_allow(d, c):
+        await asyncio.sleep(0.01)
+        return True
+
+    flow.append_approver(async_allow)
+    assert await flow.request_approval(_decision(), default_local_context()) is True
+
+
+@pytest.mark.asyncio
 async def test_run_command_high_risk_uses_approval_flow() -> None:
     """
     @brief RunCommandTool 集成: REQUIRE_APPROVAL 走 ApprovalFlow

@@ -18,6 +18,7 @@ Phase 2+ 扩展:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 
@@ -27,8 +28,9 @@ from agent_swarm.security.policy import PolicyDecision
 log = logging.getLogger(__name__)
 
 
-# Approver 函数签名: 接受 (decision, ctx) → bool
-Approver = Callable[[PolicyDecision, SecurityContext], bool]
+# Approver 函数签名: 接受 (decision, ctx) → bool | Awaitable[bool]
+# W11 升级：可返回协程（异步 approver 如 ChannelApprover）
+Approver = Callable[[PolicyDecision, SecurityContext], "bool | asyncio.Future[bool]"]
 
 
 def _default_approver(decision: PolicyDecision, ctx: SecurityContext) -> bool:
@@ -59,21 +61,27 @@ class ApprovalFlow:
         """@brief 清空 approver 链——重置为默认 deny"""
         self._approvers = [_default_approver]
 
-    def request_approval(
+    async def request_approval(
         self,
         decision: PolicyDecision,
         ctx: SecurityContext,
     ) -> bool:
         """
-        @brief 同步请求审批——任一 approver 返回 True 即放行
+        @brief 异步请求审批——任一 approver 返回 True 即放行
 
         @param decision  SecurityPolicy 返回的 REQUIRE_APPROVAL 决策
         @param ctx       当前 SecurityContext——用于 audit log
         @return True 放行 / False 拒绝
+        @note W11 升级为 async——支持异步 approver（如 ChannelApprover 等用户回调）
+              同步 approver 也可正常工作（直接返回 bool）
         """
         for approver in self._approvers:
             try:
-                if approver(decision, ctx):
+                result = approver(decision, ctx)
+                # async approver → await；sync approver → 直接 bool
+                if asyncio.iscoroutine(result):
+                    result = await result
+                if result:
                     log.info(
                         "approval.granted tenant=%s session=%s reason=%s",
                         ctx.tenant_id, ctx.session_id, decision.reason,
