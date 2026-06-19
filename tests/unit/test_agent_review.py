@@ -179,6 +179,116 @@ def test_static_scan_ignores_removed_lines() -> None:
 
 
 # ---------------------------------------------------------------------------
+# P1-NEW-1 修复：EVAL 规则收紧 + 源码白名单
+# ---------------------------------------------------------------------------
+
+
+def test_static_scan_skips_non_source_files() -> None:
+    """MD / JSON / YAML / TXT 等非源码文件不应被扫到"""
+    diff = """+++ b/README.md
+@@ -1,1 +1,1 @@
+-old
++可以使用 `eval()` 转换字符串,但生产代码不要用
+"""
+    findings = static_security_scan(diff)
+    assert not any(f.category == "EVAL" for f in findings)
+
+
+def test_static_scan_skips_venv_and_node_modules() -> None:
+    """`.venv/` / `node_modules/` 路径应被跳过"""
+    diff = """+++ b/.venv/lib/foo.py
+@@ -1,1 +1,1 @@
+-old
++result = eval(user_input)
+"""
+    findings = static_security_scan(diff)
+    # .venv 是第三方库,不应被扫到
+    assert not any(f.category == "EVAL" for f in findings)
+
+
+def test_static_scan_eval_skips_method_call() -> None:
+    """`self.eval(...)` 是方法调用,不是 builtin eval,不应命中"""
+    diff = """+++ b/x.py
+@@ -1,1 +1,1 @@
+-old
++self.eval(user_input)
+"""
+    findings = static_security_scan(diff)
+    # self.eval() 是方法调用,不是内置 eval
+    assert not any(f.category == "EVAL" for f in findings)
+
+
+def test_static_scan_eval_skips_string_literal() -> None:
+    """字符串字面量里含 'eval(' 不应被命中"""
+    diff = """+++ b/x.py
+@@ -1,1 +1,1 @@
+-old
++msg = "never use eval("
+"""
+    findings = static_security_scan(diff)
+    # 字符串字面量里的 "eval(" 不应命中
+    assert not any(f.category == "EVAL" for f in findings)
+
+
+def test_static_scan_eval_catches_real_builtin_eval() -> None:
+    """真实内置 eval(user_input) 应被检测"""
+    diff = """+++ b/x.py
+@@ -1,1 +1,1 @@
+-old
++result = eval(user_input)
+"""
+    findings = static_security_scan(diff)
+    assert any(f.category == "EVAL" for f in findings)
+
+
+def test_static_scan_eval_catches_exec_call() -> None:
+    """exec(open('x').read()) 应被检测"""
+    diff = """+++ b/x.py
+@@ -1,1 +1,1 @@
+-old
++exec(open('x').read())
+"""
+    findings = static_security_scan(diff)
+    assert any(f.category == "EVAL" for f in findings)
+
+
+def test_static_scan_eval_skips_word_substrings() -> None:
+    """'evaluate' / 'developer' / 'execution' 不应命中"""
+    diff = """+++ b/x.py
+@@ -1,1 +1,1 @@
+-old
++x = developer_name + " evaluate: " + result
+"""
+    findings = static_security_scan(diff)
+    # 词边界排除 evaluate/developer
+    assert not any(f.category == "EVAL" for f in findings)
+
+
+def test_static_scan_yaml_subprocess_string_not_flagged() -> None:
+    """YAML 里的 'subprocess.run' 字符串不应触发 CMD_INJECTION"""
+    diff = """+++ b/config.yaml
+@@ -1,1 +1,1 @@
+-old
++doc: "use subprocess.run with shell=True carefully"
+"""
+    findings = static_security_scan(diff)
+    # .yaml 不是源码,不应被扫
+    assert not any(f.category == "CMD_INJECTION" for f in findings)
+
+
+def test_static_scan_json_file_skipped() -> None:
+    """.json 文件不扫"""
+    diff = """+++ b/manifest.json
+@@ -1,1 +1,1 @@
+-old
++{"api_key": "sk-1234567890abcdefghij"}
+"""
+    findings = static_security_scan(diff)
+    # .json 不是源码,SecretManager 引用检测也不该在此触发
+    assert not any(f.category == "SECRET_LEAK" for f in findings)
+
+
+# ---------------------------------------------------------------------------
 # run_simple_review
 # ---------------------------------------------------------------------------
 

@@ -120,6 +120,42 @@ def get_pr_diff(pr_ref: str = "main..HEAD") -> tuple[str, int, int]:
 # ---------------------------------------------------------------------------
 
 
+# 文件扩展名白名单——只对源码做静态扫描，避免 .md/.json/.yaml/.txt 等误报
+_SOURCE_EXTENSIONS: frozenset[str] = frozenset({
+    ".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
+    ".go", ".rs", ".java", ".kt", ".rb", ".php", ".c", ".cpp", ".h", ".hpp",
+    ".sh", ".bash", ".zsh",
+})
+
+# 路径黑名单——第三方/构建产物不应被扫
+_PATH_SKIP_SUBSTRINGS: tuple[str, ...] = (
+    ".venv/", "venv/", "node_modules/", "vendor/",
+    ".git/", "dist/", "build/", "__pycache__/", ".pytest_cache/",
+    ".mypy_cache/", ".ruff_cache/", ".coverage", "site-packages/",
+)
+
+
+def _is_source_file(path: str) -> bool:
+    """
+    @brief 判定是否值得扫的源码文件
+
+    @param path  git diff 中的文件路径
+    @return True 表示做静态扫描；False 表示跳过
+    """
+    if not path or path == "/dev/null":
+        return False
+    # 路径黑名单
+    for skip in _PATH_SKIP_SUBSTRINGS:
+        if skip in path:
+            return False
+    # 扩展名白名单
+    p = path.lower()
+    for ext in _SOURCE_EXTENSIONS:
+        if p.endswith(ext):
+            return True
+    return False
+
+
 # 简单规则——只做关键字 + 模式匹配，捕获高置信度安全问题
 _RULES: list[dict[str, Any]] = [
     {
@@ -146,7 +182,12 @@ _RULES: list[dict[str, Any]] = [
     {
         "category": "EVAL",
         "severity": "HIGH",
-        "pattern": re.compile(r"\b(eval|exec)\s*\("),
+        # 收紧：要求前一个字符不是 [a-zA-Z0-9_."'] —— 排除方法调用(self.eval)
+        # 词边界 \b 已排除 evaluate / developer / execution 等
+        # 已知 limitation：字符串字面量 "use eval(" 仍可能误报；用 _line_is_string_only 二次过滤
+        "pattern": re.compile(
+            r'(?<![a-zA-Z0-9_."\'])\b(eval|exec)\s*\('
+        ),
         "description": "eval/exec 使用 — 不安全（DESIGN §8.2）",
     },
     {
@@ -172,34 +213,65 @@ _RULES: list[dict[str, Any]] = [
 ]
 
 
+def _line_is_string_literal(line: str, match_start: int) -> bool:
+    """
+    @brief 启发式:判断 eval/exec 调用是否落在字符串字面量里
+
+    @param line  diff 中的 + 行(不含前缀 +)
+    @param match_start  eval/exec 关键字在 line 里的下标
+    @return True 表示这次匹配是字符串内容,应忽略
+
+    启发式:match 之前同一行内未配对引号数=奇数 ⇒ eval 在字符串里
+    @note 已知 limitation:f-string 内 `f"{eval(x)}"` 中的 eval 会被误跳;
+         要彻底解决需 AST 分析,regex 不可达。
+    """
+    prefix = line[:match_start]
+    n_dq = len(re.findall(r'(?<!\\)"', prefix))
+    n_sq = len(re.findall(r"(?<!\\)'", prefix))
+    # 未配对引号为奇数 ⇒ 当前位置在字符串里
+    if n_dq % 2 == 1 or n_sq % 2 == 1:
+        return True
+    return False
+
+
 def static_security_scan(diff: str) -> list[ReviewFinding]:
     """
     静态安全扫描——纯规则匹配，不依赖 LLM
 
-    @return 发现的列表
+    @brief 规则应用范围：
+      - 只扫描源码扩展名（.py/.js/.ts/.go/.rs/.java 等）——见 _SOURCE_EXTENSIONS
+      - 跳过 .venv/ / node_modules/ / vendor/ / .git/ / 缓存目录
+      - 删除行（-）不查；只查新增行（+）
     """
     findings: list[ReviewFinding] = []
     current_file = "?"
     current_line = 0
+    scan_enabled = False  # 是否在源码文件内
     for line in diff.splitlines():
         if line.startswith("+++ b/"):
             current_file = line[len("+++ b/"):]
+            scan_enabled = _is_source_file(current_file)
         elif line.startswith("@@"):
             m = re.search(r"\+(\d+)", line)
             if m:
                 current_line = int(m.group(1)) - 1
-        elif line.startswith("+") and not line.startswith("+++"):
+        elif scan_enabled and line.startswith("+") and not line.startswith("+++"):
             current_line += 1
             added = line[1:]
             for rule in _RULES:
-                if rule["pattern"].search(added):
-                    findings.append(ReviewFinding(
-                        severity=rule["severity"],
-                        file=current_file,
-                        line=current_line,
-                        category=rule["category"],
-                        description=rule["description"],
-                    ))
+                m = rule["pattern"].search(added)
+                if m is None:
+                    continue
+                # EVAL 规则二次过滤:跳过字符串字面量里的 eval
+                if rule["category"] == "EVAL" and _line_is_string_literal(added, m.start()):
+                    continue
+                findings.append(ReviewFinding(
+                    severity=rule["severity"],
+                    file=current_file,
+                    line=current_line,
+                    category=rule["category"],
+                    description=rule["description"],
+                ))
     return findings
 
 

@@ -273,3 +273,102 @@ async def test_websocket_sink_consume_with_no_clients_is_noop() -> None:
         assert sink.total_events_sent == 0
     finally:
         await sink.stop()
+
+
+# ---------------------------------------------------------------------------
+# P2-NEW-2 修复：慢消费者背压测试（_send_loop 时序场景）
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_websocket_sink_slow_consumer_does_not_block_consume() -> None:
+    """
+    慢消费者不应阻塞 consume() 的快速调用。
+    设计意图：consume() 内部用 put_nowait 丢最旧,emit 速率 = 入队速率,不依赖 send loop。
+    """
+    sink = WebSocketSink(host="127.0.0.1", port=0, heartbeat_interval=10.0)
+    await sink.start()
+    try:
+        port = sink.bound_port
+        # 模拟一个慢消费者：把它的 queue 替换为 maxsize=1 的小队列
+        ws_slow = await _connect_ws(port)
+        try:
+            # 模拟"慢消费者"——把它的 send loop 替换成永远不消费 queue 的版本
+            slow_client = next(iter(sink._clients.values()))
+            # 用 None 占位 sender task 来防止它消费 queue
+            # 直接把 queue 替换为 maxsize=1
+            slow_client.queue = asyncio.Queue(maxsize=1)
+            # 推 100 条事件
+            t0 = time.time()
+            for i in range(100):
+                await sink.consume(SessionEvent(
+                    event_name="burst", session_id="s", timestamp=time.time(),
+                    seq=i, payload={"i": i},
+                ))
+            elapsed = time.time() - t0
+            # 100 次 consume 应该在 1 秒内完成（不被慢消费者阻塞）
+            assert elapsed < 1.0, f"consume() 被慢消费者阻塞 {elapsed:.2f}s"
+            # 慢消费者应有大量 drop
+            assert slow_client.dropped_events >= 90, (
+                f"应有 ≥90 个 drop，实际 {slow_client.dropped_events}"
+            )
+            # 队列里只保留最后 1 条
+            assert slow_client.queue.qsize() == 1
+        finally:
+            await _close(ws_slow)
+    finally:
+        await sink.stop()
+
+
+@pytest.mark.asyncio
+async def test_websocket_sink_fast_consumer_unaffected_by_slow_peer() -> None:
+    """
+    多客户端：慢消费者丢消息不应影响快消费者。
+    """
+    sink = WebSocketSink(host="127.0.0.1", port=0, heartbeat_interval=10.0)
+    await sink.start()
+    try:
+        port = sink.bound_port
+        ws_fast = await _connect_ws(port)
+        ws_slow = await _connect_ws(port)
+        try:
+            # 找到两个客户端
+            clients = list(sink._clients.values())
+            # 按连接顺序
+            fast_client = clients[0]
+            slow_client = clients[1]
+            # 慢客户端的 queue 改成 maxsize=1, 阻断 send loop
+            slow_client.queue = asyncio.Queue(maxsize=1)
+
+            # 推 50 条
+            n = 50
+            for i in range(n):
+                await sink.consume(SessionEvent(
+                    event_name="multi", session_id="s", timestamp=time.time(),
+                    seq=i, payload={"i": i},
+                ))
+            # 给快客户端时间收完
+            await asyncio.sleep(0.5)
+
+            # 快客户端应收到全部 n 条
+            received = 0
+            while True:
+                try:
+                    msg = await asyncio.wait_for(ws_fast.receive(), timeout=0.2)
+                    if msg.type == aiohttp.WSMsgType.TEXT:
+                        data = json.loads(msg.data)
+                        if data["type"] == "event":
+                            received += 1
+                except asyncio.TimeoutError:
+                    break
+            assert received == n, f"快客户端应收到 {n} 条，实际 {received}"
+
+            # 慢客户端应有大量 drop
+            assert slow_client.dropped_events >= n - 5, (
+                f"慢客户端应有大量 drop，实际 {slow_client.dropped_events}"
+            )
+        finally:
+            await _close(ws_fast)
+            await _close(ws_slow)
+    finally:
+            await sink.stop()
