@@ -25,6 +25,7 @@ dependencies = [
     "click>=8.1.7",              # CLI
     "rich>=13.7.1",              # 终端输出美化
     "textual>=0.85.0",           # TUI 仪表盘 (W6)
+    "aiohttp>=3.9.0",            # LarkConnector webhook server (W10 飞书连接器)
 ]
 
 [project.optional-dependencies]

@@ -1,0 +1,52 @@
+# W10 飞书连接器 example——DESIGN §4.6
+#
+# 启动：python -m agent_swarm.cli.main run examples/w10_lark.yaml
+#
+# 前置：
+#   1. 在 https://open.feishu.cn 创建应用
+#   2. 启用机器人能力 + 事件回调（接收消息 v2.0）
+#   3. 配置事件订阅 token + encrypt_key（可选）
+#   4. 把 app_id / app_secret 写入对应 env：
+#      export LARK_APP_SECRET=...
+#      export LARK_VERIFICATION_TOKEN=...
+#      export LARK_ENCRYPT_KEY=...   # 可选
+name: w10-lark-example
+channels:
+  lark:
+    enabled: true
+    app_id: "cli_xxxxxxxxxxxx"
+    app_secret: "${LARK_APP_SECRET}"
+    verification_token: "${LARK_VERIFICATION_TOKEN}"
+    encrypt_key: "${LARK_ENCRYPT_KEY}"
+    user_whitelist:
+      - "ou_abc123"
+      - "ou_def456"
+    api_base: "https://open.feishu.cn/open-apis"
+    webhook_host: "0.0.0.0"
+    webhook_port: 8765
+  routing:
+    default_session_ttl: 3600
+    max_sessions_per_user: 5
+    rate_limit:
+      messages_per_minute: 30
+      sessions_per_hour: 10
+    approval_timeout: 3600
+  notifications:
+    on_task_complete: true
+    on_approval_required: true
+    on_error: true
+    progress_interval: 300
+agents:
+  - id: bot
+    role: assistant
+    role_type: worker
+    persona: "你是飞书机器人助手"
+    provider: openai
+    model: gpt-4o-mini
+    tools: ["send_message", "read_file"]
+    max_iterations: 5
+tasks:
+  - id: greeting
+    title: "回应飞书用户问候"
+    description: "用户首次启动机器人时的欢迎语"
+    assigned_to: bot
