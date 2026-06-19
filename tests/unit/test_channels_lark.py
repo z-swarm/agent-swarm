@@ -17,6 +17,7 @@ from agent_swarm.channels.lark import (
     CARD_TEMPLATES,
     LARK_API_BASE,
     LarkConnector,
+    _hmac_sha256_hex,
     resolve_lark_secret,
     verify_lark_signature,
 )
@@ -46,6 +47,55 @@ def test_verify_lark_signature_with_encrypt_key() -> None:
     sig1 = verify_lark_signature("1700000000", "nonce1", "body", "tok", None)
     sig2 = verify_lark_signature("1700000000", "nonce1", "body", "tok", "enc")
     assert sig1 != sig2
+
+
+# ---------------------------------------------------------------------------
+# H1 回归测试:HMAC 必须真正使用 key(REVIEW-2026-06-19-2 §3.1)
+# ---------------------------------------------------------------------------
+
+
+def test_hmac_sha256_hex_different_keys_produce_different_signatures() -> None:
+    """核心安全属性:不同 key 必须产生不同签名
+    @note 早期 W10 bug: _hmac_sha256_hex 接收 key 但完全不用,任何 key 产生相同 hash
+    """
+    sig_a = _hmac_sha256_hex("correct-token", "1700000000nonce1body")
+    sig_b = _hmac_sha256_hex("wrong-token", "1700000000nonce1body")
+    sig_c = _hmac_sha256_hex("", "1700000000nonce1body")
+    assert sig_a != sig_b, "key 必须影响签名"
+    assert sig_a != sig_c, "空 key 与有效 key 必须产生不同签名"
+    assert sig_b != sig_c, "wrong key 与空 key 必须产生不同签名"
+
+
+def test_verify_lark_signature_changes_with_token() -> None:
+    """verify_lark_signature 端到端:不同 token 必须产生不同签名"""
+    sig1 = verify_lark_signature("1700000000", "nonce1", '{"x":1}', "token-abc")
+    sig2 = verify_lark_signature("1700000000", "nonce1", '{"x":1}', "token-xyz")
+    assert sig1 != sig2
+
+
+def test_verify_lark_signature_resists_forgery_without_token() -> None:
+    """攻击者不知道 token 时,无法算出与正确 token 相同的签名"""
+    real_sig = verify_lark_signature("1700000000", "nonce1", '{"x":1}', "real-token")
+    # 攻击者用一个错误 token
+    forged_sig = verify_lark_signature("1700000000", "nonce1", '{"x":1}', "attacker-guess")
+    assert forged_sig != real_sig, "攻击者不应能伪造签名"
+
+
+def test_hmac_sha256_hex_uses_hmac_not_plain_sha256() -> None:
+    """_hmac_sha256_hex 必须用 hmac.new(),不是 hashlib.sha256()
+    @note 防止 W10 那种'key 被丢弃'的 bug 再次出现
+    """
+    import hashlib
+    import hmac
+    key = "my-token"
+    payload = "1700000000nonce1body"
+    # 正确 HMAC 结果
+    expected = hmac.new(key.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    actual = _hmac_sha256_hex(key, payload)
+    # 错误(纯 SHA256)结果
+    wrong = hashlib.sha256(payload.encode()).hexdigest()
+    assert actual == expected, f"必须用 hmac.new(); got {actual} != {expected}"
+    assert actual != wrong, f"不能是纯 SHA256; got {actual} == {wrong}"
 
 
 def test_resolve_lark_secret_env_reference() -> None:

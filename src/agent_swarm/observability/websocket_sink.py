@@ -274,6 +274,8 @@ class WebSocketSink(ObservabilitySink):
                     break
                 await client.ws.send_json(msg)
                 client.send_count += 1
+                # L4 注释:+= 在 asyncio 单线程下是原子的(无 await 中断)
+                # 若未来切到多线程,需改用 int 包裹或 asyncio.Lock
                 self.total_events_sent += 1
             except asyncio.CancelledError:
                 break

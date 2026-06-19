@@ -26,6 +26,7 @@ dependencies = [
     "rich>=13.7.1",              # 终端输出美化
     "textual>=0.85.0",           # TUI 仪表盘 (W6)
     "aiohttp>=3.9.0",            # LarkConnector webhook server (W10 飞书连接器)
+    "cryptography>=42.0.0",      # AES-256-CBC for Lark 加密 body 解密 (REVIEW-2026-06-19-2 L1)
 ]
 
 [project.optional-dependencies]

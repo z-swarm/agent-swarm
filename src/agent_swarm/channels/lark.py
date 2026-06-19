@@ -17,6 +17,7 @@ W10 范围：
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import hmac
 import json
@@ -25,6 +26,9 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
+
+# cryptography 是可选依赖 — 仅 encrypt_key 启用时才需要
+# 延迟导入避免强制依赖,pyproject.toml 已声明
 
 from agent_swarm.channels.base import (
     ChannelConnector,
@@ -55,12 +59,59 @@ CARD_TEMPLATES: tuple[str, ...] = (
 def _hmac_sha256_hex(key: str, payload: str) -> str:
     """
     飞书事件签名核心：HMAC-SHA256 hex
-    @note 飞书官方规范: digest = sha256(timestamp + nonce + token + encrypt_key + body)
-          这里简化为 sha256(timestamp + nonce + body)，encrypt_key 为可选字段
+
+    @note 飞书官方规范 v2: digest = HMAC-SHA256(key=verification_token,
+          message=timestamp + nonce + encrypt_key + body)
+    @note 关键:必须用 hmac.new(),不是 hashlib.sha256()
+          key 必须真正参与计算,否则任何知道 timestamp/nonce/body 的人
+          都能伪造签名(W10 早期版本有这个 bug,见 REVIEW-2026-06-19-2 H1)
     """
-    h = hashlib.sha256()
-    h.update(payload.encode("utf-8"))
-    return h.hexdigest()
+    return hmac.new(
+        key.encode("utf-8"),
+        payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def decrypt_lark_body(encrypt_key: str, encrypted_b64: str) -> str:
+    """
+    @brief 飞书加密 body 解密 (L1 修复:占位 → 真 AES-256-CBC)
+    @param encrypt_key    配置的 encrypt_key(明文或 ${VAR} 解析后)
+    @param encrypted_b64  飞书传来的 base64(iv + ciphertext)
+    @return 解密后的明文 JSON 字符串
+    @raise ValueError  解密失败 (key 错 / padding 错 / 长度错)
+
+    @note 飞书官方规范:
+      - key = SHA256(encrypt_key) 截前 32 字节
+      - IV = base64 前 16 字节
+      - cipher = AES-256-CBC + PKCS7
+      - 加密格式: base64(IV + ciphertext)
+    @note cryptography 是可选依赖;仅当 encrypt_key 启用时才需要
+    """
+    try:
+        from cryptography.hazmat.primitives import padding as aes_padding
+        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    except ImportError as exc:
+        raise RuntimeError(
+            "decrypt_lark_body 需要 cryptography 包;"
+            " 请运行: pip install cryptography>=42.0.0"
+        ) from exc
+    # 1) 计算 key
+    key_bytes = hashlib.sha256(encrypt_key.encode("utf-8")).digest()[:32]
+    # 2) base64 解码
+    raw = base64.b64decode(encrypted_b64)
+    if len(raw) < 32:  # 至少 IV(16) + 1 块(16)
+        raise ValueError("encrypted body too short")
+    iv = raw[:16]
+    ciphertext = raw[16:]
+    # 3) AES-256-CBC 解密
+    cipher = Cipher(algorithms.AES(key_bytes), modes.CBC(iv))
+    decryptor = cipher.decryptor()
+    padded = decryptor.update(ciphertext) + decryptor.finalize()
+    # 4) 去除 PKCS7 padding
+    unpadder = aes_padding.PKCS7(algorithms.AES.block_size).unpadder()
+    plain = unpadder.update(padded) + unpadder.finalize()
+    return plain.decode("utf-8")
 
 
 def verify_lark_signature(

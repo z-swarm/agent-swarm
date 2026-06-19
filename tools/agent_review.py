@@ -79,6 +79,7 @@ def get_pr_diff(pr_ref: str = "main..HEAD") -> tuple[str, int, int]:
     @param pr_ref  git diff range（"main..HEAD"）或 PR 编号（"123"）
     @return (diff_text, files_changed, lines_changed)
     @note  使用 git diff 简化；远期接 gh CLI 拉 PR 数据
+    @note  lines_changed = 净增行 (added - deleted),与 git diff --numstat 一致
     """
     try:
         result = subprocess.run(
@@ -98,20 +99,35 @@ def get_pr_diff(pr_ref: str = "main..HEAD") -> tuple[str, int, int]:
         diff = result.stdout
     except Exception:  # noqa: BLE001
         diff = ""
-    # 统计
+    # 用 --numstat 准确统计 added / deleted (M3 修复: 旧版只数 +, 不数 -)
     files = 0
-    lines = 0
-    for line in stat.splitlines():
-        m = re.match(r"^\s*(\S+.*?)\s+\|\s+(\d+)", line)
-        if m:
-            files += 1
-        m = re.match(r"(\d+) files? changed", line)
-        if m:
-            pass
-    # 从 diff 实际数行
-    for line in diff.splitlines():
-        if line.startswith("+") and not line.startswith("+++"):
-            lines += 1
+    added = 0
+    deleted = 0
+    try:
+        result = subprocess.run(
+            ["git", "diff", pr_ref, "--numstat"],
+            cwd=REPO, capture_output=True, text=True, timeout=30,
+        )
+        for line in result.stdout.splitlines():
+            parts = line.split("\t")
+            if len(parts) >= 3:
+                # 二进制文件是 "-\t-\tfile" → 跳过
+                if parts[0] == "-" or parts[1] == "-":
+                    files += 1
+                    continue
+                try:
+                    a = int(parts[0])
+                    d = int(parts[1])
+                except ValueError:
+                    continue
+                added += a
+                deleted += d
+                files += 1
+    except Exception:  # noqa: BLE001
+        pass
+    # 净增行:added - deleted(可能为负,但 git --numstat 给出总变更量更直观)
+    # 这里用 added + deleted 表示"变更量",避免负数混淆 reviewer
+    lines = added + deleted
     return diff, files, lines
 
 
@@ -176,8 +192,14 @@ _RULES: list[dict[str, Any]] = [
     {
         "category": "PATH_TRAVERSAL",
         "severity": "HIGH",
-        "pattern": re.compile(r"open\(\s*[^)]*(\+\s*[a-zA-Z_])"),
-        "description": "open() 参数含字符串拼接 — 可能存在 path traversal（DESIGN §8.2）",
+        # M1 修复: 检测不可信输入拼接到 open() 的路径参数
+        # 旧版 r"open\(\s*[^)]*(\+\s*[a-zA-Z_])" 误报率高
+        # 新版:要求拼接的是真正的不可信源 (user_input/request./input()/argv[]/args[]/.params[])
+        "pattern": re.compile(
+            r"open\(\s*[^)]*"
+            r"(?:\+\s*(?:user_?input|request\.|input\(|argv\[|args\[|\.params\[))"
+        ),
+        "description": "open() 拼接不可信输入 — path traversal 风险（DESIGN §8.2）",
     },
     {
         "category": "EVAL",
@@ -207,10 +229,33 @@ _RULES: list[dict[str, Any]] = [
     {
         "category": "WEAK_HASH",
         "severity": "MEDIUM",
-        "pattern": re.compile(r"hashlib\.(md5|sha1)\b"),
-        "description": "弱哈希算法（MD5/SHA1）— 应使用 SHA-256+",
+        # M2 修复: 仅在 security 上下文中才报
+        # md5/sha1 常见非安全用途:fingerprint / cache / etag / idempotency
+        # 启发式:排除调用附近的非安全关键字(negative lookahead)
+        "pattern": re.compile(
+            r"hashlib\.(md5|sha1)\b(?![^()\n]{0,80}"
+            r"(?:\b(?:fingerprint|content[_-]?hash|etag|cache[_-]?key|"
+            r"idempoten|non[_-]?crypto|non[_-]?security)\b))"
+        ),
+        "description": "弱哈希算法（MD5/SHA1）— 密码/签名场景应使用 SHA-256+",
     },
 ]
+
+
+def _is_non_security_hash_use(line: str) -> bool:
+    """
+    @brief M2 启发式: 判断 hashlib.md5/sha1 调用是否在非安全上下文
+    @param line  diff 中的 + 行(不含前缀 +)
+    @return True 表示非安全用途(fingerprint/cache/etag/idempotency),应忽略
+    """
+    p = line.lower()
+    non_security_keywords = (
+        "fingerprint", "content_hash", "contenthash",
+        "etag", "cache_key", "cachekey",
+        "idempoten", "non_crypto", "non_security", "noncrypto",
+        "checksum",  # 注意:checksum 不一定安全,但常见用于文件完整性
+    )
+    return any(kw in p for kw in non_security_keywords)
 
 
 def _line_is_string_literal(line: str, match_start: int) -> bool:
@@ -264,6 +309,9 @@ def static_security_scan(diff: str) -> list[ReviewFinding]:
                     continue
                 # EVAL 规则二次过滤:跳过字符串字面量里的 eval
                 if rule["category"] == "EVAL" and _line_is_string_literal(added, m.start()):
+                    continue
+                # M2 规则二次过滤:跳过非安全用途的 md5/sha1 (fingerprint/cache/etag)
+                if rule["category"] == "WEAK_HASH" and _is_non_security_hash_use(added):
                     continue
                 findings.append(ReviewFinding(
                     severity=rule["severity"],
@@ -344,11 +392,27 @@ def run_simple_review(pr_ref: str) -> ReviewReport:
 
 
 async def run_full_review(pr_ref: str) -> ReviewReport:
-    """W13 完整模式：AdversarialVerifier 跑 3 judges × N 假设（未来 W14+）"""
-    # 当前与 simple 一致；远期接 LLM 真实判定
-    report = run_simple_review(pr_ref)
-    # 未来：调用 AdversarialVerifier.verify(hypotheses, judges, judge_fn=llm_judge)
-    return report
+    """W13 完整模式:AdversarialVerifier 跑 3 judges × N 假设(L2/L3 修复)
+
+    @note 当前为占位 — 需要 OPENAI_API_KEY 或 ANTHROPIC_API_KEY 来驱动
+          真实 LLM judge 跑对抗式判定。
+    @note L2/L3 修复:占位明示 + 缺 API key 时 fail-fast
+    @todo W14+: 实现 llm_judge factory + 接入 AdversarialVerifier.verify()
+    """
+    import os
+    if not (os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")):
+        # L2/L3 修复: 显式 fail-fast,避免静默退化为 simple
+        raise RuntimeError(
+            "run_full_review 需要 LLM API key;"
+            " 请设置 OPENAI_API_KEY 或 ANTHROPIC_API_KEY 环境变量"
+        )
+    # 临时回退到 simple 模式(W14+ 替换为 AdversarialVerifier.verify)
+    print(
+        "[W13] full mode 占位, 回退到 simple 模式; "
+        "W14+ 将接入真实 LLM judge",
+        file=sys.stderr,
+    )
+    return run_simple_review(pr_ref)
 
 
 def print_report(report: ReviewReport) -> None:

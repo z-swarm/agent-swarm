@@ -289,6 +289,110 @@ def test_static_scan_json_file_skipped() -> None:
 
 
 # ---------------------------------------------------------------------------
+# M1/M2/M3 修复：REVIEW-2026-06-19-2 §4
+# ---------------------------------------------------------------------------
+
+
+def test_static_scan_path_traversal_no_false_positive_on_extension_concat() -> None:
+    """M1 修复:无害的扩展名拼接不应被命中"""
+    diff = """+++ b/x.py
+@@ -1,1 +1,1 @@
+-old
++fp = open(p + ".txt")
+"""
+    findings = static_security_scan(diff)
+    # p + ".txt" 不是不可信输入,不应命中
+    assert not any(f.category == "PATH_TRAVERSAL" for f in findings)
+
+
+def test_static_scan_path_traversal_catches_user_input_concat() -> None:
+    """M1 修复:user_input 拼接到路径应被命中"""
+    diff = """+++ b/x.py
+@@ -1,1 +1,1 @@
+-old
++fp = open(base + user_input)
+"""
+    findings = static_security_scan(diff)
+    # user_input 是不可信来源,应命中
+    assert any(f.category == "PATH_TRAVERSAL" for f in findings)
+
+
+def test_static_scan_path_traversal_catches_request_input() -> None:
+    """M1 修复:request.X / input() / argv[] 都应被命中"""
+    diff = """+++ b/x.py
+@@ -1,1 +1,1 @@
+-old
++fp = open("/data/" + request.path)
+"""
+    findings = static_security_scan(diff)
+    assert any(f.category == "PATH_TRAVERSAL" for f in findings)
+
+
+def test_static_scan_weak_hash_skips_fingerprint() -> None:
+    """M2 修复:fingerprint 上下文不应报"""
+    diff = """+++ b/x.py
+@@ -1,1 +1,1 @@
+-old
++fp_hash = hashlib.md5(content).hexdigest()  # fingerprint for dedup
+"""
+    findings = static_security_scan(diff)
+    # 注释提到 fingerprint → 跳过
+    assert not any(f.category == "WEAK_HASH" for f in findings)
+
+
+def test_static_scan_weak_hash_skips_cache_key() -> None:
+    """M2 修复:cache_key 上下文不应报"""
+    diff = """+++ b/x.py
+@@ -1,1 +1,1 @@
+-old
++key = hashlib.md5(url).hexdigest()  # cache_key
+"""
+    findings = static_security_scan(diff)
+    assert not any(f.category == "WEAK_HASH" for f in findings)
+
+
+def test_static_scan_weak_hash_flags_security_use() -> None:
+    """M2 修复:密码/signature 场景仍应报"""
+    diff = """+++ b/x.py
+@@ -1,1 +1,1 @@
+-old
++sig = hashlib.md5(password + salt).hexdigest()
+"""
+    findings = static_security_scan(diff)
+    # password + salt 是安全场景,应命中
+    assert any(f.category == "WEAK_HASH" for f in findings)
+
+
+def test_get_pr_diff_numstat_counts_added_and_deleted() -> None:
+    """M3 修复:lines_changed 应包含 added + deleted"""
+    import subprocess
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        subprocess.run(["git", "init", "-q"], cwd=tmp, check=True)
+        subprocess.run(["git", "config", "user.email", "t@t"], cwd=tmp, check=True)
+        subprocess.run(["git", "config", "user.name", "T"], cwd=tmp, check=True)
+        # 初始文件 3 行
+        (tmp / "x.py").write_text("a\nb\nc\n")
+        subprocess.run(["git", "add", "x.py"], cwd=tmp, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "i"], cwd=tmp, check=True)
+        # 改后:加 2 行,删 1 行
+        (tmp / "x.py").write_text("a\nNEW1\nNEW2\nc\n")
+        subprocess.run(["git", "add", "x.py"], cwd=tmp, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "u"], cwd=tmp, check=True)
+        import tools.agent_review
+        orig = tools.agent_review.REPO
+        tools.agent_review.REPO = tmp
+        try:
+            _, files, lines = get_pr_diff("HEAD~1..HEAD")
+        finally:
+            tools.agent_review.REPO = orig
+        assert files == 1
+        # 旧版只数 + 行 (2),新版 added(2) + deleted(1) = 3
+        assert lines == 3, f"应等于 3 (added 2 + deleted 1),实际 {lines}"
+
+
+# ---------------------------------------------------------------------------
 # run_simple_review
 # ---------------------------------------------------------------------------
 
