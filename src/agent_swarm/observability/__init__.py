@@ -12,6 +12,7 @@ from agent_swarm.observability.bus import (
 )
 from agent_swarm.observability.sinks import InMemorySink, JsonLogSink
 from agent_swarm.observability.sqlite_sink import SqliteEventSink
+from agent_swarm.observability.websocket_sink import WebSocketSink
 
 __all__ = [
     "InMemorySink",
@@ -19,6 +20,7 @@ __all__ = [
     "ObservabilityBus",
     "ObservabilitySink",
     "SqliteEventSink",
+    "WebSocketSink",
     "emit",
     "get_global_bus",
     "set_global_bus",

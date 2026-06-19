@@ -1,0 +1,22 @@
+name: w12-websocket-example
+agents:
+  - id: demo
+    role: demo
+    role_type: worker
+    persona: "demo agent for WebSocketSink"
+    provider: openai
+    model: gpt-4o-mini
+    tools: []
+    max_iterations: 3
+tasks:
+  - id: demo-task
+    title: "demonstrate ws events"
+    description: "just emit some events"
+    assigned_to: demo
+observability:
+  websocket:
+    enabled: true
+    host: "127.0.0.1"
+    port: 8766
+    path: "/ws"
+    heartbeat_interval: 30

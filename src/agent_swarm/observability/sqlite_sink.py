@@ -70,6 +70,16 @@ CREATE INDEX IF NOT EXISTS idx_events_tenant_session
     ON session_events(tenant_id, session_id, seq);
 CREATE INDEX IF NOT EXISTS idx_events_tenant_name
     ON session_events(tenant_id, event_name);
+-- W12-2 完整事件目录：五元组索引
+-- (session_id, tenant_id, event_name, seq, request_id)
+CREATE INDEX IF NOT EXISTS idx_events_5tuple
+    ON session_events(session_id, tenant_id, event_name, seq, request_id);
+-- 时间范围查询（回放 UI 用）
+CREATE INDEX IF NOT EXISTS idx_events_tenant_time
+    ON session_events(tenant_id, session_id, timestamp);
+-- request_id 关联审计
+CREATE INDEX IF NOT EXISTS idx_events_request_id
+    ON session_events(tenant_id, request_id) WHERE request_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS sessions (
     tenant_id   TEXT NOT NULL,
