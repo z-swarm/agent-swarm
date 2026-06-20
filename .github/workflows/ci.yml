@@ -1,11 +1,10 @@
 # @file ci.yml
 # @brief PR 阻塞检查（DESIGN.md §17.4 / §17.8）
 #
-# 守门规则:
-#   ① ruff lint           （阻塞）
-#   ② mypy 类型检查       （阻塞）
-#   ③ pytest unit + integration  （阻塞）
-#   ④ coverage gate >= 75%（W1 阶段；W6 升至 80%）
+# W14b 修订（v2）：
+#   - fast-checks: lint + mypy + pytest（ubuntu-latest）
+#   - security-scan: 每 PR 跑 tools/agent_review.py（DESIGN §17.1 强制）
+#   - windows-smoke: TUI/doctor 在 windows-latest 烟测（缓解 §17.6 TUI 风险）
 #
 # 真实 LLM 走 nightly.yml；这里全部 mock，零网络调用
 
@@ -24,7 +23,7 @@ concurrency:
 
 jobs:
   fast-checks:
-    name: Lint + Type + Test (Phase 1 gate)
+    name: Lint + Type + Test
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -68,3 +67,70 @@ jobs:
           name: coverage-report
           path: coverage.xml
           retention-days: 7
+
+  # W14b-②: 静态安全扫描（DESIGN §17.1 强制）
+  security-scan:
+    name: Static Security Scan (agent_review.py)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Run agent_review.py (simple mode, no LLM)
+        env:
+          # 简单模式不调 LLM；CRITICAL 级别 finding 必须 fail
+          AGENT_REVIEW_FAIL_ON: "CRITICAL"
+        run: |
+          # 跑在 HEAD 上，diff 是空；W14b 范围内——验证工具能跑通
+          # 真实 PR 跑时 diff 来自 ${{ github.event.pull_request.base.sha }}..HEAD
+          python tools/agent_review.py --mode=simple || {
+            echo "::error::agent_review.py found CRITICAL security issues"
+            exit 1
+          }
+
+  # W14b-⑤: Windows 烟测（缓解 §17.6 TUI 兼容风险）
+  windows-smoke:
+    name: Windows TUI/Doctor smoke
+    runs-on: windows-latest
+    timeout-minutes: 10
+    if: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: doctor (skip network)
+        shell: pwsh
+        run: |
+          python -m agent_swarm.cli.main doctor --skip-llm --skip-mcp
+
+      - name: TUI smoke import
+        shell: pwsh
+        run: |
+          # 仅验证 TUI 模块能 import（Windows console 不同，全跑易 flaky）
+          python -c "from agent_swarm.tui import run_dashboard; print('TUI module loads OK')"
+
+      - name: count_reconnect 验证脚本
+        shell: pwsh
+        run: |
+          python tools/count_reconnect.py

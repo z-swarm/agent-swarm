@@ -179,6 +179,18 @@ def cli() -> None:
     """通用多 Agent 协作框架"""
 
 
+# ---------------------------------------------------------------------------
+# doctor 子命令（W14b: §17.7 DX 工具）
+# ---------------------------------------------------------------------------
+
+
+# 模块加载时注册 doctor——避免在 __main__ 入口被重新导入触发 runpy 警告
+# @note 延迟 import 内部完成；模块顶层 import doctor 只调一次
+from agent_swarm.cli.doctor import doctor as _doctor_cmd  # noqa: E402
+
+cli.add_command(_doctor_cmd)
+
+
 @cli.command()
 @click.argument("config", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option("-v", "--verbose", is_flag=True, help="显示 DEBUG 级日志")
