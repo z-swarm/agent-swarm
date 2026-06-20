@@ -13,6 +13,7 @@ W5 安全目标：所有攻击必须被拦截，agent 不能越权。
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -161,6 +162,9 @@ async def test_low_risk_tool_unaffected_by_strict_policy(tmp_path: Path) -> None
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="P3-WIN: hardcoded /tmp path, not Windows-compatible",
+)
 async def test_policy_does_not_depend_on_cwd(tmp_path: Path) -> None:
     """policy 决策与 process cwd 无关——只按路径字符串判断"""
     import os
@@ -222,10 +226,9 @@ def test_attack_suite_covers_at_least_20_cases() -> None:
                 and func.attr == "parametrize"
                 and isinstance(func.value, ast.Attribute)
                 and func.value.attr == "mark"
-            ):
+            ) and len(dec.args) >= 2 and isinstance(dec.args[1], ast.List):
                 # 第二个参数是 argvalues list
-                if len(dec.args) >= 2 and isinstance(dec.args[1], ast.List):
-                    total += len(dec.args[1].elts)
+                total += len(dec.args[1].elts)
 
     assert total >= expected_min, (
         f"only {total} parametrize cases in this file; need ≥{expected_min}"

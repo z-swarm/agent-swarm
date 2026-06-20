@@ -84,10 +84,7 @@ async def test_max_rounds_exhausted_with_two_survivors() -> None:
     async def judge_fn(agent, hyp_id, round_no):
         call["n"] += 1
         # 立场随 round 变化（防 consensus_stable），但不淘汰
-        if round_no == 1:
-            stance = Stance.SUPPORT
-        else:
-            stance = Stance.UNCERTAIN  # score=0，不触发任何淘汰
+        stance = Stance.SUPPORT if round_no == 1 else Stance.UNCERTAIN  # score=0, 不淘汰
         return Judgement(agent.id, hyp_id, round_no, stance, 0.8)
     verdict = await v.verify(
         hypotheses=["A", "B"],

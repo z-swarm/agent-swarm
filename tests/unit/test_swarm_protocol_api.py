@@ -14,7 +14,6 @@ from agent_swarm.core.protocols import (
 from agent_swarm.core.swarm import Swarm
 from agent_swarm.core.types import Agent, AgentCapabilities, Task
 
-
 # ---------------------------------------------------------------------------
 # 测试用 fixture
 # ---------------------------------------------------------------------------

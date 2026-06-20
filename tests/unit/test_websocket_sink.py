@@ -335,7 +335,6 @@ async def test_websocket_sink_fast_consumer_unaffected_by_slow_peer() -> None:
             # 找到两个客户端
             clients = list(sink._clients.values())
             # 按连接顺序
-            fast_client = clients[0]
             slow_client = clients[1]
             # 慢客户端的 queue 改成 maxsize=1, 阻断 send loop
             slow_client.queue = asyncio.Queue(maxsize=1)
@@ -359,7 +358,7 @@ async def test_websocket_sink_fast_consumer_unaffected_by_slow_peer() -> None:
                         data = json.loads(msg.data)
                         if data["type"] == "event":
                             received += 1
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     break
             assert received == n, f"快客户端应收到 {n} 条，实际 {received}"
 

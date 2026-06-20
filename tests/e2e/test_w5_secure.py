@@ -13,6 +13,7 @@ W5 DoD (DESIGN §15):
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,10 @@ from agent_swarm.security import SandboxManager, SecurityPolicy
 from agent_swarm.tools.builtin.file_ops import ReadFileTool
 from agent_swarm.tools.builtin.shell import RunCommandTool
 from tests.conftest import FakeLLMProvider, ScriptedResponse
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32", reason="P3-WIN: e2e CLI run has Windows shell differences",
+)
 
 # ---------------------------------------------------------------------------
 # W5 DoD: 工具链路被 policy 拦截

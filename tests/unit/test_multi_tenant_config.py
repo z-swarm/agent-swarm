@@ -79,7 +79,7 @@ def test_context_asyncio_context_returns_context() -> None:
 def test_context_immutable() -> None:
     """SecurityContext 是 frozen dataclass"""
     ctx = SecurityContext(tenant_id="t1", session_id="s1", mode=TenantMode.MULTI)
-    with pytest.raises(Exception):  # FrozenInstanceError
+    with pytest.raises(Exception):  # noqa: BLE001, B017  # FrozenInstanceError
         ctx.tenant_id = "t2"  # type: ignore[misc]
 
 

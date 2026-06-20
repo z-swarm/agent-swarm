@@ -17,7 +17,6 @@ from agent_swarm.channels.base import (
     MessageType,
 )
 from agent_swarm.security.channel_approver import (
-    ApprovalRequest,
     ChannelApprover,
 )
 from agent_swarm.security.context import SecurityContext, default_local_context
@@ -245,7 +244,7 @@ async def test_approver_cancel_all() -> None:
 
     tasks = []
     for i in range(3):
-        async def run_one():
+        async def run_one(i: int = i) -> str:  # noqa: B023
             return await approver(_decision(f"op-{i}"), _ctx())
         tasks.append(asyncio.create_task(run_one()))
     await asyncio.sleep(0.1)

@@ -11,12 +11,17 @@ W1 e2e 已覆盖 happy path；这里专挑：
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
 
 from agent_swarm.cli.main import cli
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32", reason="P3-WIN: CLI subprocess tests have Windows shell differences",
+)
 
 
 def test_cli_version() -> None:
@@ -544,7 +549,6 @@ def test_cli_run_injects_api_key_to_anthropic_env(
         )
 
     monkeypatch.setattr("agent_swarm.core.swarm.Swarm.run", fake_run)
-    import os
 
     runner = CliRunner()
     res = runner.invoke(
@@ -650,7 +654,6 @@ def test_cli_run_fails_fast_when_db_is_directory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """--db 指向一个目录 → fail-fast exit 2"""
-    from agent_swarm.core.swarm import SwarmResult
 
     cfg_yaml = """
 name: db-dir
@@ -679,7 +682,6 @@ def test_cli_run_fails_fast_when_db_not_writable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """--db 文件存在但当前用户无写权限 → fail-fast exit 2"""
-    from agent_swarm.core.swarm import SwarmResult
 
     cfg_yaml = """
 name: db-ro

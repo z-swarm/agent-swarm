@@ -15,6 +15,7 @@ DoD:
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,10 @@ from click.testing import CliRunner
 from agent_swarm.cli.main import cli
 from agent_swarm.core.types import ToolCall
 from tests.conftest import FakeLLMProvider, ScriptedResponse
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32", reason="P3-WIN: e2e CLI run has Windows shell differences",
+)
 
 
 def _make_w1_yaml(tmp_path: Path, readme_path: Path) -> Path:

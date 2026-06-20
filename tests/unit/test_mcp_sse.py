@@ -143,9 +143,11 @@ async def test_connect_handshake_failure_raises() -> None:
         async def close(self):
             pass
 
-    with patch.object(client, "_session", _MockSession()):
-        with pytest.raises(MCPConnectionError, match="handshake failed"):
-            await client.connect()
+    with (
+        patch.object(client, "_session", _MockSession()),
+        pytest.raises(MCPConnectionError, match="handshake failed"),
+    ):
+        await client.connect()
 
 
 @pytest.mark.asyncio
@@ -244,9 +246,11 @@ async def test_post_non_2xx_raises_http_error() -> None:
     client = SseMCPClient(cfg)
 
     resp = _make_sse_response([], status=500)
-    with patch.object(client, "_session", _make_mock_session([resp])):
-        with pytest.raises(MCPHTTPError, match="status=500"):
-            await client._post_and_read_sse({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    with (
+        patch.object(client, "_session", _make_mock_session([resp])),
+        pytest.raises(MCPHTTPError, match="status=500"),
+    ):
+        await client._post_and_read_sse({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
 
 
 @pytest.mark.asyncio

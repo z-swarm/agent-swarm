@@ -24,19 +24,13 @@ from pathlib import Path
 
 import pytest
 import yaml
-from click.testing import CliRunner
 
-from agent_swarm.cli.main import cli
 from agent_swarm.core.protocols import DelegateMode
 from agent_swarm.core.swarm import Swarm
 from agent_swarm.core.types import (
     AgentCapabilities,
-    Task,
-    ToolCall,
 )
-from agent_swarm.providers.base import LLMProvider
 from tests.conftest import FakeLLMProvider, ScriptedResponse
-
 
 # ---------------------------------------------------------------------------
 # 共享 fixture：最小 W7 配置

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import sys
 from pathlib import Path
 
@@ -16,7 +15,6 @@ from agent_swarm.mcp.client import (
     StdioMCPClient,
 )
 from agent_swarm.mcp.registry import MCPServerConfig
-
 
 # ---------------------------------------------------------------------------
 # 假 MCP server 脚本——通过 stdin/stdout 与客户端对话
@@ -239,7 +237,7 @@ async def test_repeated_connect_clears_pending_state(fake_mcp_script: Path) -> N
     assert client._pending == {}
     assert client._next_id == 1
     # 旧 future 收到 MCPConnectionError（防泄漏）
-    with pytest.raises(Exception):  # noqa: BLE001
+    with pytest.raises(Exception):  # noqa: BLE001, B017  # MCPConnectionError
         await fut
     await client.disconnect()
 

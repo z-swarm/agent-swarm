@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 # 卡片头部颜色
 _HEADER_TEMPLATES: dict[str, str] = {
     "info": "blue",

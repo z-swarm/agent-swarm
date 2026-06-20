@@ -16,7 +16,6 @@ W10 范围：
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import hashlib
 import hmac
@@ -29,7 +28,6 @@ from typing import Any
 
 # cryptography 是可选依赖 — 仅 encrypt_key 启用时才需要
 # 延迟导入避免强制依赖,pyproject.toml 已声明
-
 from agent_swarm.channels.base import (
     ChannelConnector,
     ChannelMessage,

@@ -13,12 +13,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 
 import aiohttp
 import pytest
 
-from agent_swarm.core.types import SessionEvent
 from agent_swarm.observability import (
     ObservabilityBus,
     SqliteEventSink,

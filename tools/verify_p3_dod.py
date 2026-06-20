@@ -27,10 +27,17 @@ def _run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess
     return proc
 
 
+def _py() -> str:
+    """Cross-platform venv python executable path (P3-WIN fix)."""
+    if sys.platform == "win32":
+        return str(REPO / ".venv-win" / "Scripts" / "python.exe")
+    return str(REPO / ".venv" / "bin" / "python")
+
+
 def check_tui_boundary() -> None:
     """P3-3.7: TUI 边界场景（5 个新场景）"""
     print("[P3-3.7] TUI 边界场景测试")
-    proc = _run([".venv/bin/python", "-m", "pytest",
+    proc = _run([_py(), "-m", "pytest",
                  "tests/unit/test_tui.py", "-q", "--no-header",
                  "-k", "handles_ or quick_reconnect"])
     assert "5 passed" in proc.stdout, f"未达 5 passed: {proc.stdout}"
@@ -40,7 +47,7 @@ def check_tui_boundary() -> None:
 def check_swarm_enum() -> None:
     """P3-3.8a: core/swarm.py:142 枚举校验替代 type: ignore"""
     print("[P3-3.8a] Swarm.update_task_status 枚举校验")
-    proc = _run([".venv/bin/python", "-m", "pytest",
+    proc = _run([_py(), "-m", "pytest",
                  "tests/unit/test_lead_tools.py::test_update_task_swarm_api_rejects_invalid_status",
                  "-v", "--no-header"])
     assert "1 passed" in proc.stdout
@@ -65,7 +72,7 @@ def check_pyproject_description() -> None:
 def check_no_regression() -> None:
     """无回归"""
     print("[P3-regression] 全量测试 + mypy")
-    proc = _run([".venv/bin/python", "-m", "pytest",
+    proc = _run([_py(), "-m", "pytest",
                  "tests/unit", "tests/e2e", "tests/golden", "tests/security",
                  "-q", "--no-header"])
     last = proc.stdout.strip().splitlines()[-1]
@@ -73,7 +80,7 @@ def check_no_regression() -> None:
     assert n >= 670, f"P3 后测试数 {n} < 670"
     print(f"  ✓ {last}")
     # mypy
-    proc2 = _run([".venv/bin/python", "-m", "mypy", "src/agent_swarm"])
+    proc2 = _run([_py(), "-m", "mypy", "src/agent_swarm"])
     assert "Success" in proc2.stdout
     print("  ✓ mypy 0 errors")
 

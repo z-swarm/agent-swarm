@@ -36,6 +36,12 @@ from agent_swarm.observability import (
     emit,
 )
 from agent_swarm.providers import get_provider
+from agent_swarm.security.context import (
+    SecurityContext,
+    SecurityContextManager,
+)
+from agent_swarm.skills import SkillRegistry
+from agent_swarm.tools import build_per_agent_tools, build_shared_tools
 
 # P3-3.8a (REVIEW-2026-06-19 §3.8)：Task.status 合法值集合
 # 改用 frozenset 显式校验，删 type: ignore[assignment]
@@ -43,12 +49,6 @@ from agent_swarm.providers import get_provider
 _VALID_TASK_STATUSES: frozenset[str] = frozenset({
     "pending", "blocked", "in_progress", "completed", "failed",
 })
-from agent_swarm.security.context import (
-    SecurityContext,
-    SecurityContextManager,
-)
-from agent_swarm.skills import SkillRegistry
-from agent_swarm.tools import build_per_agent_tools, build_shared_tools
 
 log = logging.getLogger(__name__)
 

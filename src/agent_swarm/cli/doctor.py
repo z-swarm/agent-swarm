@@ -166,24 +166,26 @@ async def check_llm_provider(provider: str, env_var: str) -> CheckResult:
         )
 
     try:
-        async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=10.0),
-        ) as session:
+        async with (
+            aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=10.0),
+            ) as session,
+            session.get(url, headers=headers) as resp,
+        ):
             # openai: HEAD 不被支持，改 GET v1/models
             # anthropic: POST /v1/messages 必传 body；用 GET 探测（会被拒 405），
             # 401/403/405 都算"端点可达 + key 校验生效"
-            async with session.get(url, headers=headers) as resp:
-                if resp.status < 500:
-                    return CheckResult(
-                        name=f"llm.{provider}",
-                        status=CheckStatus.OK,
-                        message=f"reachable (status={resp.status})",
-                    )
+            if resp.status < 500:
                 return CheckResult(
                     name=f"llm.{provider}",
-                    status=CheckStatus.FAIL,
-                    message=f"server error status={resp.status}",
+                    status=CheckStatus.OK,
+                    message=f"reachable (status={resp.status})",
                 )
+            return CheckResult(
+                name=f"llm.{provider}",
+                status=CheckStatus.FAIL,
+                message=f"server error status={resp.status}",
+            )
     except aiohttp.ClientError as exc:
         return CheckResult(
             name=f"llm.{provider}",
@@ -511,7 +513,7 @@ def doctor(
                 f"{dck_report['escape_attempts_count']} escape attempts blocked. "
                 f"Recommendation: {dck_report['recommendation'][:80]}"
             )
-            status = CheckStatus.PASS
+            status = CheckStatus.OK
         else:
             msg = (
                 "Docker not available. WORKSPACE_ONLY mode active. "

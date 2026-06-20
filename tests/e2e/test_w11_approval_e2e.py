@@ -40,7 +40,6 @@ from agent_swarm.security import (
 from agent_swarm.security.channel_approver import ChannelApprover
 from agent_swarm.tools.builtin.shell import RunCommandTool
 
-
 # ---------------------------------------------------------------------------
 # Stub connector
 # ---------------------------------------------------------------------------
@@ -225,7 +224,7 @@ async def test_mcp_high_risk_with_channel_approver() -> None:
         def is_connected(self): return True
         async def connect(self): pass
 
-    mcp_adapter = MCPToolAdapter(
+    MCPToolAdapter(
         server_name="github", mcp_tool_name="create_issue",
         description="x", parameters={"type": "object"},
         client=_StubMCP(), risk="high",

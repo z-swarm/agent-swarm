@@ -30,11 +30,9 @@ from agent_swarm.channels.adapter import ChannelAdapter
 from agent_swarm.channels.base import (
     ChannelMessage,
     ChannelResponse,
-    ChannelType,
     ChannelUser,
     MessageType,
 )
-from agent_swarm.security.approval import Approver
 from agent_swarm.security.context import SecurityContext
 from agent_swarm.security.policy import PolicyDecision
 
@@ -126,7 +124,7 @@ class ChannelApprover:
             log.info("channel_approver.request_sent id=%s reason=%s",
                      request_id, decision.reason)
             return await asyncio.wait_for(request.future, timeout=self._timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             log.warning("channel_approver.timeout id=%s after %.1fs",
                         request_id, self._timeout)
             return False

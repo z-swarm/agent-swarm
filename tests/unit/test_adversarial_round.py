@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 
 from agent_swarm.core.adversarial import (
-    EliminationResult,
     attach_judgements,
     compute_support_scores,
     eliminate,
@@ -18,7 +17,6 @@ from agent_swarm.core.types import (
     Judgement,
     Stance,
 )
-
 
 # ---------------------------------------------------------------------------
 # fixture
@@ -203,7 +201,7 @@ def test_eliminate_no_support_stance_in_round() -> None:
     ]
     # score = (-0.3) / 2 = -0.15 > threshold=-0.5 看似存活
     # 但 cond_c 触发（无 SUPPORT）
-    result = eliminate([h], compute_support_scores([h], 1), threshold=-0.5)
+    eliminate([h], compute_support_scores([h], 1), threshold=-0.5)
     assert h.eliminated is True
 
 

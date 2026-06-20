@@ -137,13 +137,14 @@ class CircuitBreaker:
 
     def _maybe_half_open(self) -> None:
         """OPEN 状态到 cool_off 后自动切 HALF_OPEN（lazy——下次 state 访问时）"""
-        if self._state == CircuitState.OPEN:
-            if time.monotonic() - self._opened_at >= self.cool_off_s:
-                log.info(
-                    "MCP %s circuit OPEN → HALF_OPEN (after %.1fs cool-off)",
-                    self.server_name, self.cool_off_s,
-                )
-                self._state = CircuitState.HALF_OPEN
+        if self._state == CircuitState.OPEN and (
+            time.monotonic() - self._opened_at >= self.cool_off_s
+        ):
+            log.info(
+                "MCP %s circuit OPEN → HALF_OPEN (after %.1fs cool-off)",
+                self.server_name, self.cool_off_s,
+            )
+            self._state = CircuitState.HALF_OPEN
 
     def _record_success(self) -> None:
         """调用成功——重置失败计数 + 关闭熔断"""

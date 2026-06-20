@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol
 # security 模块定义 ToolRisk——types.py 反向引用
 # 安全模块不依赖 core.types，依赖方向 core→security 不会形成循环
 if TYPE_CHECKING:
-    from agent_swarm.security.policy import ToolRisk
+    pass
 
 # ---------------------------------------------------------------------------
 # 工具相关（最简版本，W5 才接 SecurityPolicy）
@@ -80,7 +80,7 @@ class AgentCapabilities:
             self.max_tool_risk = ToolRisk.MEDIUM
 
     @classmethod
-    def worker(cls, tools: set[str], max_risk: Any = None) -> "AgentCapabilities":
+    def worker(cls, tools: set[str], max_risk: Any = None) -> AgentCapabilities:
         """预设：执行者——只执行不编排
 
         @param tools 允许使用的工具 id 集合（被复制，避免外部污染）
@@ -97,7 +97,7 @@ class AgentCapabilities:
         )
 
     @classmethod
-    def lead(cls) -> "AgentCapabilities":
+    def lead(cls) -> AgentCapabilities:
         """预设：协调者——只编排不执行（DESIGN §7.1）
 
         允许工具：send_message / review_plan / update_task
@@ -115,7 +115,7 @@ class AgentCapabilities:
         )
 
     @classmethod
-    def plan_only(cls) -> "AgentCapabilities":
+    def plan_only(cls) -> AgentCapabilities:
         """预设：只规划不动手（DESIGN §7.1）——只读工具集
 
         允许工具：read_file / search_code / send_message
@@ -337,7 +337,7 @@ class HypothesisState:
     statement: str
     eliminated: bool = False
     eliminated_at_round: int | None = None
-    judgements_by_round: dict[int, list["Judgement"]] = field(default_factory=dict)
+    judgements_by_round: dict[int, list[Judgement]] = field(default_factory=dict)
 
     def support_score(self, round_no: int) -> float:
         """

@@ -10,7 +10,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-swarm"
-version = "0.1.0a1"
+version = "0.3.0"
 description = "通用多 Agent 协作框架（Phase 2: Delegate Mode + Adversarial Verify + MCP 集成）"
 readme = "README.md"
 requires-python = ">=3.11"

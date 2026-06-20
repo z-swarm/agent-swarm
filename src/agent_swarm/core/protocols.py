@@ -54,7 +54,7 @@ class CollaborationProtocol(ABC):
     """
 
     @abstractmethod
-    async def execute(self, swarm: "Swarm") -> ProtocolResult:
+    async def execute(self, swarm: Swarm) -> ProtocolResult:
         """
         驱动一轮协议执行——阻塞直到协议达到终止条件
 
@@ -97,15 +97,15 @@ class DelegateMode(CollaborationProtocol):
         self._summary_label = summary_label
 
     @staticmethod
-    def _partition(agents: list["Agent"]) -> tuple[list["Agent"], list["Agent"]]:
+    def _partition(agents: list[Agent]) -> tuple[list[Agent], list[Agent]]:
         """
         按 capabilities 把 agent 拆成 (leads, workers)
 
         规则：can_spawn_agents=True 视为 lead；can_execute_actions=True 视为 worker
         两者皆可（既可 spawn 又可 execute——如 plan_only 角色），归入 leads 优先
         """
-        leads: list["Agent"] = []
-        workers: list["Agent"] = []
+        leads: list[Agent] = []
+        workers: list[Agent] = []
         for a in agents:
             if a.capabilities.can_spawn_agents:
                 leads.append(a)
@@ -113,7 +113,7 @@ class DelegateMode(CollaborationProtocol):
                 workers.append(a)
         return leads, workers
 
-    async def execute(self, swarm: "Swarm") -> ProtocolResult:
+    async def execute(self, swarm: Swarm) -> ProtocolResult:
         """驱动一轮 delegate：校验 → 跑 → 收 summary"""
         leads, workers = self._partition(swarm.agents)
         if not leads:

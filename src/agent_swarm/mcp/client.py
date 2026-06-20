@@ -15,6 +15,7 @@ JSON-RPC 2.0 简化版（请求-响应）：
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 from abc import ABC, abstractmethod
@@ -186,20 +187,16 @@ class StdioMCPClient(MCPClient):
             t = getattr(self, task_attr, None)
             if t is not None:
                 t.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError, Exception):
                     await t
-                except (asyncio.CancelledError, Exception):  # noqa: BLE001
-                    pass
                 setattr(self, task_attr, None)
         if self._process is not None:
             try:
                 self._process.terminate()
                 await asyncio.wait_for(self._process.wait(), timeout=2.0)
             except (TimeoutError, ProcessLookupError):
-                try:
+                with contextlib.suppress(ProcessLookupError):
                     self._process.kill()
-                except ProcessLookupError:
-                    pass
             self._process = None
         log.info("MCP stdio client disconnected: %s", self._config.name)
 

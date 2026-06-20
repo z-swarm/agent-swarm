@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import pytest
-import yaml
 
 from agent_swarm.core.adversarial import AdversarialVerifier
-from agent_swarm.core.protocols import ProtocolResult
 from agent_swarm.core.swarm import Swarm
 from agent_swarm.core.types import (
     Agent,
@@ -76,8 +74,9 @@ def test_protocol_result_includes_adversarial_fields() -> None:
         "convergence_reason", "root_cause", "confidence",
     }
     # AdversarialVerifier.execute 内部会构造这些字段（看代码确认）
-    from agent_swarm.core.adversarial import AdversarialVerifier
     import inspect
+
+    from agent_swarm.core.adversarial import AdversarialVerifier
     src = inspect.getsource(AdversarialVerifier.execute)
     for field in expected:
         assert field in src, f"ProtocolResult.artifacts 缺字段: {field}"

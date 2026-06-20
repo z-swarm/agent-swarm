@@ -21,6 +21,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
+from agent_swarm.core.protocols import CollaborationProtocol, ProtocolResult
 from agent_swarm.core.types import (
     Agent,
     HypothesisState,
@@ -28,8 +29,6 @@ from agent_swarm.core.types import (
     Stance,
     Verdict,
 )
-
-from agent_swarm.core.protocols import CollaborationProtocol, ProtocolResult
 
 if TYPE_CHECKING:
     from agent_swarm.core.swarm import Swarm  # 仅类型注解用
@@ -80,7 +79,7 @@ async def gather_round(
 
     raw = await asyncio.gather(*tasks)
     judgements: list[Judgement] = []
-    for j, (agent, h_id) in zip(raw, task_meta):
+    for j, (agent, h_id) in zip(raw, task_meta, strict=False):
         if j is None:
             # judge_fn 抛异常——兜底为 UNCERTAIN
             judgements.append(Judgement(
@@ -89,7 +88,7 @@ async def gather_round(
                 round_no=round_no,
                 stance=Stance.UNCERTAIN,
                 confidence=0.0,
-                reasoning=f"judge_fn raised; treated as UNCERTAIN per DESIGN §6.2.5",
+                reasoning="judge_fn raised; treated as UNCERTAIN per DESIGN §6.2.5",
             ))
         else:
             judgements.append(j)
@@ -349,7 +348,7 @@ class AdversarialVerifier(CollaborationProtocol):
         self,
         hypotheses: list[str],
         agents: list[Agent],
-        judge_fn: "JudgeFn | None" = None,
+        judge_fn: JudgeFn | None = None,
     ) -> Verdict:
         """跑一轮对抗式验证（DESIGN §6.2.6）"""
         if not hypotheses:
@@ -417,7 +416,7 @@ class AdversarialVerifier(CollaborationProtocol):
             convergence_reason="max_rounds_exhausted",
         )
 
-    async def execute(self, swarm: "Swarm") -> ProtocolResult:
+    async def execute(self, swarm: Swarm) -> ProtocolResult:
         """
         按协议驱动 swarm 跑对抗式验证
 
@@ -426,7 +425,6 @@ class AdversarialVerifier(CollaborationProtocol):
                      缺则退化用所有 agent。
         @note W8 骨架：假设/agent 提取用最简规则；W8-5 Golden Case 时细化。
         """
-        from agent_swarm.core.swarm import Swarm  # 局部 import 避免循环
 
         hypotheses = [t.title for t in swarm.tasks if t.title]
         judges = [
@@ -489,7 +487,7 @@ class AdversarialVerifier(CollaborationProtocol):
         states: list[HypothesisState],
         history: list[Judgement],
         rounds_used: int,
-        convergence_reason: "ConvergenceReason",
+        convergence_reason: ConvergenceReason,
     ) -> Verdict:
         """构造 Verdict——survivors 按最后一轮 support_score 降序排"""
         survivors = [h for h in states if not h.eliminated]

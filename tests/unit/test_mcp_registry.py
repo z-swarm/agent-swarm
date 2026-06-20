@@ -7,7 +7,6 @@ import yaml
 
 from agent_swarm.mcp import MCPRegistry, MCPServerConfig
 
-
 # ---------------------------------------------------------------------------
 # MCPServerConfig 校验
 # ---------------------------------------------------------------------------

@@ -14,7 +14,6 @@ from agent_swarm.core.protocols import (
 )
 from agent_swarm.core.types import Agent, AgentCapabilities, Task
 
-
 # ---------------------------------------------------------------------------
 # ProtocolResult
 # ---------------------------------------------------------------------------
@@ -126,11 +125,6 @@ def test_delegate_mode_partition_includes_plan_only_warning() -> None:
     assert workers == []
 
 
-@pytest.mark.asyncio
-async def test_delegate_mode_rejects_no_lead() -> None:
-    """没有 lead → success=False + 明确 error 提示"""
-
-
 @dataclass
 class _StubSwarm:
     """最小可被 DelegateMode 调用的 swarm 双胞胎
@@ -159,7 +153,7 @@ async def _run_with_agents(agents: list[Agent]) -> ProtocolResult:
 
 
 @pytest.mark.asyncio
-async def test_delegate_mode_rejects_no_lead() -> None:
+async def test_delegate_mode_rejects_no_lead() -> None:  # noqa: F811
     """无 lead → fail-fast，避免跑空"""
     workers = [_agent(f"w{i}", execute=True) for i in range(2)]
     result = await _run_with_agents(workers)

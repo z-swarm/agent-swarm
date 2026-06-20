@@ -23,9 +23,6 @@ from agent_swarm.mcp import (
     StdioMCPClient,
     await_build_tool_adapters,
 )
-from agent_swarm.mcp.adapter import MCPToolAdapter
-from agent_swarm.core.swarm import Swarm
-
 
 # ---------------------------------------------------------------------------
 # 2 个 mock MCP server 脚本（filesystem + GitHub）

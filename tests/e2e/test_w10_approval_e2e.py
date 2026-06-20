@@ -14,7 +14,6 @@ P2-3.4 DoD（按审计要求）：
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 
 import pytest
@@ -30,7 +29,6 @@ from agent_swarm.security import (
     default_local_context,
 )
 from agent_swarm.tools.builtin.shell import RunCommandTool
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -24,20 +24,18 @@ import yaml
 
 from agent_swarm.channels.adapter import ChannelAdapter
 from agent_swarm.channels.base import (
+    ChannelConnector,
     ChannelMessage,
     ChannelResponse,
     ChannelType,
-    ChannelUser,
     MessageType,
 )
+from agent_swarm.channels.card_templates import render_card
 from agent_swarm.channels.lark import (
-    LARK_API_BASE,
     LarkConnector,
     resolve_lark_secret,
     verify_lark_signature,
 )
-from agent_swarm.channels.card_templates import render_card
-from agent_swarm.channels.base import ChannelConnector
 
 
 class _StubConnector(ChannelConnector):
@@ -398,7 +396,6 @@ def test_all_five_templates_render_with_valid_lark_structure() -> None:
 
 def test_example_yaml_lark_config_loads() -> None:
     """example/w10_lark.yaml 配置可被 yaml.safe_load 解析"""
-    from pathlib import Path
     p = Path("examples/w10_lark.yaml")
     if not p.exists():
         pytest.skip("examples/w10_lark.yaml not present (will be added in W10-5)")

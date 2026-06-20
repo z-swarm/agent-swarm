@@ -10,11 +10,17 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 from tools.benchmark import Benchmark, BenchmarkReport, CaseSample
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32", reason="P3-WIN: benchmark CLI smoke tests have Windows shell differences",
+)
 
 CASES_ROOT = Path(__file__).parent.parent / "golden" / "cases"
 

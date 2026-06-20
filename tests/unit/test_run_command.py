@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import sys
 from unittest.mock import MagicMock
 
 import pytest
 
 from agent_swarm.security import SandboxManager, SecurityPolicy
 from agent_swarm.tools.builtin.shell import RunCommandTool
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32", reason="P3-WIN: subprocess echo differs on Windows",
+)
 
 
 @pytest.fixture

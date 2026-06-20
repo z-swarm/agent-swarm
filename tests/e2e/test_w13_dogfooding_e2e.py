@@ -16,16 +16,17 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from tools.agent_review import (
-    ReviewFinding,
-    ReviewReport,
-    get_pr_diff,
-    run_simple_review,
     static_security_scan,
+)
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32", reason="P3-WIN: dogfooding CLI invocation has Windows shell differences",
 )
 
 

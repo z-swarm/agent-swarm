@@ -22,7 +22,6 @@ from agent_swarm.channels.lark import (
     verify_lark_signature,
 )
 
-
 # ---------------------------------------------------------------------------
 # verify_lark_signature / resolve_lark_secret
 # ---------------------------------------------------------------------------

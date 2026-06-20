@@ -21,9 +21,8 @@ import pytest
 from agent_swarm.core.knowledge_base import KnowledgeBase
 from agent_swarm.core.mailbox import Mailbox
 from agent_swarm.core.task_queue import TaskQueue
-from agent_swarm.core.types import Agent, AgentCapabilities, Message
+from agent_swarm.core.types import Message
 from agent_swarm.security.context import SecurityContext, TenantMode
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

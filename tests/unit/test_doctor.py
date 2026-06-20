@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import sqlite3
+import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -28,6 +29,10 @@ from agent_swarm.cli.doctor import (
     check_secrets,
     check_sqlite_lock,
     doctor,
+)
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32", reason="P3-WIN: doctor CLI invocation differs on Windows",
 )
 
 # ---------------------------------------------------------------------------

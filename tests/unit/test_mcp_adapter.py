@@ -155,7 +155,7 @@ async def test_build_adapters_skips_tools_without_name(fake_mcp_script: Path) ->
     """MCP tool 缺 name → 跳过（fail-soft）"""
     cfg = MCPServerConfig(name="fake", transport="stdio",
                           command=[sys.executable, str(fake_mcp_script)])
-    client = StdioMCPClient(cfg, timeout_s=5.0)
+    StdioMCPClient(cfg, timeout_s=5.0)
     # 用 stub list_tools 模拟空 name
     class _StubClient:
         async def list_tools(self):

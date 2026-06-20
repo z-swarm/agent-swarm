@@ -22,10 +22,10 @@ W12 范围：
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
-from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -144,24 +144,18 @@ class WebSocketSink(ObservabilitySink):
         self._started = False
         if self._heartbeat_task is not None:
             self._heartbeat_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError, Exception):
                 await self._heartbeat_task
-            except (asyncio.CancelledError, Exception):  # noqa: BLE001
-                pass
             self._heartbeat_task = None
         # 关闭所有客户端
         async with self._clients_lock:
             for client in list(self._clients.values()):
-                try:
+                with contextlib.suppress(Exception):
                     await client.ws.close(code=WSCloseCode.GOING_AWAY)
-                except Exception:  # noqa: BLE001
-                    pass
             self._clients.clear()
         if self._server is not None:
-            try:
+            with contextlib.suppress(Exception):
                 await self._server.cleanup()
-            except Exception:  # noqa: BLE001
-                pass
             self._server = None
 
     # ------------------------------------------------------------------
@@ -245,9 +239,7 @@ class WebSocketSink(ObservabilitySink):
                                 client.last_pong_at = time.time()
                         except (json.JSONDecodeError, Exception) as exc:  # noqa: BLE001
                             log.debug("websocket_sink.invalid_client_msg err=%s", exc)
-                    elif msg.type == WSMsgType.PING:
-                        client.last_pong_at = time.time()
-                    elif msg.type == WSMsgType.PONG:
+                    elif msg.type == WSMsgType.PING or msg.type == WSMsgType.PONG:
                         client.last_pong_at = time.time()
                     elif msg.type == WSMsgType.ERROR:
                         log.warning("websocket_sink.ws_error id=%s err=%s",
@@ -255,10 +247,8 @@ class WebSocketSink(ObservabilitySink):
                         break
             finally:
                 sender.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError, Exception):
                     await sender
-                except (asyncio.CancelledError, Exception):  # noqa: BLE001
-                    pass
         finally:
             async with self._clients_lock:
                 self._clients.pop(client_id, None)
@@ -300,10 +290,8 @@ class WebSocketSink(ObservabilitySink):
                     ]
                 for c in stale:
                     log.info("websocket_sink.heartbeat_timeout id=%s", c.client_id)
-                    try:
+                    with contextlib.suppress(Exception):
                         await c.ws.close(code=WSCloseCode.GOING_AWAY)
-                    except Exception:  # noqa: BLE001
-                        pass
             except asyncio.CancelledError:
                 break
             except Exception as exc:  # noqa: BLE001

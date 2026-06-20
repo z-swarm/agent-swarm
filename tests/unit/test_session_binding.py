@@ -12,18 +12,12 @@
 
 from __future__ import annotations
 
-import tempfile
 import threading
 from pathlib import Path
 
-import pytest
-
 from agent_swarm.core.session_binding import (
-    ChannelIdentity,
-    SessionBinding,
     SessionBindingManager,
 )
-
 
 # ---------------------------------------------------------------------------
 # ChannelIdentity

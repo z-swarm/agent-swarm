@@ -15,8 +15,8 @@ from agent_swarm.observability.prometheus_sink import (
     CAS_CONFLICT_TOTAL,
     LLM_TOKENS_TOTAL,
     MCP_CIRCUIT_STATE,
-    PrometheusSink,
     TASKS_TOTAL,
+    PrometheusSink,
     run_metrics_server_forever,
 )
 from agent_swarm.observability.sinks import InMemorySink, JsonLogSink

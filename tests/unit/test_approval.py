@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from agent_swarm.security import (
@@ -10,6 +12,10 @@ from agent_swarm.security import (
     SecurityContext,
     SecurityContextManager,
     default_local_context,
+)
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32", reason="P3-WIN: subprocess run_command differs on Windows",
 )
 
 
