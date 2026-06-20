@@ -1,0 +1,103 @@
+# W17 示例：跨通道 Session 合并
+#
+# DoD:
+#   - 飞书用户 @bot + CLI 启动用同一 user_id → 共享 swarm session
+#   - 通道身份合并: 飞书 open_id <-> CLI user_id 通过 tenant_id + identity_key 映射
+#
+# 用法:
+#   # 1) CLI 启动 (用户 alice@example.com)
+#   agent-swarm --user alice@example.com run examples/w17_cross_channel.yaml
+#
+#   # 2) 飞书 @bot 触发 (同一 alice)
+#   # LarkConnector 把 open_id 映射到 user_id="alice@example.com"
+#   # → 共享同一 swarm session
+#
+# @note W17-2 SessionBindingManager: 映射表在 SQLite (W17-3 实现)
+# @note W17-2 跨通道: 飞书 + CLI + Web GUI 都接同一 SessionBindingManager
+
+name: w17-cross-channel
+
+# W17-2 通道身份合并: 用 identity_key (通常是 email) 跨通道统一身份
+session_binding:
+  enabled: true
+  # identity_key 解析优先级 (W17-2 DoD ④)
+  resolution_order:
+    - user_id          # 显式 user_id (最优先)
+    - identity_key     # 通道身份 (飞书 open_id / CLI user_email)
+    - channel_default  # 通道默认 (CLI=local, 飞书=tenant 用户)
+
+  # 飞书 → user_id 映射示例
+  lark_mappings:
+    - open_id: "ou_81b1aa6153af0a20632ae99e1a244895"
+      user_id: "alice@example.com"
+    - open_id: "ou_99aabbccddeeff0011223344556677"
+      user_id: "bob@example.com"
+
+  # 跨通道 Session 共享 (W17-2 DoD ③)
+  same_session_for_same_user: true
+
+agents:
+  - id: shared-assistant
+    role: cross-channel assistant
+    role_type: worker
+    persona: |
+      You are a shared assistant that serves the same user across Lark and CLI.
+      Session state should persist between channels.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 5
+
+  - id: lark-only-bot
+    role: Lark-only handler
+    role_type: plan_only
+    persona: |
+      You handle Lark-specific interactions (cards, @mentions). Plan only.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 3
+
+  - id: cli-only-handler
+    role: CLI-only handler
+    role_type: plan_only
+    persona: |
+      You handle CLI-specific interactions (terminal output, scripting). Plan only.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 3
+
+mcp_servers:
+  lark-mcp:
+    transport: sse
+    url: "${LARK_MCP_URL:-http://localhost:8765/lark/sse}"
+    auth: bearer
+    token: "${LARK_MCP_TOKEN:-dummy-token}"
+    reliability:
+      auto_reconnect: true
+      max_reconnect_attempts: 3
+      circuit_breaker_threshold: 3
+
+tasks:
+  - id: cross-channel-task-1
+    title: Cross-channel session merge demo
+    description: |
+      Verify that:
+      1. User alice@example.com starts session via CLI (creates session)
+      2. Same user triggers via Lark (reuses same session, not new one)
+      3. Session state shared: messages / task results visible across channels
+    assigned_to: shared-assistant
+
+  - id: identity-mapping-test
+    title: Identity mapping verification
+    description: |
+      Verify SessionBindingManager maps:
+      - Lark open_id "ou_81b1aa..." -> user_id "alice@example.com"
+      - CLI user_id "alice@example.com" -> no mapping needed (direct)
+      Both resolve to same SessionBindingManager entry.
+
+  - id: channel-specific-handler
+    title: Channel-specific handler routing
+    description: |
+      Verify that:
+      - Lark @bot messages route to lark-only-bot agent
+      - CLI commands route to cli-only-handler agent
+      - Generic tasks route to shared-assistant

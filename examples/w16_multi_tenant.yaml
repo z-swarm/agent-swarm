@@ -1,0 +1,75 @@
+# W16 示例：多租户安全隔离演示
+#
+# DoD:
+#   - 2 个 tenant 并发跑（tenant-A / tenant-B）
+#   - 每个 tenant 独立 agent 集合 + 独立 task_queue
+#   - 跨 tenant 数据完全不可见
+#
+# 用法:
+#   agent-swarm run examples/w16_multi_tenant.yaml
+#
+# @note W16 演示: tenant_id 在 SecurityContextManager.scope 包裹下传播
+#       单 swarm 实例的 SecurityContext 切换——验证多租户上下文隔离
+
+name: w16-multi-tenant
+
+agents:
+  - id: tenant-A-worker
+    role: tenant A's worker
+    role_type: worker
+    persona: |
+      You are worker for tenant A. You should NOT be able to access tenant B's data.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 3
+
+  - id: tenant-B-worker
+    role: tenant B's worker
+    role_type: worker
+    persona: |
+      You are worker for tenant B. You should NOT be able to access tenant A's data.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 3
+
+# W16-① SecurityContext.mode = multi 强制 tenant_id 必填
+security:
+  mode: multi  # 开启多租户模式
+  default_tenant_id: ""  # multi 模式下默认空 → 必须显式注入
+
+# Tenant quota 配置 (W16-③)
+tenants:
+  tenant-A:
+    max_agents: 10
+    max_concurrent_tasks: 20
+    max_tokens_per_hour: 1000000
+  tenant-B:
+    max_agents: 10
+    max_concurrent_tasks: 20
+    max_tokens_per_hour: 1000000
+
+tasks:
+  - id: tenant-A-task-1
+    title: Tenant A's secret task
+    description: |
+      Generate a confidential report for tenant A.
+      This task should be invisible to tenant B.
+    assigned_to: tenant-A-worker
+    tenant_id: tenant-A
+
+  - id: tenant-B-task-1
+    title: Tenant B's secret task
+    description: |
+      Generate a confidential report for tenant B.
+      This task should be invisible to tenant A.
+    assigned_to: tenant-B-worker
+    tenant_id: tenant-B
+
+  - id: cross-tenant-isolation-test
+    title: Verify cross-tenant isolation
+    description: |
+      This task verifies that:
+      1. tenant A cannot see tenant B's tasks (list_all filtered by tenant)
+      2. tenant A cannot claim tenant B's tasks (CAS isolation)
+      3. tenant A's KB cache is not visible to tenant B
+      4. quota.exceeded event emits when tenant exceeds limits

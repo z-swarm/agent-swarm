@@ -30,8 +30,8 @@ Schema (W5 升级, V2):
       PRIMARY KEY (tenant_id, session_id)
   );
 
-升级策略（Phase 1 → 多租户零代码改动）:
-  - 检测旧 V1 schema 存在 → 创建 V2 临时表 + INSERT INTO ... SELECT + DROP 旧表
+升级策略（Phase 1 -> 多租户零代码改动）:
+  - 检测旧 V1 schema 存在 -> 创建 V2 临时表 + 数据迁移 + drop 旧表
   - tenant_id 默认 'local' (W3 阶段所有 session 都落 local)
 
 WAL 模式 + synchronous=NORMAL 平衡安全/性能（DESIGN.md §12.4）

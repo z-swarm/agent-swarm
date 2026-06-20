@@ -1,6 +1,6 @@
 """
 @module agent_swarm.security.context
-@brief  SecurityContext + SecurityContextManager（W5）
+@brief  SecurityContext + SecurityContextManager（W5 / W16 多租户扩展）
 
 DESIGN.md §8.4 完整规约：
   - contextvars 模式——上下文在 async 任务树隐式传递
@@ -13,8 +13,13 @@ W5 落地：
   - SecurityContextManager: current() / scope() / async_scope() / current_or_default()
   - default_local_context() 工厂——便于测试 / 单租户场景
 
+W16 扩展（P3-PLAN-v2 W16 ②）：
+  - mode: single / multi 字段
+  - multi 模式下 tenant_id 必填且非默认值 "local"
+
 @note W5-Z 已知风险：asyncio.create_task 不会自动复制 contextvars
       （Python 3.11+ 默认会，但跨 task 边界仍需显式 scope 包裹回调）
+      → W17 §16.3 #11 闭环：agent_swarm.core.context.patched_create_task
 """
 
 from __future__ import annotations
@@ -24,9 +29,17 @@ import logging
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 log = logging.getLogger(__name__)
+
+
+class TenantMode(StrEnum):
+    """多租户模式——DESIGN §8.4 + P3-PLAN-v2 W16 ②"""
+
+    SINGLE = "single"  # 单租户（默认）：tenant_id 任意（默认 "local"）
+    MULTI = "multi"    # 多租户：tenant_id 必填且不能为 "local"
 
 
 @dataclass(frozen=True)
@@ -35,16 +48,31 @@ class SecurityContext:
     请求上下文——通过 contextvars 在 async 任务树中隐式传递
 
     DESIGN.md §A.5：
-      - tenant_id: 租户隔离的根字段
-      - user: 触发请求的外部用户（可能为 None：内部任务）
-      - session_id: 关联事件流
-      - request_id: 关联日志/审计
+      - mode:        TenantMode.single | .multi（W16 ② 引入）
+      - tenant_id:   租户隔离的根字段；multi 模式下必填且非 "local"
+      - user:        触发请求的外部用户（可能为 None：内部任务）
+      - session_id:  关联事件流
+      - request_id:  关联日志/审计
     """
 
     tenant_id: str
     session_id: str
+    mode: TenantMode = TenantMode.SINGLE
     user: Any | None = None
     request_id: str | None = None
+
+    def __post_init__(self) -> None:
+        """W16 ② 校验：multi 模式下 tenant_id 必填且非默认值"""
+        if self.mode == TenantMode.MULTI:
+            if not self.tenant_id or not self.tenant_id.strip():
+                raise ValueError(
+                    "SecurityContext.mode=MULTI requires non-empty tenant_id"
+                )
+            if self.tenant_id == "local":
+                raise ValueError(
+                    "SecurityContext.mode=MULTI rejects reserved tenant_id='local'; "
+                    "use a real tenant identifier (e.g. UUID / slug)"
+                )
 
     def asyncio_context(self) -> contextvars.Context:
         """
