@@ -15,9 +15,13 @@ import pytest
 from agent_swarm.golden import evaluate, load_expectation
 
 CASES_ROOT = Path(__file__).parent / "cases"
-P1_CASES = sorted(
-    [d for d in CASES_ROOT.iterdir() if d.is_dir() and d.name.startswith("G-0")]
-)
+# P1 cases: G-001 ~ G-010（10 个）
+P1_CASES = sorted([
+    d for d in CASES_ROOT.iterdir()
+    if d.is_dir() and d.name.startswith("G-0")
+    # 提取数字部分（G-001_x -> 1, G-018_x -> 18）
+    and 1 <= int(d.name.split("_")[0].split("-")[1]) <= 10
+])
 
 
 def _list_p1_cases() -> list[str]:

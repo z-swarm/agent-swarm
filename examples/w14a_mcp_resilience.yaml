@@ -1,0 +1,64 @@
+# W14a 示例：MCP 可靠性演示
+#
+# DoD:
+#   - 启动 swarm + 1 个 SSE MCP server + 1 个 stdio MCP server
+#   - 演示 kill server → ReconnectingMCPClient 自动重连 → 失败 N 次后 circuit OPEN
+#   - TUI 实时显示 circuit 状态
+#
+# 用法:
+#   export OPENAI_API_KEY=sk-...
+#   agent-swarm run examples/w14a_mcp_resilience.yaml
+#
+# 配套验证脚本:
+#   python tools/count_reconnect.py
+#   （无需启动 LLM，验证 reconnect + circuit breaker 路径）
+
+name: w14a-mcp-resilience
+
+agents:
+  - id: mcp-caller
+    role: mcp tool user
+    role_type: worker
+    persona: |
+      You are an agent that calls MCP tools from multiple servers. When a server
+      is unavailable, you should report the failure clearly (mention reconnect
+      attempts and circuit breaker state), not pretend success. If the circuit
+      is open, explain the user must wait for cool-off before retrying.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 5
+
+# W14a-2: SSE transport + Stdio transport 一起跑——验证 BaseMCPClient 抽象消除重复
+# （Phase 2 W9 已落地 stdio；W14a 新增 SSE；两者都自动包 ReconnectingMCPClient）
+mcp_servers:
+  github-sse:
+    transport: sse
+    url: "${MCP_GITHUB_SSE_URL:-http://localhost:8765/sse}"
+    auth: bearer
+    token: "${MCP_GITHUB_TOKEN:-dummy-token}"
+    reliability:
+      auto_reconnect: true
+      max_reconnect_attempts: 3
+      circuit_breaker_threshold: 3
+
+  filesystem-stdio:
+    transport: stdio
+    command: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    reliability:
+      auto_reconnect: true
+      max_reconnect_attempts: 3
+      circuit_breaker_threshold: 3
+
+tasks:
+  - id: list-tools-from-both
+    title: List tools from both MCP servers
+    description: |
+      Call mcp.github-sse.list_tools and mcp.filesystem-stdio.list_tools.
+      If either server is down, report the circuit breaker state for that server
+      (mention "reconnect attempts" and "circuit OPEN").
+
+  - id: retry-after-failure
+    title: Retry after server recovered
+    description: |
+      Wait for the failed server's circuit to recover (cool-off period),
+      then retry the tool call. Report success or final circuit state.

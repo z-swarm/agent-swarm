@@ -50,7 +50,7 @@ class MCPToolAdapter:
     parameters: dict[str, Any]  # MCP tool inputSchema
     client: MCPClient
     risk: ToolRiskStr = "medium"
-    policy: "SecurityPolicy | None" = None  # P1-3.1：可选注入
+    policy: SecurityPolicy | None = None  # P1-3.1：可选注入
 
     @property
     def name(self) -> str:
@@ -122,7 +122,7 @@ async def build_tool_adapters(
     config: MCPServerConfig,
     client: MCPClient,
     risk_overrides: dict[str, ToolRiskStr] | None = None,
-    policy: "SecurityPolicy | None" = None,  # P1-3.1：可注入
+    policy: SecurityPolicy | None = None,  # P1-3.1：可注入
 ) -> list[MCPToolAdapter]:
     """
     异步工厂：从 MCP client 的 list_tools() 构造 MCPToolAdapter 列表

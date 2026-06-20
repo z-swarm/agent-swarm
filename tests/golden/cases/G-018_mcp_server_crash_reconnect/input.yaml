@@ -1,0 +1,32 @@
+# G-018 input.yaml — MCP server 崩溃场景
+# W14a 测试专用：实际跑测试时不依赖真 MCP server
+# —— 用 fake 测试路径（test_mcp_resilience.py::test_reconnect_records_failures_in_circuit_breaker）
+# 这里 input.yaml 留作 golden framework 的最小占位
+
+name: g018-mcp-crash
+
+agents:
+  - id: mcp-caller
+    role: mcp tool user
+    role_type: worker
+    persona: |
+      You are an agent that calls MCP tools. When the MCP server is down,
+      you should report the failure clearly (mention reconnect attempts and
+      circuit breaker state), not pretend success.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 3
+
+tasks:
+  - id: call-broken-mcp
+    title: Call MCP tool on a server that will crash mid-call
+    description: |
+      Use the available MCP tool. The MCP server will be killed during the call.
+      Report: how many reconnect attempts happened, what state the circuit breaker
+      ended in, and whether the tool call succeeded or returned an error.
+
+  - id: call-again-after-meltdown
+    title: Call MCP tool again after circuit breaker tripped
+    description: |
+      The circuit breaker should be OPEN now. The tool call should fail fast
+      with a clear error. Report the failure and the circuit state.

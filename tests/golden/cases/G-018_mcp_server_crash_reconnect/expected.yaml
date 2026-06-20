@@ -1,0 +1,24 @@
+id: G-018
+title: MCP server 崩溃自动重连 3 次后熔断
+phase: 2
+swarm_config: input.yaml
+
+expected:
+  # W14a-6 验证：MCP server 崩溃后 3 次重连失败 → 熔断 → agent 收到 ToolUnavailableError
+  # 注意：本 Golden Case 模拟"重连全失败"的硬场景——verify 验证熔断路径正确触发
+  must_find:
+    - keyword: "reconnect"
+    - keyword: "circuit"
+    - keyword: "open"
+
+  must_not_claim:
+    - keyword: "success"
+    - keyword: "recovered"
+
+  performance:
+    max_duration_seconds: 30
+    max_total_tokens: 50000
+
+  quality:
+    # G-018 难 case：circuit 路径触发 + 关键词命中（agent 应返回失败信息而非假成功）
+    min_must_find_hit_rate: 0.66

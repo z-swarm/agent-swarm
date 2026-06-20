@@ -17,7 +17,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
@@ -196,7 +195,7 @@ class StdioMCPClient(MCPClient):
             try:
                 self._process.terminate()
                 await asyncio.wait_for(self._process.wait(), timeout=2.0)
-            except (asyncio.TimeoutError, ProcessLookupError):
+            except (TimeoutError, ProcessLookupError):
                 try:
                     self._process.kill()
                 except ProcessLookupError:
@@ -253,7 +252,7 @@ class StdioMCPClient(MCPClient):
             # 等响应（带超时）
             try:
                 return await asyncio.wait_for(future, timeout=self._timeout_s)
-            except asyncio.TimeoutError as exc:
+            except TimeoutError as exc:
                 raise MCPTimeoutError(
                     f"MCP {method} (id={req_id}) timeout after {self._timeout_s}s"
                 ) from exc
