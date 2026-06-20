@@ -53,11 +53,23 @@ class MCPServerConfig:
     circuit_breaker_threshold: int = 3
     # 工具风险覆写（DESIGN §7.3 risk_overrides：create_issue: high）
     risk_overrides: dict[str, str] = field(default_factory=dict)
+    # W20-⑧ MCP server 源分级——DESIGN §7.3 + §16.3 #10 收紧
+    #   source: official | community | private
+    #   official → LOW (默认信任度高)
+    #   community → HIGH (需 review)
+    #   private → MEDIUM (团队自维护)
+    source: Literal["official", "community", "private"] = "community"
 
     def __post_init__(self) -> None:
-        """配置校验：transport 决定必填字段"""
+        """配置校验：transport 决定必填字段 + source 必填"""
         if not self.name or not self.name.strip():
             raise ValueError("MCPServerConfig.name must be non-empty")
+        if self.source not in ("official", "community", "private"):
+            raise ValueError(
+                f"MCPServerConfig.source must be one of "
+                f"'official', 'community', 'private' — got {self.source!r}. "
+                f"W20 §16.3 #10: source field is mandatory.",
+            )
         if self.transport == "stdio":
             if not self.command:
                 raise ValueError(
@@ -207,10 +219,9 @@ class MCPRegistry:
             await wrapper.connect()
         except Exception as exc:  # noqa: BLE001
             log.warning("MCP %s connect failed: %s", name, exc)
-            try:
+            import contextlib
+            with contextlib.suppress(Exception):
                 await wrapper.disconnect()
-            except Exception:  # noqa: BLE001
-                pass
             return False
         self._clients[name] = wrapper
         log.info("MCP %s connected (reliability wrapper ready)", name)

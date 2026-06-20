@@ -1,0 +1,94 @@
+# W20 示例：Vault 密钥管理 + 轮换
+#
+# P3-PLAN-v2 W20 DoD ⑤:
+#   - LLM API key 走 Vault
+#   - 轮换测试 5 分钟内生效 (cache_ttl=300s)
+#
+# 用法:
+#   # 1) 启 Vault dev mode
+#   vault server -dev -dev-root-token-id=root
+#   export VAULT_ADDR=http://127.0.0.1:8200
+#
+#   # 2) 启用 KV v2
+#   vault secrets enable -path=secret kv-v2
+#
+#   # 3) 写 LLM API key
+#   vault kv put secret/OPENAI_API_KEY \
+#     value="sk-..." __metadata__='{"ttl_seconds": 2592000}'
+#   vault kv put secret/ANTHROPIC_API_KEY \
+#     value="sk-ant-..." __metadata__='{"ttl_seconds": 2592000}'
+#
+#   # 4) 启 agent-swarm
+#   agent-swarm --vault-url http://127.0.0.1:8200 \
+#               --vault-role-id <role-id> --vault-secret-id <secret-id> \
+#               run examples/w20_vault.yaml
+#
+#   # 5) 轮换测试 (5 分钟内 cache 失效, agent 无感切换)
+#   vault kv put secret/OPENAI_API_KEY value="sk-NEW-..." __metadata__='{"ttl_seconds": 2592000}'
+#   # 5 分钟后 agent 自动用新 key
+
+name: w20-vault
+
+# W20-6 降级路径——AgentSwarmConfig 可配 secret_manager: env | vault
+secret_manager:
+  backend: vault  # "env" | "vault"
+  vault:
+    url: "${VAULT_ADDR:-http://127.0.0.1:8200}"
+    role_id: "${VAULT_ROLE_ID:-}"
+    secret_id: "${VAULT_SECRET_ID:-}"
+    mount_point: "secret"
+    cache_ttl_seconds: 300  # 5 分钟
+    rotation_warning_days: 7  # 提前 7 天预警
+
+agents:
+  - id: vault-aware-agent
+    role: Vault-aware LLM worker
+    role_type: worker
+    persona: |
+      You read LLM API keys from Vault (KV v2 with 30-day TTL).
+      Cache TTL 5 minutes — rotation takes effect within 5 min.
+      Emit secret.rotation_due event when key within 7 days of expiry.
+    provider: openai  # auto-reads OPENAI_API_KEY from vault
+    model: gpt-4o-mini
+    max_iterations: 3
+
+mcp_servers:
+  vault-tools:
+    transport: stdio
+    command: "vault"
+    args: ["version", "-format=json"]
+    source: official  # W20-⑧ MCP source 分级——Vault 是官方工具
+    reliability:
+      auto_reconnect: false  # vault CLI 不需要重连
+      max_reconnect_attempts: 1
+      circuit_breaker_threshold: 3
+
+tasks:
+  - id: vault-read-key
+    title: Read LLM API key from Vault
+    description: |
+      agent-swarm 通过 VaultSecretManager 读 OPENAI_API_KEY:
+        - KV v2 path: secret/OPENAI_API_KEY
+        - cache_ttl_seconds: 300 (5 分钟)
+        - rotation_warning_days: 7
+      验证: 30 天 TTL, 提前 7 天 emit secret.rotation_due 事件
+    assigned_to: vault-aware-agent
+
+  - id: vault-rotation-test
+    title: Vault key rotation test (5-min cache)
+    description: |
+      1. 用 vault kv put 更新 OPENAI_API_KEY 为新值
+      2. 立即调 agent——应该仍用旧值 (缓存)
+      3. 等 5 分钟 (或 --flush-cache 强制刷新)
+      4. 再调 agent——用新值, 验证轮换生效
+    assigned_to: vault-aware-agent
+
+  - id: mcp-source-validation
+    title: Verify MCP source field is mandatory
+    description: |
+      验证 §16.3 #10 收紧——所有 MCP server 必须显式 source:
+        - official (Anthropic / OpenAI / Microsoft 等官方)
+        - community (社区贡献, HIGH risk + Approval 强制)
+        - private (团队自维护, MEDIUM risk)
+      YAML 缺 source 字段, agent-swarm 启动失败 (强制门禁)
+    assigned_to: vault-aware-agent
