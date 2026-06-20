@@ -228,7 +228,7 @@ class SessionBindingManager:
                     (tenant_id, identity_key),
                 ).fetchone()
                 if row is not None:
-                    return row[0]
+                    return str(row[0])
             return binding.session_id if binding else None
 
     def bind_or_get_session(
@@ -268,6 +268,7 @@ class SessionBindingManager:
                 return bound
         # 全新 session
         new_id = factory()
+        assert isinstance(new_id, str)
         self.bind_session(tenant_id, identity_key, new_id, channel)
         return new_id
 

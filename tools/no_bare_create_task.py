@@ -55,9 +55,7 @@ def _is_create_task_call(node: ast.Call) -> bool:
     if not isinstance(func.value, ast.Name) or func.value.id != "asyncio":
         return False
     # 显式传 context= 的视为合法 (开发者已手动处理)
-    if _has_context_kwarg(node):
-        return False
-    return True
+    return not _has_context_kwarg(node)
 
 
 def _is_noqa_marker(line: str) -> bool:

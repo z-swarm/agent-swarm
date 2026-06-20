@@ -31,11 +31,6 @@ from agent_swarm.security.context import (
     SecurityContextManager,
     TenantMode,
 )
-from agent_swarm.security.tenant_quota import (
-    TenantQuota,
-    TenantQuotaRegistry,
-)
-
 
 # ---------------------------------------------------------------------------
 # Test helpers

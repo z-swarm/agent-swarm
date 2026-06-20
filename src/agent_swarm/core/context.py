@@ -66,9 +66,9 @@ def patched_create_task(
     if name is not None:
         task_kwargs["name"] = name
     if ctx is not None:
-        # type: ignore[arg-type]  -- context= 是 3.11+ kwarg, 3.10 静默忽略
+        # Python 3.11+ asyncio.create_task 接受 context= 关键字
         task_kwargs["context"] = ctx.asyncio_context()
-    return asyncio.create_task(coro, **task_kwargs)  # type: ignore[arg-type]
+    return asyncio.create_task(coro, **task_kwargs)
 
 
 __all__ = ["patched_create_task"]

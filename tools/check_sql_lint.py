@@ -79,10 +79,11 @@ def _looks_like_sql(line: str) -> bool:
         return True
     if re.search(r'\bSELECT\b.*\bFROM\b', upper):
         return True
-    # 启发式 3: SELECT 出现在字符串中（f"..." 形式）
-    if re.search(r'["\'].*\bSELECT\b', line) and re.search(r'\bFROM\b', upper):
-        return True
-    return False
+    # 启发3: SELECT 出现在字符串中（f"..." 形式）
+    return bool(
+        (re.search(r'["\'].*\bSELECT\b', line) and re.search(r'\bFROM\b', upper))
+        or ("{" in line and "}" in line and re.search(r"\bSELECT\b", upper))
+    )
 
 # 排除单行注释
 COMMENT_LINE = re.compile(r"^\s*#")
@@ -93,10 +94,7 @@ TRIPLE_QUOTE = re.compile(r'"""')
 
 def _is_excluded(path: Path) -> bool:
     rel = str(path.relative_to(REPO)).replace("\\", "/")
-    for pat in EXCLUDE_PATTERNS:
-        if pat in rel:
-            return True
-    return False
+    return any(pat in rel for pat in EXCLUDE_PATTERNS)
 
 
 def _extract_sql_strings(content: str) -> list[tuple[int, str, str]]:
@@ -135,6 +133,8 @@ def _check_sql(
     """
     issues: list[str] = []
     upper = line.upper()
+    # Use combined for visibility in reports; `upper` retained for debug/log
+    del upper
     # Look at the line + adjacent lines for WHERE / tenant_id (multi-line SQL)
     combined = line + "\n" + "\n".join(surrounding or [])
     combined_upper = combined.upper()
