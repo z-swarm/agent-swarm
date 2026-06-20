@@ -39,6 +39,10 @@ dev = [
     "mypy>=1.10.0",
     "types-PyYAML",
 ]
+redis = [
+    "redis>=5.0.0",    # W18 RedisBackend + multi-process TaskQueue
+    "fakeredis>=2.20.0", # 测试用 fakeredis (无需 redis-server)
+] 
 
 [project.scripts]
 agent-swarm = "agent_swarm.cli.main:cli"

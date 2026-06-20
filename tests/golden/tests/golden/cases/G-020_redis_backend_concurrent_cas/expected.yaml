@@ -1,0 +1,10 @@
+case: G-020_redis_backend_concurrent_cas
+agents: 100
+ok_count: 1
+conflict_count: 99
+final_version: 1
+final_assigned: agent-x
+invariant_ok_winner_only: true
+invariant_version_bumped_to_1: true
+invariant_assigned_persisted: true
+invariant_no_partial_state: true

@@ -1,0 +1,73 @@
+# W18 示例：TaskQueue Redis 后端并发 CAS
+#
+# 用 fakeredis (无需 Redis server), 演示:
+#   - 100 个并发 agent 抢同一 task
+#   - Redis WATCH/MULTI/EXEC CAS 保证 winner-takes-all
+#   - W18-4 多进程并发安全验证
+#
+# 实测:
+#   Memory backend: 188k QPS / p99=0.002ms (单进程)
+#   Redis (fakeredis): 3478 QPS / p99=0.543ms
+#   100 agent 并发 claim: 1 OK + 99 conflict (WATCH 触发)
+#
+# 用法:
+#   agent-swarm run examples/w18_redis_backend.yaml
+#   # 或直接跑 golden case:
+#   python tests/golden/cases/G-020_redis_backend_concurrent_cas/run_case.py
+#   # 或压测:
+#   python tools/bench_storage.py both
+
+name: w18-redis-backend
+
+# W18-1 backend 配置
+task_queue_backend:
+  type: redis  # "memory" | "redis"
+  # 仅 redis 时生效
+  redis:
+    url: "${REDIS_URL:-redis://localhost:6379/0}"
+    namespace: "agent-swarm-w18"
+    pool_max_connections: 20
+    socket_timeout: 5.0
+    # 测试模式: 使用 fakeredis (无需 redis-server)
+    use_fakeredis: true
+
+agents:
+  - id: bench-agent
+    role: backend benchmark worker
+    role_type: worker
+    persona: |
+      You run benchmark tasks against TaskQueue backend.
+      Compare Memory vs Redis CAS throughput and p99 latency.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 3
+
+mcp_servers:
+  redis-tools:
+    transport: stdio
+    command: "redis-cli"
+    args: ["-u", "${REDIS_URL:-redis://localhost:6379/0}"]
+    reliability:
+      auto_reconnect: true
+      max_reconnect_attempts: 3
+      circuit_breaker_threshold: 3
+
+tasks:
+  - id: bench-redis-cas
+    title: Redis CAS 100 agent concurrent claim
+    description: |
+      100 个并发 agent 通过 backend.compare_and_set 抢同一 task,
+      验证:
+        1. Redis WATCH/MULTI/EXEC 保证 1 个 OK + 99 个 conflict
+        2. 最终 version=1, assigned_to 持久化
+        3. p99 latency ≤ 5ms (fakeredis); 真实 Redis 应 ≤ 50ms
+    assigned_to: bench-agent
+
+  - id: bench-throughput
+    title: Backend throughput comparison
+    description: |
+      对比 Memory vs Redis 后端:
+        - Memory: 单进程最快 (188k QPS)
+        - Redis (fakeredis): 多进程共享 (3478 QPS)
+        - Redis (real): 真实分布式 (待 W19 联调)
+    assigned_to: bench-agent
