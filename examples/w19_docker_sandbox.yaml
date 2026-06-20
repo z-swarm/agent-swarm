@@ -1,0 +1,100 @@
+# W19 示例：Docker Sandbox opt-in 演示
+#
+# P3-PLAN-v2 W19-6:
+#   - 显式 opt-in sandbox.mode=docker (默认仍 WORKSPACE_ONLY)
+#   - workspace 目录 bind mount 进容器
+#   - 网络默认禁止 / 超时 kill
+#   - 容器逃逸 20 条全拦截
+#
+# 用法:
+#   agent-swarm run examples/w19_docker_sandbox.yaml
+#
+# 前置:
+#   - docker CLI 已安装 (docker version 验证)
+#   - 默认 WORKSPACE_ONLY 模式不需 docker
+#   - 切 DOCKER 时需 agent-swarm doctor 检查
+
+name: w19-docker-sandbox
+
+sandbox:
+  # W19-4 保守版: 默认仍 WORKSPACE_ONLY; 显式 docker 切 DOCKER
+  mode: docker  # "workspace_only" | "docker"
+
+  # 仅当 mode=docker 时生效
+  docker:
+    image: python:3.11-slim
+    user: "1000:1000"           # CIS 4.1: non-root
+    read_only_root: true        # CIS 5.3
+    no_new_privileges: true     # CIS 5.4
+    pids_limit: 128             # CIS 5.5
+    memory: "512m"              # CIS 5.6
+    cpus: 1.0                   # CIS 5.7
+    network: "none"             # CIS 5.13: 默认无网络
+    capabilities_drop:
+      - ALL                     # CIS 5.2
+    workspace_mount: /workspace # CIS 5.12
+
+  # 通用 timeout (适用 WORKSPACE_ONLY + DOCKER)
+  timeout_seconds: 30
+  max_output_bytes: 10240
+
+agents:
+  - id: docker-test-agent
+    role: Docker sandbox demo worker
+    role_type: worker
+    persona: |
+      You run commands inside Docker containers.
+      All 20 container escape attempts are blocked by the sandbox.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 3
+
+mcp_servers:
+  docker-tools:
+    transport: stdio
+    command: "docker"
+    args: ["version", "--format", "json"]
+    reliability:
+      auto_reconnect: false  # docker CLI 不需要重连
+      max_reconnect_attempts: 1
+      circuit_breaker_threshold: 3
+
+tasks:
+  - id: docker-doctor-check
+    title: Doctor check Docker availability
+    description: |
+      Run agent-swarm doctor to verify Docker availability.
+      Recommend:
+        - Docker available: switch to sandbox.mode=docker in production
+        - Docker not available: stay with sandbox.mode=workspace_only
+    assigned_to: docker-test-agent
+
+  - id: docker-safe-command
+    title: Safe command in Docker sandbox
+    description: |
+      Run `ls /workspace` — should succeed via docker run:
+        - Container image: python:3.11-slim
+        - User: 1000:1000
+        - Bind mount workspace to /workspace
+        - All CIS checks enabled
+    assigned_to: docker-test-agent
+
+  - id: docker-escape-attempt-blocked
+    title: Verify 20 escape attempts blocked
+    description: |
+      Try each of 20 escape patterns:
+        ESC-01..05 mount /  /etc /proc /sys /dev
+        ESC-06 privileged
+        ESC-07..10 cap-add ALL/SYS_ADMIN/NET_ADMIN/DAC_*
+        ESC-11..13 host net/PID/IPC
+        ESC-14 docker socket
+        ESC-15..20 root/sudo/nsenter/chroot/cgroup/ctr
+      All should be blocked with PermissionError mentioning ESC-XX.
+    assigned_to: docker-test-agent
+
+  - id: workspace-only-fallback
+    title: Fallback to WORKSPACE_ONLY
+    description: |
+      Same tasks with sandbox.mode=workspace_only — should work without Docker.
+      This is the default and backward-compatible behavior.
+    assigned_to: docker-test-agent

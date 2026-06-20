@@ -23,6 +23,7 @@ import asyncio
 import os
 import sqlite3
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -491,6 +492,41 @@ def doctor(
 
     # 4) 密钥
     report.add(check_secrets())
+
+    # 5) Docker sandbox (W19-4) —— 检查 Docker 可用性
+    try:
+        from agent_swarm.security.sandbox_docker import (
+            DockerSandboxManager,
+        )
+        # 用临时 workspace 跑 doctor_check
+        with tempfile.TemporaryDirectory() as td:
+            ws = Path(td) / "ws"
+            ws.mkdir()
+            docker_mgr = DockerSandboxManager(ws)
+            dck_report = asyncio.run(docker_mgr.doctor_check())
+        if dck_report.get("docker_available"):
+            msg = (
+                f"Docker available (v{dck_report['docker_version']}). "
+                f"{len(dck_report['cis_checks'])} CIS checks enabled, "
+                f"{dck_report['escape_attempts_count']} escape attempts blocked. "
+                f"Recommendation: {dck_report['recommendation'][:80]}"
+            )
+            status = CheckStatus.PASS
+        else:
+            msg = (
+                "Docker not available. WORKSPACE_ONLY mode active. "
+                f"Recommendation: {dck_report['recommendation'][:80]}"
+            )
+            status = CheckStatus.WARN
+        report.add(CheckResult(
+            name="sandbox.docker", status=status, message=msg,
+        ))
+    except Exception as exc:  # noqa: BLE001
+        report.add(CheckResult(
+            name="sandbox.docker",
+            status=CheckStatus.WARN,
+            message=f"Docker check skipped: {exc}",
+        ))
 
     report.render()
     sys.exit(report.exit_code())

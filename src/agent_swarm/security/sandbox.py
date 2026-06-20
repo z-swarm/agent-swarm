@@ -35,12 +35,14 @@ log = logging.getLogger(__name__)
 
 
 class SandboxMode(Enum):
-    """@brief 沙箱模式——DESIGN §8.2"""
+    """@brief 沙箱模式——DESIGN §8.2 + W19-4 保守版"""
 
     WORKSPACE_ONLY = "workspace_only"
-    # Phase 3+ 才有
-    # DOCKER = "docker"
+    # W19-4 opt-in: Docker Sandbox (默认仍 WORKSPACE_ONLY — 向后兼容)
+    DOCKER = "docker"
+    # 未来 Phase 4+ 可选:
     # FIREJAIL = "firejail"
+    # BUBBLEWRAP = "bubblewrap"
 
 
 @dataclass
