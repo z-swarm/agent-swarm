@@ -24,13 +24,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import re
 import subprocess
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
-
 
 REPO = Path(__file__).resolve().parent.parent
 # 测试 / 多 repo 场景可通过 env 覆盖
@@ -361,9 +361,7 @@ def run_simple_review(pr_ref: str) -> ReviewReport:
     # 判定 verdict
     has_critical = any(f.severity == "CRITICAL" for f in findings)
     has_high = any(f.severity == "HIGH" for f in findings)
-    if has_critical:
-        verdict = "request_changes"
-    elif has_high:
+    if has_critical or has_high:
         verdict = "request_changes"
     elif findings:
         verdict = "comment"
@@ -463,6 +461,23 @@ def main() -> None:
         "--output", choices=["text", "json"], default="text",
         help="输出格式",
     )
+    # W15-⑤: 人类覆盖机制（§17.1 安全门禁）
+    parser.add_argument(
+        "--require-human-review",
+        action="store_true",
+        help="开启后：任何 CRITICAL 级别 finding 必须有 --approve-override 才放行；缺失 exit 2",
+    )
+    parser.add_argument(
+        "--approve-override",
+        action="store_true",
+        help="显式人类覆盖：声明已知 CRITICAL finding 并接受风险（仅当 --require-human-review 时有效）",
+    )
+    parser.add_argument(
+        "--fail-on",
+        choices=["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
+        default=None,
+        help="W15 增强：发现指定严重度以上时 fail（CI 守门）；也可用 env AGENT_REVIEW_FAIL_ON",
+    )
     args = parser.parse_args()
 
     if args.mode == "full":
@@ -474,6 +489,39 @@ def main() -> None:
         print(json.dumps(asdict(report), ensure_ascii=False, indent=2))
     else:
         print_report(report)
+
+    # W15-⑤: --require-human-review 守门
+    has_critical = any(f.severity == "CRITICAL" for f in report.findings)
+    if args.require_human_review and has_critical:
+        if not args.approve_override:
+            print(
+                "\n[--require-human-review] CRITICAL finding detected; "
+                "use --approve-override to explicitly accept the risk.\n"
+                f"  critical findings: {sum(1 for f in report.findings if f.severity == 'CRITICAL')}",
+                file=sys.stderr,
+            )
+            sys.exit(2)  # 2 = 需要人类审查（区别于 1 = 普通失败）
+        # 有 --approve-override → 视为已人类接受
+        print(
+            "\n[--require-human-review] CRITICAL accepted via --approve-override; "
+            "exiting with verdict=comment",
+            file=sys.stderr,
+        )
+        report.verdict = "comment"  # override 后降级为 comment
+
+    # W15: --fail-on 严重度守门
+    fail_on = (args.fail_on or os.environ.get("AGENT_REVIEW_FAIL_ON", "")).upper() or None
+    severity_order = {"NONE": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
+    if fail_on and fail_on != "NONE":
+        threshold = severity_order.get(fail_on, 4)
+        triggered = [f for f in report.findings
+                     if severity_order.get(f.severity, 0) >= threshold]
+        if triggered:
+            print(
+                f"\n[--fail-on {fail_on}] {len(triggered)} finding(s) at or above threshold; failing",
+                file=sys.stderr,
+            )
+            sys.exit(2)
 
     # exit code 反映 verdict
     if report.verdict == "request_changes":

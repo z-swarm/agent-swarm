@@ -1,0 +1,16 @@
+name: g019-agent-review-test
+agents:
+  - id: fake-reviewer
+    role: test
+    role_type: plan_only
+    persona: "This is a fixture for G-019; agent is unused in the test path."
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 1
+tasks:
+  - id: review-fixture-diff
+    title: Review the fixture diff (run via tools/agent_review.py)
+    description: |
+      G-019 e2e 路径不通过此 YAML；直接对 fixture 跑
+      `python tools/agent_review.py --mode=simple --pr=tests/golden/cases/G-019_agent_review_security_audit/fixture_diff.patch`
+      或对当前 commit 跑 --pr=HEAD~1..HEAD（含故意写错的安全问题）。

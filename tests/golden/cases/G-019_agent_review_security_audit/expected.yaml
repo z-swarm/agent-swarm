@@ -1,0 +1,23 @@
+id: G-019
+title: agent_review 静态安全规则识别真问题
+phase: 2
+swarm_config: input.yaml
+
+expected:
+  # W15-⑦: agent_review.py --mode=simple 能识别本项目 PR 中的真实安全问题
+  must_find:
+    - keyword: "secret"        # API key / 凭证泄露
+    - keyword: "injection"     # SQL/command injection
+    - keyword: "traversal"     # path traversal
+
+  must_not_claim:
+    - keyword: "false_positive_safe_code"
+    - keyword: "approve_unconditionally"
+
+  performance:
+    max_duration_seconds: 10
+    max_total_tokens: 5000
+
+  quality:
+    # 简单模式 100% 命中即可（确定性规则）
+    min_must_find_hit_rate: 0.66
