@@ -1,0 +1,80 @@
+# P4-W23: MCP Worktree 隔离 demo
+#
+# 演示: 2 worker 共享同一 repo, 各自 worktree, 互不干扰
+#
+# 用法:
+#   agent-swarm run examples/w22_mcp_worktree.yaml
+#
+# 前置:
+#   - 当前目录是 git 仓库 (含至少 1 commit)
+#   - 或设置 worktree.repo_root 显式指向
+#
+# DoD (P4 W23):
+#   - 2 worker 通过 MCP filesystem 各自写 file, 互不可见
+#   - worker-A 写 notes-A.md, worker-B 看不到
+#   - worker-B 写 notes-B.md, worker-A 看不到
+
+name: w22-mcp-worktree
+
+worktree:
+  enabled: true
+  repo_root: "."  # 当前目录; 实际部署可指向 monorepo
+  base_dir: ".worktrees"  # 相对 repo_root
+
+agents:
+  - id: worker-A
+    role: writer-A
+    role_type: worker
+    persona: |
+      You are worker A. Use the mcp.filesystem tools to write notes-A.md
+      with the content "Hello from A". Then list the directory and report.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 3
+
+  - id: worker-B
+    role: writer-B
+    role_type: worker
+    persona: |
+      You are worker B. Use the mcp.filesystem tools to write notes-B.md
+      with the content "Hello from B". Then list the directory and report.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 3
+
+# MCP server 共享, 但每个 agent 启动时注入各自 worktree 路径
+# ${WORKTREE_PATH} 是 P4-W23 新增占位符, 由 WorktreeIntegration 替换
+mcp_servers:
+  filesystem:
+    transport: stdio
+    command:
+      - npx
+      - -y
+      - "@modelcontextprotocol/server-filesystem"
+      - "${WORKTREE_PATH}"
+    source: official
+    reliability:
+      auto_reconnect: true
+      max_reconnect_attempts: 3
+
+tasks:
+  - id: T-write-A
+    title: Worker A writes notes-A.md
+    description: |
+      Use mcp.filesystem.write_file to create notes-A.md in the workspace.
+      Content: "Hello from A — worker-A's worktree"
+    assigned_to: worker-A
+
+  - id: T-write-B
+    title: Worker B writes notes-B.md
+    description: |
+      Use mcp.filesystem.write_file to create notes-B.md in the workspace.
+      Content: "Hello from B — worker-B's worktree"
+    assigned_to: worker-B
+
+  - id: T-verify
+    title: Verify isolation
+    description: |
+      After A and B complete, list files in your worktree. Confirm you only
+      see your own file (e.g., worker-A sees notes-A.md, not notes-B.md).
+    assigned_to: worker-A

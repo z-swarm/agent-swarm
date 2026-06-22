@@ -85,6 +85,7 @@ def _check_e2e_two_servers() -> tuple[bool, str]:
 def _check_w9_example() -> tuple[bool, str]:
     """DoD ⑥：examples/w9_mcp_github_filesystem.yaml 合法 + MCPRegistry 可消费"""
     import yaml
+
     from agent_swarm.mcp import MCPRegistry
     p = REPO / "examples" / "w9_mcp_github_filesystem.yaml"
     if not p.exists():

@@ -66,7 +66,10 @@ def _check_4_convergence_paths() -> tuple[bool, str]:
     """DoD ⑤：AdversarialVerifier 主循环覆盖 4 条收敛路径"""
     from agent_swarm.core.adversarial import AdversarialVerifier
     from agent_swarm.core.types import (
-        Agent, AgentCapabilities, Judgement, Stance,
+        Agent,
+        AgentCapabilities,
+        Judgement,
+        Stance,
     )
 
     def plan(id):
@@ -121,7 +124,10 @@ def _check_error_fallbacks() -> tuple[bool, str]:
     """DoD ⑥：错误兜底——单 agent 异常 / 单轮全员失败 / 连续 2 轮 stall"""
     from agent_swarm.core.adversarial import AdversarialVerifier, VerifierStallError
     from agent_swarm.core.types import (
-        Agent, AgentCapabilities, Judgement, Stance,
+        Agent,
+        AgentCapabilities,
+        Judgement,
+        Stance,
     )
 
     def plan(id):
@@ -160,8 +166,9 @@ def _check_error_fallbacks() -> tuple[bool, str]:
 
 def _check_artifacts_fields() -> tuple[bool, str]:
     """DoD ⑦：ProtocolResult.artifacts 含 AdversarialVerifier 7 字段"""
-    from agent_swarm.core.adversarial import AdversarialVerifier
     import inspect
+
+    from agent_swarm.core.adversarial import AdversarialVerifier
 
     expected = {
         "protocol", "survivors", "eliminated", "rounds_used",

@@ -5,6 +5,41 @@ All notable changes to agent-swarm will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0a1] - 2026-06-22
+
+### Phase 4 启动 (W22-W23 MCP Worktree 隔离)
+
+#### W22: WorktreeManager 核心 (manager.py)
+- **新增**: `WorktreeManager(repo_root, base_dir)` ——per-agent git worktree 隔离
+- **新增**: `WorktreeHandle` dataclass (path / branch / agent_id / tenant_id / session_id / created_at / key)
+- **API**: `acquire(tenant_id, session_id, agent_id) → WorktreeHandle` (幂等)
+- **API**: `release(handle, force=False)` / `list_active()` / `get(key)` / `cleanup_orphans(ttl)` / `cleanup_all()`
+- **异常**: `WorktreeError` / `WorktreeRepoError` / `WorktreeConflictError`
+- **并发安全**: per-tenant `threading.Lock` + 同 (tenant, session, agent) 幂等
+- **测试**: `tests/unit/test_worktree_manager.py` 26 cases (基础 / 并发 / 隔离 / cleanup / 路径安全)
+- **路径处理**: `_sanitize` 把任意字符串转安全标识符; `_is_git_repo` 跨平台 (Windows 正反斜杠归一)
+
+#### W23: MCP 集成 (integration.py)
+- **新增**: `${WORKTREE_PATH}` 占位符 → 注入 `MCPServerConfig.command` / `cwd` / `env`
+- **新增**: `substitute_placeholders(config, worktree_path)` 函数
+- **新增**: `validate_config(config)` 拒绝 token/url 含占位符
+- **新增**: `find_placeholders(config)` 定位占位符
+- **新增**: `WorktreeIntegration(manager)` 高层封装: `acquire_for_agent` / `release_for_agent` / `materialize_config`
+- **新增**: `examples/w22_mcp_worktree.yaml` ——2 worker 共享 repo, 各自 worktree
+- **新增**: G-021 Golden Case `tests/golden/test_g021_worktree_isolation.py` 3 cases (3 agent 100 文件 / 10 并发 / 跨租户)
+- **新增**: `tools/bench_worktree.py` 压测: 50 unique_keys (QPS=3.9) + same_key (QPS=45.3)
+- **新增**: `tools/verify_p4_dod.py` 8 项 DoD 守门
+
+#### W23 测试
+- unit: 42 passed (manager 26 + integration 16)
+- golden: G-021 3/3 passed
+- 全量: 1020 passed / 138 skipped (P3-WIN) / 0 failed
+- ruff: 0 errors (P4 新增模块) / mypy: 0 errors
+
+#### 已知限制
+- Windows 下 `git worktree add` ~2s/worktree (NTFS 开销); Linux ~50ms
+- `tools/agent_review.py` / `tools/verify_w7_dod.py` 仍有 6 个 P3 历史 ruff 错误 (非 P4 范围)
+
 ## [0.3.0] - 2026-08-29
 
 ### Phase 3 收尾 (W14-W21)
