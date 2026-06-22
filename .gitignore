@@ -27,6 +27,10 @@ coverage.xml
 .mypy_cache/
 .ruff_cache/
 
+# 不上传的设计文档
+DESIGN.md
+docs/
+
 # IDE
 .idea/
 .vscode/*
