@@ -5,6 +5,48 @@ All notable changes to agent-swarm will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0a1] - 2026-06-22
+
+### Phase 5 启动 (W28 GUI Web UI v1)
+
+#### W28: GUI Web UI v1
+- **新增**: `src/agent_swarm/web/` FastAPI 应用 (5 文件)
+  - `app.py` — `create_app()` 工厂 + lifespan + 路由注册
+  - `state.py` — `WebState` 全局状态 (事件缓冲 + 订阅者)
+  - `routes.py` — 4 页面 + 5 partials + 3 JSON API
+  - `websocket.py` — `/ws` 实时事件流 (心跳 + 自动重连)
+  - `__init__.py` — 导出
+- **新增**: 12 个 Jinja2 模板
+  - `base.html` — HTMX 2.0 启用, nav + WS status
+  - 4 页面: dashboard / agents / worktrees / tasks
+  - 5 partials: events / metrics / agents / worktrees / tasks
+- **新增**: 静态资源
+  - `style.css` — 暗色主题 (CSS vars)
+  - `app.js` — WebSocket client (重连 + 渲染)
+- **新增**: pyproject.toml `[web]` optional-deps
+  - fastapi>=0.110, uvicorn>=0.27, jinja2>=3.1, python-multipart>=0.0.9
+- **新增**: `examples/w28_web_demo.yaml` — 2 worker + web UI
+- **API**:
+  - `GET /` / `/agents` / `/worktrees` / `/tasks` — HTML 页面
+  - `GET /partials/{events,metrics,agents,worktrees,tasks}` — HTMX fragments
+  - `GET/POST /api/{state,events}` — JSON
+  - `GET /healthz` / `/metrics` (Prometheus 格式)
+  - `WS /ws` — 实时事件流 (推所有 push_event)
+- **测试**: 29 cases (app 工厂 / 12 GET 路由 / 5 API / 3 WS / 4 WebState)
+
+#### 启动方式
+```bash
+pip install -e ".[web]"
+uvicorn agent_swarm.web:app --reload
+# 浏览器打开 http://localhost:8000
+```
+
+#### 已知限制 (v1)
+- 无 RBAC / auth
+- 事件缓冲默认 500 条 (超出丢老)
+- Worktree 视图需 app.state.worktree_manager 注入 (P4-W22 集成入口预留)
+- HTMX 自动刷新, 不支持手动控制
+
 ## [0.4.0a1] - 2026-06-22
 
 ### Phase 4 收尾 (W22-W26)
