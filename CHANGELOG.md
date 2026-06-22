@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0a1] - 2026-06-22
 
-### Phase 4 启动 (W22-W23 MCP Worktree 隔离)
+### Phase 4 收尾 (W22-W26)
 
 #### W22: WorktreeManager 核心 (manager.py)
 - **新增**: `WorktreeManager(repo_root, base_dir)` ——per-agent git worktree 隔离
@@ -16,29 +16,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **API**: `release(handle, force=False)` / `list_active()` / `get(key)` / `cleanup_orphans(ttl)` / `cleanup_all()`
 - **异常**: `WorktreeError` / `WorktreeRepoError` / `WorktreeConflictError`
 - **并发安全**: per-tenant `threading.Lock` + 同 (tenant, session, agent) 幂等
-- **测试**: `tests/unit/test_worktree_manager.py` 26 cases (基础 / 并发 / 隔离 / cleanup / 路径安全)
+- **测试**: 26 cases (基础 / 并发 / 隔离 / cleanup / 路径安全)
 - **路径处理**: `_sanitize` 把任意字符串转安全标识符; `_is_git_repo` 跨平台 (Windows 正反斜杠归一)
 
 #### W23: MCP 集成 (integration.py)
 - **新增**: `${WORKTREE_PATH}` 占位符 → 注入 `MCPServerConfig.command` / `cwd` / `env`
-- **新增**: `substitute_placeholders(config, worktree_path)` 函数
-- **新增**: `validate_config(config)` 拒绝 token/url 含占位符
-- **新增**: `find_placeholders(config)` 定位占位符
-- **新增**: `WorktreeIntegration(manager)` 高层封装: `acquire_for_agent` / `release_for_agent` / `materialize_config`
-- **新增**: `examples/w22_mcp_worktree.yaml` ——2 worker 共享 repo, 各自 worktree
-- **新增**: G-021 Golden Case `tests/golden/test_g021_worktree_isolation.py` 3 cases (3 agent 100 文件 / 10 并发 / 跨租户)
-- **新增**: `tools/bench_worktree.py` 压测: 50 unique_keys (QPS=3.9) + same_key (QPS=45.3)
-- **新增**: `tools/verify_p4_dod.py` 8 项 DoD 守门
+- **新增**: `substitute_placeholders` / `validate_config` / `find_placeholders`
+- **新增**: `WorktreeIntegration(manager)` 高层封装
+- **新增**: `examples/w22_mcp_worktree.yaml` ——2 worker 共享 repo
+- **新增**: G-021 Golden Case 3 cases (3 agent 100 文件 / 10 并发 / 跨租户)
+- **新增**: `tools/bench_worktree.py` 压测
+- **新增**: `tools/verify_p4_dod.py` DoD 守门
 
-#### W23 测试
-- unit: 42 passed (manager 26 + integration 16)
-- golden: G-021 3/3 passed
-- 全量: 1020 passed / 138 skipped (P3-WIN) / 0 failed
-- ruff: 0 errors (P4 新增模块) / mypy: 0 errors
+#### W24: Docker 长生命周期 (sandbox_docker.py)
+- **新增**: `DockerConfig.long_lived: bool = True` (默认)
+- **新增**: `_start_container` / `_stop_container` / `_run_in_long_lived_container`
+- **新增**: `close()` / `__aenter__` / `__aexit__` 异步 context manager
+- **容器名**: `agentswarm-<workspace_hash>-<pid>-<counter>` (类级计数器防冲突)
+- **性能**: 100 execute() 只启 1 容器 (vs W19 模式 100 次)
+- **测试**: 13 cases (CIS 参数 / 启停 / 续用 / 兼容 W19 / 容器名唯一)
+- **兼容**: `long_lived=False` 保留 W19 行为
 
-#### 已知限制
-- Windows 下 `git worktree add` ~2s/worktree (NTFS 开销); Linux ~50ms
-- `tools/agent_review.py` / `tools/verify_w7_dod.py` 仍有 6 个 P3 历史 ruff 错误 (非 P4 范围)
+#### W25: PostgresBackend (postgres_backend.py)
+- **新增**: `PostgresBackend` + `PostgresConfig` 生产级持久化后端
+- **Schema**: `tasks(id PK, version INT, data JSONB, updated_at TIMESTAMPTZ)`
+- **CAS**: `UPDATE ... WHERE id=? AND version=? RETURNING data` (单语句原子)
+- **命名空间**: schema 隔离
+- **连接池**: asyncpg (min_size=1, max_size=20)
+- **测试支持**: `fake_module` 参数注入 mock
+- **测试**: 13 cases (CRUD / CAS / 重复 / stats / close / 协议)
+- **集成**: `backends/__init__.py` 加导出 (try/except 可选依赖)
+
+#### W26: Vault Dynamic Secrets (secret_manager.py)
+- **新增**: `DBCredentials` dataclass (username / password / lease_id / lease_duration / issued_at)
+  - 派生属性: `expires_at` / `seconds_to_expiry` / `is_expired` / `as_dsn()`
+- **新增**: `VaultDynamicSecretManager(VaultSecretManager)`
+  - `get_dynamic_credentials(role)` — Vault database/creds/{role} 发凭证
+  - `renew_lease(lease_id, increment=3600)` — 续约
+  - `revoke_lease(lease_id)` / `revoke_all()` — 显式回收
+  - `list_active_leases()` — 调试/监控
+- **用例**: 连接 DB 前 get → 用完 revoke / 长期任务 renew
+- **测试**: 14 cases (DBCredentials / get / renew / revoke / workflow)
+
+#### Phase 4 统计
+- unit tests: 1060 passed (was 975 in P3, +85 new)
+- golden: G-021 3/3 (新增)
+- 全量: 1060 passed / 138 P3-WIN skipped / 0 failed
+- ruff 0 errors / mypy 0 errors
+- 4 commits (W22-23, W24, W25, W26) + 4 tags (0.4.0a1-0.4.0a4)
+
+#### 待启动 (Phase 4 续 / Phase 5)
+- GUI Web UI (§16.2 #2 React vs HTMX 选型) - 4-6 周
+- 多语言 SDK (Go/TypeScript) - 4 周
+- 分布式 swarm (跨机器调度) - 长期
 
 ## [0.3.0] - 2026-08-29
 
