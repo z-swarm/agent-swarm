@@ -1,0 +1,26 @@
+<!-- partials/metrics.html — 实时 metrics -->
+<div class="metrics-grid">
+    <div class="metric">
+        <div class="metric-label">Uptime</div>
+        <div class="metric-value">{{ uptime_seconds }}s</div>
+    </div>
+    <div class="metric">
+        <div class="metric-label">Active sessions</div>
+        <div class="metric-value">{{ session_count }}</div>
+    </div>
+    <div class="metric">
+        <div class="metric-label">Total events</div>
+        <div class="metric-value">{{ total_events }}</div>
+    </div>
+</div>
+{% if events_by_type %}
+<h3>Events by type</h3>
+<table class="metrics-table">
+    <thead><tr><th>Event</th><th>Count</th></tr></thead>
+    <tbody>
+    {% for name, count in events_by_type.items() %}
+        <tr><td>{{ name }}</td><td>{{ count }}</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}

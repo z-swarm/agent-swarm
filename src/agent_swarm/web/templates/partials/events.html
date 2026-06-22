@@ -1,0 +1,13 @@
+<!-- partials/events.html — 最近事件列表 -->
+{% if events %}
+    {% for e in events %}
+    <li class="event event-{{ e.event_name }}">
+        <span class="ts">{{ "{:.0f}".format(e.timestamp) }}</span>
+        <span class="name">{{ e.event_name }}</span>
+        <span class="sid">{{ e.session_id[:12] }}</span>
+        <span class="payload">{{ e.payload }}</span>
+    </li>
+    {% endfor %}
+{% else %}
+    <li class="event-info">暂无事件</li>
+{% endif %}

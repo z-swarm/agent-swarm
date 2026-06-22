@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Agents · agent-swarm{% endblock %}
+{% block content %}
+<section class="page-header">
+    <h1>Agents</h1>
+    <p class="subtitle">活跃 session 列表 (P4-W22 per-tenant 隔离)</p>
+</section>
+<div class="card"
+     hx-get="/partials/agents" hx-trigger="every 3s" hx-swap="innerHTML">
+    <p class="loading">加载中...</p>
+</div>
+{% endblock %}

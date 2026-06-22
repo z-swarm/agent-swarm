@@ -42,7 +42,13 @@ dev = [
 redis = [
     "redis>=5.0.0",    # W18 RedisBackend + multi-process TaskQueue
     "fakeredis>=2.20.0", # 测试用 fakeredis (无需 redis-server)
-] 
+]
+web = [
+    "fastapi>=0.110.0",   # P5-W28 GUI Web UI
+    "uvicorn>=0.27.0",
+    "jinja2>=3.1.0",
+    "python-multipart>=0.0.9",
+]
 
 [project.scripts]
 agent-swarm = "agent_swarm.cli.main:cli"

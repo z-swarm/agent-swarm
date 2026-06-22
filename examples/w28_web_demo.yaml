@@ -1,0 +1,49 @@
+# P5-W28 GUI Web UI demo
+#
+# 启动:
+#   agent-swarm run examples/w28_web_demo.yaml --web
+#   # 然后访问 http://localhost:8000
+#
+# 看到:
+#   - Dashboard: 实时 metrics + 事件流 (WebSocket)
+#   - Agents: 活跃 session 列表 (HTMX 自动刷新)
+#   - Worktrees: P4-W22 隔离状态
+#   - Tasks: TaskQueue 状态
+#   - /metrics: Prometheus 格式
+#
+# 推送测试事件:
+#   curl -X POST http://localhost:8000/api/events \
+#     -H "Content-Type: application/json" \
+#     -d '{"event_name":"test","session_id":"s1","seq":1,"payload":{"x":1}}'
+
+name: w28-web-demo
+
+agents:
+  - id: worker-1
+    role: writer
+    role_type: worker
+    persona: |
+      You are worker 1. Write a short note about agent-swarm in notes.md.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 3
+
+  - id: worker-2
+    role: reviewer
+    role_type: worker
+    persona: |
+      You are worker 2. Review notes.md and write feedback.md.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 3
+
+tasks:
+  - id: T-write
+    title: Write notes
+    description: Write notes.md with content "Hello from agent-swarm"
+    assigned_to: worker-1
+
+  - id: T-review
+    title: Review notes
+    description: Read notes.md, write feedback.md
+    assigned_to: worker-2

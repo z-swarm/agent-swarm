@@ -1,0 +1,25 @@
+<!-- partials/agents.html — Agent 列表 fragment -->
+{% if agents %}
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Session ID</th>
+            <th>Events</th>
+            <th>Last event</th>
+            <th>First seen</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for a in agents %}
+        <tr>
+            <td><code>{{ a.id[:16] }}</code></td>
+            <td>{{ a.event_count }}</td>
+            <td><span class="badge">{{ a.last_event or "—" }}</span></td>
+            <td>{{ "{:.0f}".format(a.first_seen) }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="empty">暂无活跃 session</p>
+{% endif %}

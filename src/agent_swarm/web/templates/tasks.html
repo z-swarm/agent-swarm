@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Tasks · agent-swarm{% endblock %}
+{% block content %}
+<section class="page-header">
+    <h1>Tasks</h1>
+    <p class="subtitle">TaskQueue 实时状态</p>
+</section>
+<div class="card"
+     hx-get="/partials/tasks" hx-trigger="every 2s" hx-swap="innerHTML">
+    <p class="loading">加载中...</p>
+</div>
+{% endblock %}

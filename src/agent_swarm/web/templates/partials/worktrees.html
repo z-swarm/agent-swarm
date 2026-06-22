@@ -1,0 +1,27 @@
+<!-- partials/worktrees.html — Worktree 列表 fragment -->
+{% if worktrees %}
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Key</th>
+            <th>Path</th>
+            <th>Branch</th>
+            <th>Agent</th>
+            <th>Tenant</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for w in worktrees %}
+        <tr>
+            <td><code>{{ w.key }}</code></td>
+            <td><small>{{ w.path }}</small></td>
+            <td><code>{{ w.branch }}</code></td>
+            <td>{{ w.agent_id }}</td>
+            <td>{{ w.tenant_id }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="empty">暂无活跃 worktree (P4-W22 集成需配置 worktree_manager)</p>
+{% endif %}

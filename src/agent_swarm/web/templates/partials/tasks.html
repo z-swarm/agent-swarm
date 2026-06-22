@@ -1,0 +1,25 @@
+<!-- partials/tasks.html — Task 列表 fragment -->
+{% if tasks %}
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Event</th>
+            <th>Session</th>
+            <th>Timestamp</th>
+            <th>Payload</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for t in tasks %}
+        <tr>
+            <td><span class="badge">{{ t.event }}</span></td>
+            <td><code>{{ t.session_id }}</code></td>
+            <td>{{ "{:.0f}".format(t.ts) }}</td>
+            <td><small>{{ t.payload }}</small></td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="empty">暂无 task 事件</p>
+{% endif %}

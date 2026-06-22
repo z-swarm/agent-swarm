@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Worktrees · agent-swarm{% endblock %}
+{% block content %}
+<section class="page-header">
+    <h1>Worktrees</h1>
+    <p class="subtitle">P4-W22 per-agent git worktree 隔离状态</p>
+</section>
+<div class="card"
+     hx-get="/partials/worktrees" hx-trigger="every 5s" hx-swap="innerHTML">
+    <p class="loading">加载中...</p>
+</div>
+{% endblock %}
