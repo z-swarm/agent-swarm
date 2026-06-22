@@ -1,0 +1,49 @@
+# P5-W31 Web UI + Swarm 集成 demo
+#
+# 启动:
+#   agent-swarm run examples/w31_web_with_swarm.yaml --web
+#
+# 浏览器打开 http://localhost:8000
+# 看到:
+#   - 实时事件流 (agent.start / task.complete 等)
+#   - Agent 列表 (per-session)
+#   - /metrics Prometheus 格式
+#
+# CLI 参数:
+#   --web           启用 web UI
+#   --web-host      绑定地址 (默认 127.0.0.1)
+#   --web-port      端口 (默认 8000)
+#
+# 前置: pip install -e .[web]
+
+name: w31-web-with-swarm
+
+agents:
+  - id: writer
+    role: writer
+    role_type: worker
+    persona: |
+      You are a writer. Write "Hello from agent-swarm" to notes.md.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 2
+
+  - id: reviewer
+    role: reviewer
+    role_type: worker
+    persona: |
+      You are a reviewer. Read notes.md and write a one-line comment to feedback.md.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 2
+
+tasks:
+  - id: T-write
+    title: Write notes
+    description: Write notes.md with content "Hello from agent-swarm"
+    assigned_to: writer
+
+  - id: T-review
+    title: Review notes
+    description: Read notes.md, write feedback.md
+    assigned_to: reviewer

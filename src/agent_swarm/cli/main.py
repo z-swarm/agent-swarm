@@ -10,6 +10,7 @@ W3: session list / show / resume；run 自动写 SQLite 事件流
 from __future__ import annotations
 
 import asyncio
+import contextlib  # P5-W31: web 关闭 suppress
 import logging
 import os  # P-4 修复:从函数内 inline import 提升到顶部
 import sys
@@ -223,6 +224,26 @@ cli.add_command(_doctor_cmd)
         "省略时各 provider 自动从对应 env 读（OPENAI_API_KEY / ANTHROPIC_API_KEY）"
     ),
 )
+@click.option(
+    "--web",
+    "enable_web",
+    is_flag=True,
+    help="P5-W31: 启动 web UI (HTMX+FastAPI) 同一进程内, 浏览器看实时事件",
+)
+@click.option(
+    "--web-host",
+    "web_host",
+    type=str,
+    default="127.0.0.1",
+    help="Web UI 绑定地址 (默认 127.0.0.1)",
+)
+@click.option(
+    "--web-port",
+    "web_port",
+    type=int,
+    default=8000,
+    help="Web UI 端口 (默认 8000)",
+)
 def run(
     config: Path,
     verbose: bool,
@@ -230,6 +251,9 @@ def run(
     json_log: bool,
     provider: str | None,
     api_key: str | None,
+    enable_web: bool,
+    web_host: str,
+    web_port: int,
 ) -> None:
     """运行 swarm（从 YAML 配置启动）"""
     _configure_logging(verbose)
@@ -256,7 +280,38 @@ def run(
         f"tasks={len(swarm.tasks)}[/]"
     )
 
+    # P5-W31: 可选 web UI
+    web_state = None
+    web_server = None
+    web_task = None
+    web_sink = None
+    if enable_web:
+        try:
+            import uvicorn  # noqa: E402
+
+            from agent_swarm.observability import WebStateSink  # noqa: E402
+            from agent_swarm.web import WebState, create_app  # noqa: E402
+        except ImportError as exc:
+            console.print(
+                f"[red]--web 需要额外依赖: {exc}. "
+                f"运行: pip install -e .[web][/]"
+            )
+            sys.exit(2)
+        web_state = WebState()
+        web_sink = WebStateSink(web_state)
+        bus.register_sink(web_sink)
+        app = create_app(web_state=web_state)
+        uv_config = uvicorn.Config(
+            app, host=web_host, port=web_port,
+            log_level="warning", lifespan="on",
+        )
+        web_server = uvicorn.Server(uv_config)
+        console.print(
+            f"[bold magenta]web UI[/] → http://{web_host}:{web_port}"
+        )
+
     async def _run_with_session():
+        nonlocal web_task
         # 注册 session 元数据
         mgr = SessionManager(sink)
         await mgr.create_session(
@@ -265,10 +320,22 @@ def run(
             config_yaml=config.read_text(encoding="utf-8"),
         )
         try:
+            # 起 web (同 loop)
+            if web_server is not None:
+                web_task = asyncio.create_task(
+                    web_server.serve(),
+                    name="web-ui",
+                )
             res = await swarm.run()
             await mgr.end_session(swarm.session_id, res.state)
             return res
         finally:
+            # 停 web
+            if web_server is not None:
+                web_server.should_exit = True
+            if web_task is not None:
+                with contextlib.suppress(Exception):
+                    await web_task
             await bus.aclose()
 
     try:

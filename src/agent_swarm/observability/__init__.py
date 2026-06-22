@@ -21,6 +21,7 @@ from agent_swarm.observability.prometheus_sink import (
 )
 from agent_swarm.observability.sinks import InMemorySink, JsonLogSink
 from agent_swarm.observability.sqlite_sink import SqliteEventSink
+from agent_swarm.observability.web_state_sink import WebStateSink
 from agent_swarm.observability.websocket_sink import WebSocketSink
 
 __all__ = [
@@ -36,6 +37,7 @@ __all__ = [
     "SqliteEventSink",
     "TASKS_TOTAL",
     "WebSocketSink",
+    "WebStateSink",
     "emit",
     "get_global_bus",
     "run_metrics_server_forever",
