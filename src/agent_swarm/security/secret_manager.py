@@ -9,6 +9,13 @@ P3-PLAN-v2 W20 DoD:
       AppRole 认证 + KV v2 secret engine
       内存缓存 TTL (默认 5 分钟)
 
+P4-W26 Vault Dynamic Secrets (W26-①):
+  - get_dynamic_credentials(role) — Vault database/creds/{role} 动态发凭证
+  - DBCredentials (username/password/lease_id/expires_at)
+  - renew_lease(lease_id) — 续约
+  - revoke_lease(lease_id) — 显式回收 (cleanup)
+  - 集成到 PostgresBackend —— 每次连接用动态凭证
+
 @note W20-4 rotation_due 事件通过 ObservabilityBus emit
 @note W20-6 降级路径: --no-vault 时 fallback 到 EnvSecretManager
 """
@@ -335,7 +342,161 @@ class VaultSecretManager(SecretManager):
         self._initialized = False
 
 
+# ---------------------------------------------------------------------------
+# P4-W26 Vault Dynamic Secrets (Database Credentials)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class DBCredentials:
+    """
+    动态 DB 凭证——Vault database/creds/{role} 返回
+
+    @property lease_duration_seconds 凭证有效时长
+    @property seconds_to_expiry      距过期秒数
+    @property is_expired             是否已过期
+    """
+
+    username: str
+    password: str
+    lease_id: str
+    lease_duration_seconds: int
+    issued_at: float = field(default_factory=time.time)
+    renewable: bool = True
+
+    @property
+    def expires_at(self) -> float:
+        return self.issued_at + self.lease_duration_seconds
+
+    @property
+    def seconds_to_expiry(self) -> float:
+        return self.expires_at - time.time()
+
+    @property
+    def is_expired(self) -> bool:
+        return time.time() >= self.expires_at
+
+    def as_dsn(self, host: str, port: int, database: str) -> str:
+        """组装 PostgreSQL DSN"""
+        return (
+            f"postgresql://{self.username}:{self.password}"
+            f"@{host}:{port}/{database}"
+        )
+
+
+class VaultDynamicSecretManager:
+    """
+    P4-W26 Vault Dynamic Secrets——数据库动态凭证
+
+    用途: 每次需要连数据库时, 从 Vault 获取一个短时凭证 (默认 1 小时)
+    凭证过期前可 renew, 用完即 revoke (不残留)
+    """
+
+    def __init__(self, vault_secret_manager: VaultSecretManager) -> None:
+        """
+        @param vault_secret_manager 已初始化的 VaultSecretManager (用它的 vault client)
+        """
+        self._vsm = vault_secret_manager
+        self._active_leases: dict[str, DBCredentials] = {}
+
+    async def _ensure_vault(self) -> Any:
+        await self._vsm._ensure_vault()  # noqa: SLF001
+        return self._vsm._vault  # noqa: SLF001
+
+    async def get_dynamic_credentials(self, role: str) -> DBCredentials:
+        """
+        从 Vault database/creds/{role} 获取动态凭证
+
+        @param role  Vault 中配置的数据库角色 (e.g. "readonly", "readwrite")
+        @return DBCredentials 含 lease_id (用于 renew/revoke)
+        @raise SecretError Vault 错误
+        """
+        vault = await self._ensure_vault()
+        try:
+            resp = vault.secrets.database.generate_credentials(
+                name=role,
+            )
+        except Exception as exc:
+            raise SecretError(
+                f"vault database generate_credentials({role!r}) failed: {exc}"
+            ) from exc
+        if not resp or "data" not in resp:
+            raise SecretError(
+                f"vault database generate_credentials({role!r}) returned empty"
+            )
+        data = resp["data"]
+        creds = DBCredentials(
+            username=data["username"],
+            password=data["password"],
+            lease_id=resp["lease_id"],
+            lease_duration_seconds=int(resp.get("lease_duration_seconds", 3600)),
+            renewable=bool(resp.get("renewable", True)),
+        )
+        # 记录 lease 用于 revoke
+        self._active_leases[creds.lease_id] = creds
+        log.info(
+            "vault.dynamic.creds role=%s lease=%s ttl=%ds",
+            role, creds.lease_id[:12], creds.lease_duration_seconds,
+        )
+        return creds
+
+    async def renew_lease(self, lease_id: str, increment: int = 3600) -> DBCredentials:
+        """
+        续约 lease (默认 +3600s)
+
+        @param lease_id  get_dynamic_credentials 返回的 lease_id
+        @param increment 续约秒数
+        @return 更新后的 DBCredentials
+        """
+        vault = await self._ensure_vault()
+        try:
+            resp = vault.sys.leases.renew(
+                lease_id=lease_id, increment=increment,
+            )
+        except Exception as exc:
+            raise SecretError(
+                f"vault lease renew failed: {exc}"
+            ) from exc
+        creds = self._active_leases.get(lease_id)
+        if creds is None:
+            raise SecretError(f"unknown lease_id: {lease_id}")
+        creds.lease_duration_seconds = int(resp.get("lease_duration_seconds", increment))
+        creds.issued_at = time.time()
+        log.info(
+            "vault.dynamic.renew lease=%s ttl=%ds",
+            lease_id[:12], creds.lease_duration_seconds,
+        )
+        return creds
+
+    async def revoke_lease(self, lease_id: str) -> None:
+        """
+        显式回收 lease (cleanup)
+
+        @note 应在 connection 关闭时调用, 不留残留凭证
+        """
+        vault = await self._ensure_vault()
+        try:
+            vault.sys.leases.revoke(lease_id=lease_id)
+        except Exception as exc:
+            log.warning("vault lease revoke failed: %s", exc)
+        self._active_leases.pop(lease_id, None)
+        log.info("vault.dynamic.revoke lease=%s", lease_id[:12])
+
+    async def revoke_all(self) -> int:
+        """回收所有 active lease — 测试/关闭用"""
+        count = 0
+        for lease_id in list(self._active_leases.keys()):
+            await self.revoke_lease(lease_id)
+            count += 1
+        return count
+
+    def list_active_leases(self) -> list[DBCredentials]:
+        """列出所有 active 凭证 (调试用)"""
+        return list(self._active_leases.values())
+
+
 __all__ = [
+    "DBCredentials",
     "EnvSecretManager",
     "Secret",
     "SecretError",
@@ -343,5 +504,6 @@ __all__ = [
     "SecretMetadata",
     "SecretNotFoundError",
     "VaultConfig",
+    "VaultDynamicSecretManager",
     "VaultSecretManager",
 ]
