@@ -2335,6 +2335,32 @@ print(f"根因: {verdict.root_cause}, 置信度: {verdict.confidence}")
 | **W12** | ① `pytest tests/unit/test_websocket_sink.py tests/e2e/test_w12_websocket_e2e.py` 全过 ② `WebSocketSink` aiohttp server + 多客户端 fan-out + 心跳（ping/pong）+ 断线重连 ③ 背压：单客户端 max_queue=256 满 → 丢最旧 + `dropped_events` 计数；`_send_loop` 慢消费者不阻塞 `consume()` ④ **完整事件目录**（SqliteEventSink）：5 元组索引 `idx_events_5tuple(session_id, tenant_id, event_name, seq, request_id)` + 时间索引 `idx_events_tenant_time` + request_id 索引 `idx_events_request_id` ⑤ TUI 实时仪表盘接入（`tools/verify_w12_dod.py` 5/5 通过）⑥ Prometheus 指标基础：`event_count` + `duration_seconds` ⑦ mypy 0 errors on 51 source files |
 | **W13** | ① `pytest tests/unit/test_agent_review.py tests/e2e/test_w13_dogfooding_e2e.py` 全过 ② `tools/agent_review.py` 拉取 PR diff（git diff main..HEAD）+ 7 类静态安全规则（secret_leak / cmd_injection / path_traversal / eval / sql_injection / data_exposure / weak_hash） ③ `${VAR}` SecretManager 引用被 `(?!\$\{)` negative lookahead 跳过 ④ 文件扩展名白名单（.py/.js/.ts/.go/.rs 等）+ 路径黑名单（.venv/node_modules/vendor/.git） ⑤ CLI: `--pr` / `--mode=simple|full` / `--output=text|json` 三件套 ⑥ 简单模式默认；完整模式（LLM + 对抗式）需 OPENAI_API_KEY / ANTHROPIC_API_KEY ⑦ G-001 Golden Case 跑通：能识别本项目 PR 中的真实安全问题 ⑧ `tools/verify_w13_dod.py` 5/5 通过 |
 
+#### Phase 3 Weekly Slice DoD（W14-W21, 已落定）
+
+> 详见 `docs/PHASE3-PLAN-2026-06-20.md` v2 修订表；W14 拆 a/b,W19 Docker 默认保守化,W20 MCP source 分级,每周 DoD 在 plan 内逐条列出。P3 整体通过 = W14a/W14b/W15/W16/W17/W18/W19/W20/W21 全部 §17.3 标记 P3 的 Golden Case 通过 + §17.4 CI 全绿 + `tools/verify_p3_dod.py` exit 0。
+
+#### Phase 4 Weekly Slice DoD（W22-W27, 已落定）
+
+| Week | 自动化 DoD |
+|------|------|
+| **W22** | ① `WorktreeManager(repo_root, base_dir)` + `WorktreeHandle` 导入可用 ② `acquire/release/list_active/get/cleanup_orphans/cleanup_all` 6 个 API 走通 ③ per-tenant `threading.Lock` 幂等,同 `(tenant, session, agent)` 重复 acquire 返回同一 handle ④ `_sanitize` 路径安全 + `_is_git_repo` 跨平台 (Windows 正反斜杠归一) ⑤ `tests/unit/test_worktree_manager.py` ≥26 cases 全过 ⑥ ruff 0 + mypy 0 |
+| **W23** | ① `${WORKTREE_PATH}` 占位符注入到 `MCPServerConfig.command/cwd/env` ② `substitute_placeholders/validate_config/find_placeholders` 导出 ③ `WorktreeIntegration(manager)` 高层封装 ④ `examples/w22_mcp_worktree.yaml` 合法 + 2 worker 共享 repo ⑤ G-021 3/3 通过 (3 agent 100 文件 / 10 并发 / 跨租户) ⑥ `tools/bench_worktree.py` 压测脚本可跑 ⑦ `tools/verify_p4_dod.py` 8 项全过 |
+| **W24** | ① `DockerConfig.long_lived: bool = True` 默认 ② `_start_container/_stop_container/_run_in_long_lived_container` 复用单容器 ③ 容器名 `agentswarm-<workspace_hash>-<pid>-<counter>` 唯一 ④ 100 次 `execute()` 只启 1 容器 (vs W19 模式 100 次) ⑤ `close()` + `__aenter__/__aexit__` async context manager 协议 ⑥ `long_lived=False` 保留 W19 兼容 ⑦ `tests/unit/test_sandbox_docker_long_lived.py` ≥13 cases ⑧ ruff 0 + mypy 0 |
+| **W25** | ① `PostgresBackend` + `PostgresConfig` 协议匹配 `TaskQueueBackend` ② Schema `tasks(id PK, version INT, data JSONB, updated_at TIMESTAMPTZ)` ③ CAS 单语句原子 `UPDATE ... WHERE id=? AND version=? RETURNING data` ④ asyncpg 连接池 min=1/max=20 ⑤ `fake_module` 测试支持 ⑥ `tests/unit/test_task_queue_backends.py` PostgresBackend 段 ≥13 cases ⑦ ruff 0 + mypy 0 |
+| **W26** | ① `DBCredentials` dataclass + `expires_at/seconds_to_expiry/is_expired/as_dsn` 派生属性 ② `VaultDynamicSecretManager` 继承 `VaultSecretManager` ③ `get_dynamic_credentials/renew_lease/revoke_lease/revoke_all/list_active_leases` 5 API ④ 端到端: get → 用 → revoke / 长期任务 renew ⑤ `tests/unit/test_vault_dynamic_secrets.py` ≥14 cases ⑥ ruff 0 + mypy 0 |
+| **W27** | ① 0.4.0a1 sdist + wheel 构建成功 ② `twine check` PASSED ③ CHANGELOG 含 0.4.0a1 节点 ④ git tag 0.4.0a1..0.4.0a4 (4 个) ⑤ 全量 ≥1060 passed / 138 P3-WIN skipped / 0 failed ⑥ ruff 0 + mypy 0 ⑦ `tools/verify_p4_dod.py` exit 0 |
+
+#### Phase 5 Weekly Slice DoD（W28-W32, GUI Web UI, 进行中）
+
+> 计划详见 `docs/PHASE5-PLAN.md`；W29/W30 合并到 W31（W28 收尾后直接进 W31 CLI 集成,中间不另开切片——见 PHASE5-PLAN §0 拆分说明）。W33+ 候选待 P5 §17.3 收齐后回填。
+
+| Week | 自动化 DoD |
+|------|------|
+| **W28** | ① `pip install -e ".[web]"` 后 `from agent_swarm.web import app` 可导入（fastapi/uvicorn/jinja2 落到 `[web]` extras） ② `create_app()` 工厂 + `lifespan` 上下文 + 4 页面 (`/` `/agents` `/worktrees` `/tasks`) + 5 partials + 3 JSON API + `/healthz` + `/metrics` (Prometheus 格式) + `WS /ws` 全部 200/101 ③ `WebState` 事件缓冲 500 条上限 + 多订阅者 fan-out + 断开清理 ④ 12 个 Jinja2 模板 (base + 4 pages + 5 partials + dashboard) + `style.css` 暗色主题 + `app.js` WebSocket 重连 ⑤ `examples/w28_web_demo.yaml` 2 worker 启动 ⑥ `tests/unit/test_web.py` ≥29 cases ⑦ ruff 0 + mypy 0 |
+| **W29-W30** | **合并入 W31**（W28 收尾后未单开切片；W29 原计划"WebState 后端持久化"、W30 原计划"RBAC/auth v0"均下沉到 W33+ 候选,不在 P5 必交付范围） |
+| **W31** | ① `WebStateSink(ObservabilitySink)` 接入 `ObservabilityBus`, consume SessionEvent 推入 `WebState` ② 异常内部吞掉 (warning log) + `drop_unsupported=False` 全推 + 不影响其他 sink ③ `tests/unit/test_web_state_sink.py` ≥10 cases ④ CLI `run` 命令新增 `--web/--web-host/--web-port` 三选项, 默认 host=127.0.0.1 port=8000 ⑤ `--web` 启用时: `WebState` + `WebStateSink` 注册 + 同进程 uvicorn 拉起 ⑥ import 失败 (未装 `[web]`) → 友好提示 + `sys.exit(2)` ⑦ `try/finally` 块 `web_server.should_exit=True` + 等待 `web_task` 干净关闭 ⑧ `examples/w31_web_with_swarm.yaml` 启动 ⑨ `agent-swarm run --help` 显示 3 个新选项 ⑩ ruff 0 + mypy 0 |
+| **W32** | ① `create_app(worktree_manager: Any = None)` 关键字注入 ② `app.state.worktree_manager` 注册 (路由用 `getattr` 兜底) ③ CLI `run` 新增 `--web-worktree-repo PATH` (必须存在, git 仓库) + `--web-worktree-base PATH` (默认 `<repo>/.worktrees`) ④ enable_web + 提供 repo 时: `WorktreeManager(repo, base)` 实例化注入 `create_app` ⑤ `examples/w32_web_with_worktree.yaml` writer-A + writer-B 2 worker 启动 ⑥ `tests/unit/test_web.py` 增 ≥4 cases (create_app 接受 / 默认无 / partial_worktrees 真数据 / 空 manager 兜底) ⑦ ruff 0 + mypy 0 ⑧ 端到端: `WorktreeManager initialized` + `web UI started` |
+
 #### Phase 级别 DoD
 
 | Phase | DoD 清单（全部满足才算完成） |
@@ -2342,6 +2368,8 @@ print(f"根因: {verdict.root_cause}, 置信度: {verdict.confidence}")
 | **Phase 1** | ① 6 个 Weekly Slice 全部 DoD 通过 ② 测试覆盖率 ≥75%（§17.4）③ §17.3 标记 P1 的 Golden Case 100% 通过 ④ §17.5 性能基线建立 ⑤ Quickstart 文档 + 3 个 examples 可独立运行 |
 | **Phase 2** | ① 飞书连接器签名验证 + 卡片交互在真实 Lark 工作区可用 ② AdversarialVerifier 在 §17.3 的 5 个 P2 调试 case 上根因命中率 ≥80% ③ MCP 至少接入 2 个真实 server（GitHub + filesystem）④ Dogfooding 启动：≥10 个本项目 PR 经过 swarm 审 |
 | **Phase 3** | ① 多租户压测 100 并发请求跨租户 0 越权 ② Redis 后端通过全部 Phase 1 测试 ③ Prometheus + Grafana 看板模板交付 ④ Docker sandbox 通过 CIS Docker Benchmark 关键项 |
+| **Phase 4** | ① WorktreeManager 26+ tests + G-021 3/3 通过 ② Docker long_lived 100 次 execute 只启 1 容器 (vs W19 100 次) ③ PostgresBackend CRUD/CAS 全过 ④ VaultDynamicSecretManager get/renew/revoke 5 API 走通 ⑤ 0.4.0a1 sdist + wheel + twine check 全过 ⑥ 4 git tag (0.4.0a1-a4) ⑦ ruff 0 + mypy 0 + ≥1060 tests passed |
+| **Phase 5** | ① Web UI v1 完整可启: `pip install -e ".[web]" && agent-swarm run examples/w31_web_with_swarm.yaml --web` ② WorktreeManager 闭环注入 Web UI (W22 预留 hook 落地) ③ 全量测试 0 failed (含 P3-WIN skipped ≤138) ④ 0.5.0a1 sdist + wheel + twine check 全过 ⑤ ruff 0 + mypy 0 ⑥ `tools/verify_p5_dod.py` exit 0 |
 
 #### "完成"的反指标（出现即视为未完成）
 

@@ -1,0 +1,27 @@
+# 统一行尾为 LF, 避免 WSL/Windows 混用导致 git diff 噪声
+# 优先级: 二进制 > 显式 > 自动探测
+* text=auto eol=lf
+
+# 显式声明的文本
+*.py text eol=lf
+*.md text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+*.json text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.sh text eol=lf
+
+# 二进制
+*.whl binary
+*.tar.gz binary
+*.zip binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.mp4 binary
+*.woff2 binary
