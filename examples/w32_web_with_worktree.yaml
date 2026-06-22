@@ -1,0 +1,54 @@
+# P5-W32 Web UI + WorktreeManager 集成 demo
+#
+# 启动:
+#   agent-swarm run examples/w31_web_with_swarm.yaml \
+#     --web --web-worktree-repo . --web-worktree-base .worktrees
+#
+# 前置:
+#   - 当前目录是 git 仓库 (含至少 1 commit) — WorktreeManager 需要
+#   - pip install -e ".[web]"
+#
+# 看到:
+#   - 实时事件流 (agent.start / task.complete 等)
+#   - /worktrees 页面显示活跃的 per-agent git worktree
+#   - Agent 列表 / Tasks 列表
+#
+# CLI 参数 (W32 新增):
+#   --web-worktree-repo PATH    WorktreeManager repo_root (git 仓库路径)
+#   --web-worktree-base PATH    WorktreeManager base_dir (默认 <repo>/.worktrees)
+#
+# W32 与 W31 区别:
+#   - W31 (--web): 基础 web UI, /worktrees 页空
+#   - W32 (--web-worktree-*): /worktrees 页显 WorktreeManager.list_active() 真数据
+
+name: w32-web-with-worktree
+
+agents:
+  - id: writer-A
+    role: writer-A
+    role_type: worker
+    persona: |
+      You are worker A. Write "Hello from A" to notes-A.md.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 2
+
+  - id: writer-B
+    role: writer-B
+    role_type: worker
+    persona: |
+      You are worker B. Write "Hello from B" to notes-B.md.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 2
+
+tasks:
+  - id: T-write-A
+    title: Write notes-A
+    description: Write notes-A.md with content "Hello from A"
+    assigned_to: writer-A
+
+  - id: T-write-B
+    title: Write notes-B
+    description: Write notes-B.md with content "Hello from B"
+    assigned_to: writer-B

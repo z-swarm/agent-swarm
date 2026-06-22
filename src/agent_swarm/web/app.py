@@ -37,15 +37,17 @@ STATIC_DIR = WEB_DIR / "static"
 def create_app(
     *,
     web_state: WebState | None = None,
+    worktree_manager: Any = None,
     title: str = "agent-swarm",
     version: str = "0.5.0a1",
 ) -> FastAPI:
     """
     构造 FastAPI app
 
-    @param web_state   Web UI 状态容器 (None = 新建)
-    @param title       app 标题 (OpenAPI docs)
-    @param version     app 版本
+    @param web_state         Web UI 状态容器 (None = 新建)
+    @param worktree_manager  可选 WorktreeManager (P5-W32: 注入后 /worktrees 页显真数据)
+    @param title             app 标题 (OpenAPI docs)
+    @param version           app 版本
     @return FastAPI 实例
     """
     state = web_state or WebState()
@@ -63,6 +65,9 @@ def create_app(
     )
     # 挂状态
     app.state.web_state = state
+    # 可选: WorktreeManager (P5-W32) — 路由用 getattr 兜底
+    if worktree_manager is not None:
+        app.state.worktree_manager = worktree_manager
 
     # 静态 + 模板
     if STATIC_DIR.exists():

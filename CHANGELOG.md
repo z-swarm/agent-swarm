@@ -79,6 +79,36 @@ agent-swarm run examples/w31_web_with_swarm.yaml --web
 - CLI `--help` 显示 `--web` / `--web-host` / `--web-port`
 - 端到端: `web ui started (uptime=0s)` + LLM 失败时干净退出
 
+#### W32: WorktreeManager → Web UI 注入 (闭环 W22 hook)
+- **修改**: `src/agent_swarm/web/app.py` — `create_app` 接受 `worktree_manager: Any = None` 关键字
+  - 注入 `app.state.worktree_manager` (P4-W22 集成入口)
+  - 路由已有 `getattr(request.app.state, "worktree_manager", None)` 兜底, 无需改 routes
+- **修改**: `src/agent_swarm/cli/main.py` — `run` 命令新增选项
+  - `--web-worktree-repo PATH` — WorktreeManager repo_root (git 仓库路径, 必须存在)
+  - `--web-worktree-base PATH` — base_dir (默认 `<repo>/.worktrees`)
+  - 启用时实例化 `WorktreeManager(repo_root, base_dir)` 注入到 `create_app`
+- **修改**: `tests/unit/test_web.py` — 4 新 cases
+  - `test_create_app_accepts_worktree_manager` — create_app 接受并注入
+  - `test_create_app_default_no_worktree_manager` — 向后兼容 (默认不挂)
+  - `test_partial_worktrees_with_manager` — 注入后 /partials/worktrees 显示真数据
+  - `test_partial_worktrees_empty_when_no_manager` — 无 manager 仍 200 (W28 兼容)
+- **新增**: `examples/w32_web_with_worktree.yaml` — writer-A + writer-B + `--web-worktree-*`
+
+#### 启动方式 (W32)
+```bash
+pip install -e ".[web]"
+agent-swarm run examples/w32_web_with_worktree.yaml \
+  --web --web-worktree-repo <git-repo-path>
+# 浏览器打开 http://localhost:8000/worktrees — 显真 worktree 列表
+```
+
+#### DoD 验证 (W32)
+- ruff 0 / mypy 0
+- 4 cases (test_web W32) passed
+- 全量回归 909 passed / 115 skipped / 0 failed (W31 905 + 4)
+- CLI `--help` 显示 `--web-worktree-repo` / `--web-worktree-base`
+- 端到端: `WorktreeManager initialized` + `web UI started (uptime=0s)`
+
 ## [0.4.0a1] - 2026-06-22
 
 ### Phase 4 收尾 (W22-W26)

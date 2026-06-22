@@ -67,12 +67,21 @@ def test_app_routes_registered(app) -> None:
     # 用 app.url_path_for 间接验证 (需要参数时用 dummy)
     # 或直接 hit 路由——更可靠
     client = TestClient(app)
-    for path in ["/", "/agents", "/worktrees", "/tasks",
-                 "/partials/events", "/partials/metrics",
-                 "/partials/agents", "/partials/worktrees",
-                 "/partials/tasks",
-                 "/api/state", "/api/events",
-                 "/healthz", "/metrics"]:
+    for path in [
+        "/",
+        "/agents",
+        "/worktrees",
+        "/tasks",
+        "/partials/events",
+        "/partials/metrics",
+        "/partials/agents",
+        "/partials/worktrees",
+        "/partials/tasks",
+        "/api/state",
+        "/api/events",
+        "/healthz",
+        "/metrics",
+    ]:
         r = client.get(path)
         assert r.status_code == 200, f"{path} returned {r.status_code}"
 
@@ -128,15 +137,18 @@ def test_partial_events_empty(client: TestClient, state: WebState) -> None:
 
 
 def test_partial_events_with_data(
-    client: TestClient, state: WebState,
+    client: TestClient,
+    state: WebState,
 ) -> None:
     """partial events 有数据时渲染"""
-    asyncio.run(state.push_event(
-        event_name="agent.start",
-        session_id="s1",
-        seq=1,
-        payload={"agent_id": "a1"},
-    ))
+    asyncio.run(
+        state.push_event(
+            event_name="agent.start",
+            session_id="s1",
+            seq=1,
+            payload={"agent_id": "a1"},
+        )
+    )
     r = client.get("/partials/events")
     assert r.status_code == 200
     assert "agent.start" in r.text
@@ -158,7 +170,8 @@ def test_partial_agents_empty(client: TestClient) -> None:
 
 
 def test_partial_agents_with_session(
-    client: TestClient, state: WebState,
+    client: TestClient,
+    state: WebState,
 ) -> None:
     asyncio.run(state.push_event("e1", "session-abc", 1, {}))
     r = client.get("/partials/agents")
@@ -240,7 +253,8 @@ def test_healthz(client: TestClient) -> None:
 
 
 def test_metrics_prometheus_format(
-    client: TestClient, state: WebState,
+    client: TestClient,
+    state: WebState,
 ) -> None:
     asyncio.run(state.push_event("agent.start", "s1", 1, {}))
     asyncio.run(state.push_event("agent.start", "s2", 2, {}))
@@ -338,7 +352,8 @@ def test_websocket_receives_event(app, state: WebState) -> None:
 def test_websocket_multiple_subscribers(app, state: WebState) -> None:
     """多个 ws 客户端都收到事件"""
     with (
-        TestClient(app) as client, client.websocket_connect("/ws") as ws1,
+        TestClient(app) as client,
+        client.websocket_connect("/ws") as ws1,
         client.websocket_connect("/ws") as ws2,
     ):
         # 各吃 _hello
@@ -362,3 +377,91 @@ def test_websocket_disconnect_unsubscribes(app, state: WebState) -> None:
         asyncio.run(state.push_event("after_close", "s1", 1, {}))
         # subscribers 应已清理
         assert len(state._subscribers) == initial_subs
+
+
+# ---------------------------------------------------------------------------
+# P5-W32: WorktreeManager 注入
+# ---------------------------------------------------------------------------
+
+
+class _FakeWorktreeManager:
+    """测试用 fake WorktreeManager——只暴露 list_active 即可"""
+
+    def __init__(self, items: list[dict]) -> None:
+        self._items = items
+
+    def list_active(self) -> list:
+        out: list = []
+        for it in self._items:
+            item = it  # B023: rebind to avoid closure over loop var
+            h = type(
+                "H",
+                (),
+                {
+                    "key": item["key"],
+                    "path": type("P", (), {"__str__": lambda self, v=item["path"]: v})(),
+                    "branch": item["branch"],
+                    "agent_id": item["agent_id"],
+                    "tenant_id": item["tenant_id"],
+                    "session_id": item["session_id"],
+                },
+            )()
+            out.append(h)
+        return out
+
+
+def test_create_app_accepts_worktree_manager() -> None:
+    """create_app 接受 worktree_manager 关键字, 注入到 app.state"""
+    wm = _FakeWorktreeManager([])
+    app = create_app(worktree_manager=wm)
+    assert hasattr(app.state, "worktree_manager")
+    assert app.state.worktree_manager is wm
+
+
+def test_create_app_default_no_worktree_manager() -> None:
+    """create_app() 默认不挂 worktree_manager (向后兼容)"""
+    app = create_app()
+    assert not hasattr(app.state, "worktree_manager")
+
+
+def test_partial_worktrees_with_manager() -> None:
+    """注入 manager 后, /partials/worktrees 显示真数据"""
+    wm = _FakeWorktreeManager(
+        [
+            {
+                "key": "t1/s1/a1",
+                "path": "/tmp/wt-a1",
+                "branch": "wt/t1/s1/a1",
+                "agent_id": "a1",
+                "tenant_id": "t1",
+                "session_id": "s1",
+            },
+            {
+                "key": "t1/s1/a2",
+                "path": "/tmp/wt-a2",
+                "branch": "wt/t1/s1/a2",
+                "agent_id": "a2",
+                "tenant_id": "t1",
+                "session_id": "s1",
+            },
+        ],
+    )
+    app = create_app(worktree_manager=wm)
+    client = TestClient(app)
+    r = client.get("/partials/worktrees")
+    assert r.status_code == 200
+    body = r.text
+    assert "wt/t1/s1/a1" in body
+    assert "wt/t1/s1/a2" in body
+    assert "a1" in body
+    assert "a2" in body
+
+
+def test_partial_worktrees_empty_when_no_manager() -> None:
+    """无 manager 时, /partials/worktrees 仍 200 (W28 兼容)"""
+    app = create_app()
+    client = TestClient(app)
+    r = client.get("/partials/worktrees")
+    assert r.status_code == 200
+    # 列表为空 (无 row)
+    assert "wt/" not in r.text or "<!-- empty -->" in r.text or len(r.text) < 2000

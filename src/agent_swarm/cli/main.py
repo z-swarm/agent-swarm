@@ -235,6 +235,20 @@ cli.add_command(_doctor_cmd)
     default=8000,
     help="Web UI 端口 (默认 8000)",
 )
+@click.option(
+    "--web-worktree-repo",
+    "web_worktree_repo",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+    default=None,
+    help="P5-W32: WorktreeManager repo_root (git 仓库路径); 启用后 /worktrees 页显真数据",
+)
+@click.option(
+    "--web-worktree-base",
+    "web_worktree_base",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="P5-W32: WorktreeManager base_dir (worktree 输出目录); 默认 <repo>/.worktrees",
+)
 def run(
     config: Path,
     verbose: bool,
@@ -245,6 +259,8 @@ def run(
     enable_web: bool,
     web_host: str,
     web_port: int,
+    web_worktree_repo: Path | None,
+    web_worktree_base: Path | None,
 ) -> None:
     """运行 swarm（从 YAML 配置启动）"""
     _configure_logging(verbose)
@@ -276,6 +292,7 @@ def run(
     web_server = None
     web_task = None
     web_sink = None
+    worktree_manager = None
     if enable_web:
         try:
             import uvicorn  # noqa: E402
@@ -285,10 +302,23 @@ def run(
         except ImportError as exc:
             console.print(f"[red]--web 需要额外依赖: {exc}. 运行: pip install -e .[web][/]")
             sys.exit(2)
+        # P5-W32: 可选 WorktreeManager 注入
+        if web_worktree_repo is not None:
+            try:
+                from agent_swarm.worktree import WorktreeManager  # noqa: E402
+            except ImportError as exc:
+                console.print(f"[red]--web-worktree-repo 需要 worktree 模块: {exc}[/]")
+                sys.exit(2)
+            base = web_worktree_base or (web_worktree_repo / ".worktrees")
+            worktree_manager = WorktreeManager(
+                repo_root=web_worktree_repo,
+                base_dir=base,
+            )
+            console.print(f"[bold magenta]worktree[/] → repo={web_worktree_repo} base={base}")
         web_state = WebState()
         web_sink = WebStateSink(web_state)
         bus.register_sink(web_sink)
-        app = create_app(web_state=web_state)
+        app = create_app(web_state=web_state, worktree_manager=worktree_manager)
         uv_config = uvicorn.Config(
             app,
             host=web_host,
