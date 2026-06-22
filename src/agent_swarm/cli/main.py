@@ -68,8 +68,7 @@ def _resolve_api_key_env(provider: str | None, api_key: str | None) -> str | Non
     p = provider.lower()
     if p not in PROVIDER_ENV_VARS:
         raise click.UsageError(
-            f"unknown --provider {provider!r}; "
-            f"valid: {sorted(PROVIDER_ENV_VARS.keys())}"
+            f"unknown --provider {provider!r}; valid: {sorted(PROVIDER_ENV_VARS.keys())}"
         )
     return PROVIDER_ENV_VARS[p]
 
@@ -90,17 +89,12 @@ def _validate_db_writable(db_path: Path) -> None:
     # 1) 文件已存在 → 检查是否可写
     if db_path.exists():
         if db_path.is_dir():
-            raise click.UsageError(
-                f"session db path {db_path} is a directory, not a file"
-            )
+            raise click.UsageError(f"session db path {db_path} is a directory, not a file")
         if not db_path.is_file():
-            raise click.UsageError(
-                f"session db path {db_path} exists but is not a regular file"
-            )
+            raise click.UsageError(f"session db path {db_path} exists but is not a regular file")
         if not _is_writable_file(db_path):
             raise click.UsageError(
-                f"session db {db_path} is not writable "
-                f"(permissions={oct(db_path.stat().st_mode)})"
+                f"session db {db_path} is not writable (permissions={oct(db_path.stat().st_mode)})"
             )
         return
 
@@ -108,22 +102,18 @@ def _validate_db_writable(db_path: Path) -> None:
     parent = db_path.parent
     if not parent.exists():
         raise click.UsageError(
-            f"session db parent directory does not exist: {parent}\n"
-            f"  hint: mkdir -p {parent}"
+            f"session db parent directory does not exist: {parent}\n  hint: mkdir -p {parent}"
         )
     if not parent.is_dir():
-        raise click.UsageError(
-            f"session db parent {parent} is not a directory"
-        )
+        raise click.UsageError(f"session db parent {parent} is not a directory")
     if not _is_writable_dir(parent):
-        raise click.UsageError(
-            f"session db parent directory {parent} is not writable"
-        )
+        raise click.UsageError(f"session db parent directory {parent} is not writable")
 
 
 def _is_writable_file(path: Path) -> bool:
     """@brief 校验文件当前用户可写（用 os.access）"""
     import os as _os
+
     return _os.access(str(path), _os.W_OK)
 
 
@@ -131,6 +121,7 @@ def _is_writable_dir(path: Path) -> bool:
     """@brief 校验目录当前用户可写（os.access W_OK + 实际能创建 .write_test）"""
     import os as _os
     import tempfile
+
     if not _os.access(str(path), _os.W_OK):
         return False
     # 真创建一次临时文件——避免 sticky bit 等情况
@@ -292,23 +283,21 @@ def run(
             from agent_swarm.observability import WebStateSink  # noqa: E402
             from agent_swarm.web import WebState, create_app  # noqa: E402
         except ImportError as exc:
-            console.print(
-                f"[red]--web 需要额外依赖: {exc}. "
-                f"运行: pip install -e .[web][/]"
-            )
+            console.print(f"[red]--web 需要额外依赖: {exc}. 运行: pip install -e .[web][/]")
             sys.exit(2)
         web_state = WebState()
         web_sink = WebStateSink(web_state)
         bus.register_sink(web_sink)
         app = create_app(web_state=web_state)
         uv_config = uvicorn.Config(
-            app, host=web_host, port=web_port,
-            log_level="warning", lifespan="on",
+            app,
+            host=web_host,
+            port=web_port,
+            log_level="warning",
+            lifespan="on",
         )
         web_server = uvicorn.Server(uv_config)
-        console.print(
-            f"[bold magenta]web UI[/] → http://{web_host}:{web_port}"
-        )
+        console.print(f"[bold magenta]web UI[/] → http://{web_host}:{web_port}")
 
     async def _run_with_session():
         nonlocal web_task
@@ -410,8 +399,7 @@ def tui(config: Path, verbose: bool, provider: str | None, api_key: str | None) 
         sys.exit(2)
 
     console.print(
-        f"[bold cyan]TUI launching[/] swarm=[yellow]{swarm.name}[/] "
-        f"session={swarm.session_id}"
+        f"[bold cyan]TUI launching[/] swarm=[yellow]{swarm.name}[/] session={swarm.session_id}"
     )
     try:
         asyncio.run(run_dashboard(swarm))
@@ -470,10 +458,7 @@ def session_list(db_path: Path | None) -> None:
     for s in sessions:
         state = s.state or "[yellow]running?[/]"
         created = datetime.fromtimestamp(s.created_at).strftime("%Y-%m-%d %H:%M:%S")
-        ended = (
-            datetime.fromtimestamp(s.ended_at).strftime("%H:%M:%S")
-            if s.ended_at else "-"
-        )
+        ended = datetime.fromtimestamp(s.ended_at).strftime("%H:%M:%S") if s.ended_at else "-"
         table.add_row(s.session_id, s.swarm_name, state, created, ended)
     console.print(table)
 
@@ -496,9 +481,7 @@ def session_list(db_path: Path | None) -> None:
     default=False,
     help="是否打印原始 yaml 配置（默认 False）",
 )
-def session_show(
-    session_id: str, db_path: Path | None, events: bool, config: bool
-) -> None:
+def session_show(session_id: str, db_path: Path | None, events: bool, config: bool) -> None:
     """显示 session 详情 + 事件流"""
     db = db_path or DEFAULT_DB_PATH
     _validate_db_writable(db)  # P2-3.6
@@ -531,13 +514,11 @@ def session_show(
     console.print(f"  swarm: {info.swarm_name}")
     console.print(f"  state: {info.state or '[yellow]running?[/]'}")
     console.print(
-        f"  created: "
-        f"{datetime.fromtimestamp(info.created_at).strftime('%Y-%m-%d %H:%M:%S')}"
+        f"  created: {datetime.fromtimestamp(info.created_at).strftime('%Y-%m-%d %H:%M:%S')}"
     )
     if info.ended_at:
         console.print(
-            f"  ended: "
-            f"{datetime.fromtimestamp(info.ended_at).strftime('%Y-%m-%d %H:%M:%S')}"
+            f"  ended: {datetime.fromtimestamp(info.ended_at).strftime('%Y-%m-%d %H:%M:%S')}"
         )
 
     if cfg_yaml:
@@ -548,10 +529,7 @@ def session_show(
         console.rule(f"[bold]Events ({len(evts)})[/]")
         for e in evts:
             ts = datetime.fromtimestamp(e.timestamp).strftime("%H:%M:%S.%f")[:-3]
-            console.print(
-                f"[dim]{e.seq:4d}[/] [yellow]{ts}[/] "
-                f"[cyan]{e.event_name}[/] {e.payload}"
-            )
+            console.print(f"[dim]{e.seq:4d}[/] [yellow]{ts}[/] [cyan]{e.event_name}[/] {e.payload}")
 
 
 @session.command("resume")
@@ -611,13 +589,18 @@ def session_resume(session_id: str, db_path: Path | None) -> None:
         table.add_column("Version", justify="right")
         for t in tasks:
             color = {
-                "completed": "green", "failed": "red",
-                "in_progress": "yellow", "blocked": "magenta",
+                "completed": "green",
+                "failed": "red",
+                "in_progress": "yellow",
+                "blocked": "magenta",
                 "pending": "white",
             }.get(t.status, "white")
             table.add_row(
-                t.id, t.title, f"[{color}]{t.status}[/]",
-                t.assigned_to or "-", str(t.version),
+                t.id,
+                t.title,
+                f"[{color}]{t.status}[/]",
+                t.assigned_to or "-",
+                str(t.version),
             )
         console.print(table)
 

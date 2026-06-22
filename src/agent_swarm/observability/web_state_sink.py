@@ -51,7 +51,8 @@ class WebStateSink(ObservabilitySink):
             # sink 内部错误不传播——记 warning
             log.warning(
                 "WebStateSink failed: event=%s err=%s",
-                event.event_name, exc,
+                event.event_name,
+                exc,
             )
 
 

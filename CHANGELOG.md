@@ -47,6 +47,38 @@ uvicorn agent_swarm.web:app --reload
 - Worktree 视图需 app.state.worktree_manager 注入 (P4-W22 集成入口预留)
 - HTMX 自动刷新, 不支持手动控制
 
+#### W31: Web UI CLI 集成 (--web 启动 uvicorn + WebStateSink)
+- **新增**: `src/agent_swarm/observability/web_state_sink.py` — `WebStateSink(ObservabilitySink)`
+  - consume SessionEvent 推入 WebState (驱动 Web UI)
+  - 异常内部吞掉 (warning log), 不影响其他 sink
+  - `drop_unsupported=False` 默认全推
+- **新增**: `tests/unit/test_web_state_sink.py` — 10 cases
+  - 基本 push / 空 payload / 嵌套 payload
+  - 与 ObservabilityBus 集成 / 多 sink 共存
+  - sink 异常不传播 / bus 兜底 / unregister / 协议 / repr
+- **修改**: `src/agent_swarm/observability/__init__.py` — 导出 `WebStateSink`
+- **修改**: `src/agent_swarm/cli/main.py` (+67) — `run` 命令新增选项
+  - `--web` 启用 Web UI (同进程 uvicorn)
+  - `--web-host` 绑定地址 (默认 127.0.0.1)
+  - `--web-port` 端口 (默认 8000)
+  - import 失败 (未装 [web]) → 友好提示 + sys.exit(2)
+  - finally 块: `web_server.should_exit=True` + 等待 web_task 干净关闭
+- **新增**: `examples/w31_web_with_swarm.yaml` — writer + reviewer 2 worker + `--web` 启动示例
+
+#### 启动方式 (W31)
+```bash
+pip install -e ".[web]"
+agent-swarm run examples/w31_web_with_swarm.yaml --web
+# 浏览器打开 http://localhost:8000
+```
+
+#### DoD 验证 (W31)
+- ruff 0 / mypy 0
+- 10 cases (test_web_state_sink) passed
+- 49 cases (test_web + test_web_state_sink + test_websocket_sink) 全过
+- CLI `--help` 显示 `--web` / `--web-host` / `--web-port`
+- 端到端: `web ui started (uptime=0s)` + LLM 失败时干净退出
+
 ## [0.4.0a1] - 2026-06-22
 
 ### Phase 4 收尾 (W22-W26)

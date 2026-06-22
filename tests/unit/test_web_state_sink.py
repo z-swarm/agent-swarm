@@ -50,8 +50,11 @@ async def test_sink_with_empty_payload() -> None:
     state = WebState()
     sink = WebStateSink(state)
     evt = SessionEvent(
-        event_name="e1", session_id="s1", timestamp=1.0,
-        seq=1, payload={},
+        event_name="e1",
+        session_id="s1",
+        timestamp=1.0,
+        seq=1,
+        payload={},
     )
     await sink.consume(evt)
     assert len(state.events) == 1
@@ -69,8 +72,11 @@ async def test_sink_with_complex_payload() -> None:
         "nested": {"k": "v"},
     }
     evt = SessionEvent(
-        event_name="e1", session_id="s1", timestamp=1.0,
-        seq=1, payload=payload,
+        event_name="e1",
+        session_id="s1",
+        timestamp=1.0,
+        seq=1,
+        payload=payload,
     )
     await sink.consume(evt)
     rec = state.events[0]
@@ -100,6 +106,7 @@ async def test_multiple_sinks_coexist() -> None:
     bus = ObservabilityBus()
     state = WebState()
     from agent_swarm.observability import InMemorySink
+
     ws_sink = WebStateSink(state)
     mem_sink = InMemorySink()
     bus.register_sink(ws_sink)
@@ -120,13 +127,18 @@ async def test_sink_does_not_raise_on_webstate_error() -> None:
     """WebState.push_event 抛错时, sink 不传播"""
     state = WebState()
     sink = WebStateSink(state)
+
     # 模拟 push 抛错——用一个 mock
-    orig_push = state.push_event
     async def broken_push(*args, **kwargs):
         raise RuntimeError("simulated failure")
+
     state.push_event = broken_push  # type: ignore[method-assign]
     evt = SessionEvent(
-        event_name="e1", session_id="s1", timestamp=1.0, seq=1, payload={},
+        event_name="e1",
+        session_id="s1",
+        timestamp=1.0,
+        seq=1,
+        payload={},
     )
     # 不抛
     await sink.consume(evt)
@@ -180,6 +192,7 @@ async def test_sink_unregister_stops_events() -> None:
 def test_sink_inherits_protocol() -> None:
     """WebStateSink 满足 ObservabilitySink 协议"""
     from agent_swarm.observability.bus import ObservabilitySink
+
     sink = WebStateSink(WebState())
     assert isinstance(sink, ObservabilitySink)
 
