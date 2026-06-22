@@ -1,6 +1,6 @@
 """
 @module agent_swarm.core.backends
-@brief  W18 TaskQueue 后端集合——memory / redis
+@brief  W18 + P4-W25 TaskQueue 后端集合——memory / redis / postgres
 """
 
 from __future__ import annotations
@@ -16,5 +16,15 @@ try:
         RedisConfig,
     )
     __all__ += ["RedisBackend", "RedisConfig"]
+except ImportError:  # pragma: no cover
+    pass
+
+# P4-W25 PostgreSQL 是可选依赖
+try:
+    from agent_swarm.core.backends.postgres_backend import (  # noqa: F401
+        PostgresBackend,
+        PostgresConfig,
+    )
+    __all__ += ["PostgresBackend", "PostgresConfig"]
 except ImportError:  # pragma: no cover
     pass
