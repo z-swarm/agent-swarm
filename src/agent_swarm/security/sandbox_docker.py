@@ -1,6 +1,6 @@
 """
 @module agent_swarm.security.sandbox_docker
-@brief  W19-② ③ ④ Docker Sandbox 后端——保守版 opt-in
+@brief  W19-② ③ ④ + P4-W24 Docker Sandbox 后端——保守版 opt-in + 长生命周期
 
 P3-PLAN-v2 W19 DoD:
   - W19-1 DockerSandboxManager 实现 SandboxManager 协议
@@ -15,6 +15,12 @@ P3-PLAN-v2 W19 DoD:
   - W19-4 默认 SandboxMode.WORKSPACE_ONLY 不变 (向后兼容)
   - W19-5 容器逃逸拦截: 20 条攻击模式
 
+P4-W24 长生命周期 (W24-①):
+  - long_lived=True (默认): 首次 execute() 启容器, 后续 docker exec, close() 停容器
+  - long_lived=False (W19 兼容): 每次 execute() = docker run --rm
+  - 性能: 100 execute() 调用只启 1 容器 (vs 100), 启动开销 <500ms 仅一次
+  - 容器名: 唯一基于 workspace + pid (避免冲突)
+
 @note 本文件仅在 user 显式 sandbox.mode=docker 时启用
 @note 测试用 fake docker CLI (subprocess 模拟) + 不需要真 docker daemon
 """
@@ -22,8 +28,10 @@ P3-PLAN-v2 W19 DoD:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
+import os
 import shutil
 import time
 from collections.abc import Awaitable, Callable
@@ -178,7 +186,7 @@ CONTAINER_ESCAPE_ATTEMPTS: tuple[EscapeAttempt, ...] = (
 
 @dataclass
 class DockerConfig:
-    """Docker 后端配置——W19-1"""
+    """Docker 后端配置——W19-1 + P4-W24"""
 
     image: str = "python:3.11-slim"
     user: str = "1000:1000"  # CIS 4.1 non-root
@@ -193,6 +201,12 @@ class DockerConfig:
     extra_cis_checks: tuple[str, ...] = ()
     # 测试用: 模拟 docker CLI 的可调用对象 (默认 shutil.which("docker"))
     docker_runner: Callable[..., Awaitable[dict[str, Any]]] | None = None
+    # P4-W24: 长生命周期模式
+    # True  -> 启 1 容器, 后续 docker exec (性能高, 启动开销仅一次)
+    # False -> 每次 docker run --rm (W19 行为, 隔离强但慢)
+    long_lived: bool = True
+    container_name_prefix: str = "agentswarm"  # 容器名前缀
+    container_stop_timeout: float = 10.0  # docker stop 超时秒
 
 
 class DockerSandboxManager(SandboxManager):
@@ -236,6 +250,10 @@ class DockerSandboxManager(SandboxManager):
         self._container_id: str | None = None
         self._started_at: float | None = None
         self._doctor_warnings: list[str] = []
+        # P4-W24: 长生命周期状态
+        self._container_name: str | None = None
+        self._container_started: bool = False
+        self._stop_lock = asyncio.Lock()
 
 
 
@@ -292,10 +310,179 @@ class DockerSandboxManager(SandboxManager):
         for tok in argv[1:]:
             self._assert_path_in_workspace_or_skip(tok)
 
-        # 4) 容器内执行 (docker run)
+        # 4) 容器内执行 (P4-W24: 长生命周期 or W19 一次性)
+        if self.config.long_lived:
+            return await self._run_in_long_lived_container(
+                argv, timeout, max_output_bytes, env_overrides or {},
+            )
         return await self._run_in_container(
             argv, timeout, max_output_bytes, env_overrides or {},
         )
+
+    # ------------------------------------------------------------------
+    # P4-W24: 长生命周期容器管理
+    # ------------------------------------------------------------------
+
+    # 类级计数器, 保证同进程多 manager 唯一 (id() 在某些情况下会复用)
+    _name_counter: int = 0
+
+    def _make_container_name(self) -> str:
+        """生成唯一容器名"""
+        DockerSandboxManager._name_counter += 1
+        ws_hash = hashlib.sha256(str(self.workspace).encode()).hexdigest()[:8]
+        return (
+            f"{self.config.container_name_prefix}-{ws_hash}-"
+            f"{os.getpid()}-{DockerSandboxManager._name_counter:04d}"
+        )
+
+    async def _start_container(self) -> None:
+        """启动长生命周期容器 (P4-W24)"""
+        if self._container_started:
+            return
+        async with self._stop_lock:
+            if self._container_started:  # 双重检查
+                return
+            self._container_name = self._make_container_name()
+            # 构造 docker run -d 命令
+            runner = self.config.docker_runner or self._default_docker_runner
+            docker_argv = ["docker", "run", "-d", "--name", self._container_name]
+            # CIS 安全参数
+            cfg = self.config
+            docker_argv += ["--user", cfg.user]
+            for cap in cfg.capabilities_drop:
+                docker_argv += ["--cap-drop", cap]
+            if cfg.read_only_root:
+                docker_argv += ["--read-only", "--tmpfs", "/tmp:size=64m,mode=1777"]
+            if cfg.no_new_privileges:
+                docker_argv += ["--security-opt", "no-new-privileges:true"]
+            docker_argv += [
+                "--pids-limit", str(cfg.pids_limit),
+                "--memory", cfg.memory,
+                "--cpus", str(cfg.cpus),
+                "--network", cfg.network,
+                "-v", f"{self.workspace}:{cfg.workspace_mount}:rw",
+                cfg.image,
+                "sleep", "infinity",  # 长跑: 容器内永远 sleep
+            ]
+            log.info("docker long-lived: starting container %s", self._container_name)
+            result = await runner(docker_argv)
+            if result.get("exit_code") != 0:
+                raise RuntimeError(
+                    f"failed to start long-lived container: {result.get('stderr')}"
+                )
+            # stdout 是 container id
+            self._container_id = (result.get("stdout") or "").strip()
+            self._started_at = time.monotonic()
+            self._container_started = True
+            log.info(
+                "docker long-lived: container %s started (id=%s)",
+                self._container_name, self._container_id,
+            )
+
+    async def _stop_container(self) -> None:
+        """停止长生命周期容器 (P4-W24)"""
+        if not self._container_started or not self._container_name:
+            return
+        async with self._stop_lock:
+            if not self._container_started:
+                return
+            runner = self.config.docker_runner or self._default_docker_runner
+            try:
+                # docker stop 给容器发 SIGTERM, 超时后 SIGKILL
+                await runner([
+                    "docker", "stop",
+                    "-t", str(int(self.config.container_stop_timeout)),
+                    self._container_name,
+                ])
+                log.info(
+                    "docker long-lived: container %s stopped", self._container_name,
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.warning("docker long-lived: stop failed: %s", exc)
+            finally:
+                self._container_started = False
+                self._container_id = None
+                self._container_name = None
+                self._started_at = None
+
+    async def _run_in_long_lived_container(
+        self,
+        argv: list[str],
+        timeout: float,
+        max_output_bytes: int,
+        env_overrides: dict[str, str],
+    ) -> SandboxResult:
+        """
+        P4-W24: 在长生命周期容器内执行命令
+
+        首次调用: 启动容器 (docker run -d sleep infinity)
+        后续调用: docker exec 在容器内跑
+        关闭时: docker stop
+        """
+        # 1) 确保容器在跑
+        if not self._container_started:
+            try:
+                await self._start_container()
+            except Exception as exc:  # noqa: BLE001
+                log.error("docker long-lived: start failed: %s", exc)
+                return SandboxResult(
+                    exit_code=-1, stdout="", stderr=f"start failed: {exc}",
+                    truncated=False, duration_seconds=0.0,
+                )
+
+        # 2) docker exec
+        runner = self.config.docker_runner or self._default_docker_runner
+        cfg = self.config
+        docker_argv = [
+            "docker", "exec",
+            "-w", cfg.workspace_mount,
+        ]
+        for k, v in env_overrides.items():
+            docker_argv += ["-e", f"{k}={v}"]
+        docker_argv += [self._container_name or ""] + argv
+        start = time.monotonic()
+        try:
+            result = await asyncio.wait_for(runner(docker_argv), timeout=timeout)
+        except TimeoutError:
+            return SandboxResult(
+                exit_code=-1, stdout="",
+                stderr=f"docker exec timeout after {timeout}s",
+                truncated=False,
+                duration_seconds=time.monotonic() - start,
+                timed_out=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.exception("docker exec failed: %s", exc)
+            return SandboxResult(
+                exit_code=-1, stdout="", stderr=f"docker error: {exc}",
+                truncated=False, duration_seconds=time.monotonic() - start,
+            )
+        duration = time.monotonic() - start
+        stdout = result.get("stdout", "")
+        stderr = result.get("stderr", "")
+        exit_code = int(result.get("exit_code", 0))
+        truncated = False
+        if len(stdout) > max_output_bytes:
+            stdout = stdout[:max_output_bytes] + "\n[truncated]"
+            truncated = True
+        if len(stderr) > max_output_bytes:
+            stderr = stderr[:max_output_bytes] + "\n[truncated]"
+            truncated = True
+        return SandboxResult(
+            exit_code=exit_code,
+            stdout=stdout, stderr=stderr, truncated=truncated,
+            duration_seconds=duration,
+        )
+
+    async def close(self) -> None:
+        """P4-W24: 关闭长生命周期容器 (手动调用)"""
+        await self._stop_container()
+
+    async def __aenter__(self) -> DockerSandboxManager:
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        await self.close()
 
     # ------------------------------------------------------------------
     # 容器逃逸拦截 (W19-5)

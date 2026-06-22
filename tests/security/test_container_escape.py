@@ -192,6 +192,7 @@ async def test_legitimate_ls_not_blocked(mgr: DockerSandboxManager) -> None:
     """`ls` 本身不命中任何 ESC pattern——应正常进 docker run"""
     captured: dict[str, Any] = {}
     mgr.config.docker_runner = _mk_runner(captured)
+    mgr.config.long_lived = False  # P4-W24: 用 W19 兼容模式测 CIS argv
     result = await mgr.execute("ls", timeout=2.0)
     assert result.exit_code == 0
     # 验证 CIS 标志确实写入 docker argv

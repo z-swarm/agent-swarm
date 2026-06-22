@@ -181,7 +181,9 @@ async def test_docker_sandbox_executes_via_mock_runner(
         captured["argv"] = argv
         return {"exit_code": 0, "stdout": "hello\n", "stderr": ""}
 
-    cfg = DockerConfig(docker_runner=fake_runner, image="alpine:latest")
+    cfg = DockerConfig(
+        docker_runner=fake_runner, image="alpine:latest", long_lived=False,
+    )
     mgr = DockerSandboxManager(workspace, config=cfg)
     result = await mgr.execute("ls /workspace", timeout=5.0)
     assert result.exit_code == 0
