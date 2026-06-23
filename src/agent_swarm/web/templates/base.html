@@ -30,6 +30,9 @@
         <a href="/tasks" hx-get="/tasks" hx-target="#content" hx-swap="innerHTML"
            hx-push-url="true" hx-trigger="click"
            class="{% if page == 'tasks' %}active{% endif %}">Tasks</a>
+        <a href="/review" hx-get="/review" hx-target="#content" hx-swap="innerHTML"
+           hx-push-url="true" hx-trigger="click"
+           class="{% if page == 'review' %}active{% endif %}">Review</a>
         <a href="/metrics" target="_blank" class="api">/metrics</a>
     </div>
     <div class="ws-status" id="ws-status">

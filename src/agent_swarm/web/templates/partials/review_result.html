@@ -1,0 +1,43 @@
+{# P5-W36b Review 结果展示 partial — 接收 JSON, 渲染 verdict + findings #}
+{% if ok and report %}
+<div class="review-result {% if report.verdict == 'request_changes' %}verdict-bad{% elif report.verdict == 'comment' %}verdict-warn{% else %}verdict-good{% endif %}">
+    <div class="verdict-bar">
+        <span class="verdict-label">verdict:</span>
+        <span class="verdict-value">{{ report.verdict }}</span>
+        <span class="confidence">confidence: {{ "%.0f" | format((report.confidence or 0) * 100) }}%</span>
+    </div>
+    <p class="summary"><code>{{ report.summary }}</code></p>
+
+    {% if report.findings %}
+    <h3>Findings ({{ report.findings | length }})</h3>
+    <table class="findings">
+        <thead>
+            <tr>
+                <th>Severity</th>
+                <th>Category</th>
+                <th>File:Line</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for f in report.findings %}
+            <tr class="severity-{{ f.severity | lower }}">
+                <td><span class="badge badge-{{ f.severity | lower }}">{{ f.severity }}</span></td>
+                <td><code>{{ f.category }}</code></td>
+                <td><code>{{ f.file }}:{{ f.line }}</code></td>
+                <td>{{ f.description }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty-good">✅ 无安全发现</p>
+    {% endif %}
+</div>
+{% elif detail %}
+<div class="review-error">
+    <p>❌ <strong>Error:</strong> {{ detail }}</p>
+</div>
+{% else %}
+<p class="empty">等待结果...</p>
+{% endif %}

@@ -46,6 +46,7 @@ def create_app(
     *,
     web_state: WebState | None = None,
     worktree_manager: Any = None,
+    web_repo_root: Path | None = None,
     postgres_dsn: str | None = None,
     postgres_table: str = "webstate_events",
     postgres_tenant_id: str = "local",
@@ -64,6 +65,7 @@ def create_app(
 
     @param web_state         Web UI 状态容器 (None = 新建)
     @param worktree_manager  可选 WorktreeManager (P5-W32: 注入后 /worktrees 页显真数据)
+    @param web_repo_root     W36b: git 仓库根 (用于 /api/review 跑 agent_review; None = 用 cwd)
     @param postgres_dsn      W33: Postgres DSN (None = 内存 store, 零破坏)
     @param postgres_table    W33: 表名 (默认 webstate_events)
     @param postgres_tenant_id W33: tenant_id 列默认值 (多租户隔离)
@@ -226,6 +228,9 @@ def create_app(
     app.state.jwt_issuer = jwt_issuer_obj
     # W35: notifier
     app.state.web_notifier = notifier
+    # W36b: web_repo_root (review 路由读)
+    if web_repo_root is not None:
+        app.state.web_repo_root = web_repo_root
     # 可选: WorktreeManager (P5-W32) — 路由用 getattr 兜底
     if worktree_manager is not None:
         app.state.worktree_manager = worktree_manager
@@ -237,7 +242,7 @@ def create_app(
         from agent_swarm.web.auth import JWTError
 
         # 强制鉴权的写路径前缀 (W34 决策: 不在路由签名里加 Depends, 避开 FastAPI 422 解析坑)
-        PROTECTED_PREFIXES = ("/api/events",)
+        PROTECTED_PREFIXES = ("/api/events", "/api/review")
 
         @app.middleware("http")
         async def jwt_middleware(request: Request, call_next: Any) -> Any:

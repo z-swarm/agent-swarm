@@ -12,15 +12,29 @@
   - GET /partials/agents       Agent 列表 fragment
   - GET /partials/worktrees    Worktree 列表 fragment
   - GET /partials/tasks        Task 列表 fragment
+P5-W36b: + /review 页面 + POST /api/review (调 run_simple_review)
 """
 
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import shlex
+from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from agent_swarm.web.state import WebState
 
+log = logging.getLogger(__name__)
+
 router = APIRouter()
+
+# W36b: pr_ref 注入防御 — 禁 shell 危险字符
+_UNSAFE_PR_CHARS = (";", "&", "|", "`", "$", ">", "<", "\n", "\r")
 
 
 def _templates(request: Request):
@@ -30,6 +44,25 @@ def _templates(request: Request):
 
 def _state(request: Request) -> WebState:
     return request.app.state.web_state
+
+
+def _validate_pr_ref(pr_ref: str) -> str | None:
+    """
+    @brief 校验 pr_ref 防止 shell 注入
+
+    @param pr_ref  形如 "main..HEAD" / "abc123..def456" / "main..HEAD -- path"
+    @return 错误信息 (None = 通过)
+    """
+    if not pr_ref:
+        return "pr_ref cannot be empty"
+    if any(c in pr_ref for c in _UNSAFE_PR_CHARS):
+        return f"pr_ref contains unsafe characters: {pr_ref!r}"
+    # 用 shlex 校验可解析
+    try:
+        shlex.split(pr_ref)
+    except ValueError as exc:
+        return f"pr_ref cannot be parsed: {exc}"
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -252,4 +285,104 @@ async def metrics(request: Request) -> Response:
     return Response(
         content="\n".join(lines),
         media_type="text/plain; version=0.0.4",
+    )
+
+
+# ---------------------------------------------------------------------------
+# P5-W36b: agent_review Web 入口
+# ---------------------------------------------------------------------------
+
+
+@router.get("/review", response_class=HTMLResponse)
+async def review_page(request: Request) -> HTMLResponse:
+    """Review 页面 (HTMX 表单 + Run Review 按钮)"""
+    tpl = _templates(request)
+    return tpl.TemplateResponse(
+        request,
+        "review.html",
+        {"page": "review"},
+    )
+
+
+@router.post("/api/review")
+async def api_review(request: Request) -> JSONResponse:
+    """
+    调 agent_review.run_simple_review 同步返 ReviewReport
+
+    W36b DoD:
+      - 接受 pr_ref (default "main..HEAD")
+      - 写路径强制 Bearer token (W34 middleware)
+      - 错误处理: 无 git repo / 无效 pr_ref / git 异常 → 友好 JSON
+
+    @note 实际生产中 agent_review 应异步, W36b 同步优先 (W13 决策)
+    """
+    # 解析 body (允许空 body → 默认 pr_ref)
+    try:
+        body: dict[str, Any] = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    except Exception:
+        body = {}
+    pr_ref = body.get("pr_ref", "main..HEAD")
+    if not isinstance(pr_ref, str):
+        return JSONResponse({"detail": "pr_ref must be a string"}, status_code=400)
+    # 校验 pr_ref
+    err = _validate_pr_ref(pr_ref)
+    if err:
+        return JSONResponse({"detail": err}, status_code=400)
+    # 取 repo_root (W36b: 复用 worktree_manager 模式, 加 web_repo_root)
+    web_repo_root: Path | None = getattr(request.app.state, "web_repo_root", None)
+    # 调 agent_review (run_simple_review 是 sync, 用 to_thread 不阻塞 event loop)
+    try:
+        # 延迟导入避免循环
+        from agent_swarm.web import review_runner
+
+        report_dict: dict[str, Any] = await asyncio.to_thread(
+            review_runner.run_review_sync,
+            pr_ref,
+            web_repo_root,
+        )
+    except FileNotFoundError as exc:
+        # git 不在 PATH
+        return JSONResponse(
+            {"detail": f"git not available: {exc}"},
+            status_code=500,
+        )
+    except RuntimeError as exc:
+        # 非 git repo / 无 diff / git 异常
+        msg = str(exc)
+        if "not a git repository" in msg or "not a git" in msg:
+            return JSONResponse(
+                {"detail": "not a git repository", "hint": "configure --web-review-repo"},
+                status_code=500,
+            )
+        if "no diff" in msg.lower() or "empty" in msg.lower():
+            # 无变更 → 返空 report (200)
+            return JSONResponse({
+                "ok": True,
+                "report": {
+                    "pr_ref": pr_ref,
+                    "verdict": "approve",
+                    "findings": [],
+                    "root_causes": [],
+                    "summary": f"无变更 (pr_ref={pr_ref!r})",
+                    "confidence": 1.0,
+                },
+            })
+        return JSONResponse({"detail": f"review failed: {exc}"}, status_code=500)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("agent_review failed")
+        return JSONResponse(
+            {"detail": f"unexpected error: {type(exc).__name__}: {exc}"},
+            status_code=500,
+        )
+    return JSONResponse({"ok": True, "report": report_dict})
+
+
+@router.get("/partials/review_form")
+async def review_form_partial(request: Request) -> HTMLResponse:
+    """Review 表单 partial (供 HTMX 加载)"""
+    tpl = _templates(request)
+    return tpl.TemplateResponse(
+        request,
+        "partials/review_form.html",
+        {},
     )

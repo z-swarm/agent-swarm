@@ -327,6 +327,55 @@ agent-swarm run examples/w32_web_with_worktree.yaml \
 - SecretManager cache TTL 由 SecretManager 自管 (W20 VaultSecretManager 5min), JWTIssuer 不额外加 TTL
 - 多 worker (gunicorn/uvicorn) 各自 SecretManager 实例, 轮换时各自 cache 失效 (符合预期)
 
+#### W36b: agent_review Web 入口 (UI 按钮触发 review) (2026-06-24)
+- **闭环**: Web UI 与 agent_review 工具集成, 用户无需离开浏览器
+- **新增** `src/agent_swarm/web/review_runner.py` — 薄包装层
+  - `run_review_sync(pr_ref, repo_root) → dict` 同步跑 simple review
+  - `AGENT_REVIEW_REPO` env 临时设置 (agent_review 内部用此定位仓库)
+  - `sys.modules` 缓存清理 (让 env 变更生效)
+  - `_is_git_repo(path)` 前置检查 → 友好 500 错
+- **`create_app` 扩展**:
+  - 接受 `web_repo_root: Path | None = None` (类似 worktree_repo, 注入到 `app.state.web_repo_root`)
+- **新增路由**:
+  - `GET /review` 页面 (HTMX 表单 + Run Review 按钮 + 结果展示区)
+  - `POST /api/review` 接受 `pr_ref` JSON, 同步返 `ReviewReport`
+  - `GET /partials/review_form` partial
+  - 写路径强制 Bearer token (PROTECTED_PREFIXES 加 `("/api/events", "/api/review")`)
+- **新增模板**:
+  - `templates/review.html` (HTMX 表单 + spinner)
+  - `templates/partials/review_result.html` (verdict bar + findings table)
+  - `base.html` nav 加 `/review` 入口
+- **错误处理**:
+  - pr_ref 含 `;` `&` `|` ` `` ` `$` `>` `<` `\n` `\r` → 400 (shell 注入防御)
+  - 非 git 仓库 → 500 + `{"detail": "not a git repository: ..."}`
+  - git 不可用 → 500 + `{"detail": "git not available: ..."}`
+  - empty diff → 200 + verdict=approve
+- **新增** `tests/unit/test_web_review.py` (14 cases):
+  - 页面渲染 (200 / HTMX form / nav)
+  - 鉴权 (W34 mode 401 / W28 兼容 200-500)
+  - pr_ref 参数 (默认 / 自定义 / unsafe / shell 注入 / pipe)
+  - 错误处理 (非 git repo 500)
+  - `_validate_pr_ref` 单元
+- **新增** `tests/golden/test_g027_review_e2e.py` (4 cases):
+  - 干净 PR → 0 finding / verdict=approve
+  - secret_leak (hardcoded API key) → ≥1 finding / verdict≠approve
+  - cmd_injection (subprocess shell=True) → ≥1 CMD finding
+  - 报告 schema 完整 (含 summary / findings / verdict / confidence)
+- **守门** `tools/verify_w36b_dod.py` — **8/8 全过**
+- **向后兼容**: W28 (no auth) / W34 (auth) / W36a (SecretManager) 三模式 0 破坏
+
+#### DoD 验证 (W36b)
+- ruff 0 errors (W36b 范围 + 全项目)
+- mypy 0 errors (78 source files)
+- 全量回归 **1185+ passed / 0 failed** (W36a 1185 → W36b +18, 14 unit + 4 G-027)
+- `tools/verify_w36b_dod.py` 8/8 PASSED
+- W28/W34/W36a 全部不破
+
+#### 已知限制 (W36b)
+- 同步 review 阻塞 (run_simple_review 跑完才返) — 巨 PR (1000+ 文件) 慢, W36b 接受, 异步化留 W36f
+- `web_repo_root` 默认 None → 用 FastAPI app 启动 cwd (通常是 repo_root, 但生产部署需显式配)
+- `run_full_review` (LLM + 对抗式) 不在 W36b 范围, 留 W36f
+
 ## [0.4.0a1] - 2026-06-22
 
 ### Phase 4 收尾 (W22-W26)

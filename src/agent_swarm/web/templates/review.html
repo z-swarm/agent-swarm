@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Review · agent-swarm{% endblock %}
+{% block content %}
+<section class="page-header">
+    <h1>🔍 Review</h1>
+    <p class="subtitle">运行 agent_review 静态扫描 (W13 7 类规则)</p>
+</section>
+
+<section class="card">
+    <h2>📋 Run Review</h2>
+    <form hx-post="/api/review"
+          hx-target="#review-result"
+          hx-swap="innerHTML"
+          hx-indicator="#review-spinner"
+          style="display: flex; gap: 0.5rem; align-items: center;">
+        <label for="pr_ref" style="font-family: monospace;">PR ref:</label>
+        <input type="text"
+               id="pr_ref"
+               name="pr_ref"
+               value="main..HEAD"
+               placeholder="main..HEAD"
+               style="flex: 1; padding: 0.4rem; font-family: monospace;
+                      background: var(--bg-input, #1e1e1e); color: var(--fg, #eee);
+                      border: 1px solid var(--border, #444); border-radius: 4px;">
+        <button type="submit" class="btn-primary">Run Review</button>
+        <span id="review-spinner" class="htmx-indicator">⏳ 扫描中...</span>
+    </form>
+    <p class="hint" style="color: var(--hint, #888); font-size: 0.85em; margin-top: 0.5rem;">
+        默认 <code>main..HEAD</code>; 也支持 <code>abc123..def456</code> 等。
+        写路径需 Bearer token (与 <code>/api/events</code> 一致)。
+    </p>
+</section>
+
+<section class="card">
+    <h2>📊 Result</h2>
+    <div id="review-result">
+        <p class="empty">点击 "Run Review" 启动扫描...</p>
+    </div>
+</section>
+{% endblock %}
