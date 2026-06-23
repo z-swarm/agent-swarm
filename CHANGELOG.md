@@ -147,6 +147,47 @@ agent-swarm run examples/w32_web_with_worktree.yaml \
 - 4 cases (test_sandbox P0-1) passed
 - `agent-swarm doctor --skip-llm --skip-mcp --skip-sandbox` exit 0
 
+#### W33b: WebState Postgres 持久化 (2026-06-23)
+- **新增** `src/agent_swarm/web/store.py` — WebStateStore 协议 + 双实现:
+  - `WebStateStore` (Protocol): `append` / `recent` / `subscribe` / `unsubscribe` / `close`
+  - `MemoryWebStateStore` — 内存环形缓冲 (DSN 缺省时零破坏降级)
+  - `PostgresWebStateStore` — Postgres 持久化 (复用 W25 fake_module 注入模式)
+  - `WebStateConfig` — dsn/table/min_size/max_size/command_timeout/fake_module/tenant_id
+- **Schema** `webstate_events`:
+  - 列: `seq BIGSERIAL PK, ts TIMESTAMPTZ DEFAULT NOW(), event_type TEXT, payload JSONB, session_id TEXT, tenant_id TEXT DEFAULT 'local'`
+  - 索引: `idx_webstate_ts (ts DESC)` / `idx_webstate_session (session_id, seq)` / `idx_webstate_tenant (tenant_id, ts DESC)`
+- **WebState 集成** (`src/agent_swarm/web/state.py`):
+  - 新增可选 `store: WebStateStore | None` 字段
+  - `push_event` 双写: 内存 deque + `store.append` (失败仅 log, 不影响内存路径)
+  - DSN 缺省时 `store=None`, 与 W28 行为完全一致 (零破坏)
+- **create_app 扩展** (`src/agent_swarm/web/app.py`):
+  - 接受 `postgres_dsn` / `postgres_table` / `postgres_tenant_id` 关键字参数
+  - DSN 给出时自动实例化 `PostgresWebStateStore` 注入 WebState
+  - lifespan 启动/关闭时管理 store 生命周期
+- **CLI 集成** (`src/agent_swarm/cli/main.py`):
+  - 新增 `--web-postgres-dsn` 选项 (默认 None, 维持内存)
+  - 新增 `--web-postgres-table` 选项 (默认 `webstate_events`)
+- **测试** `tests/unit/test_webstate_store.py` — **22 cases 全过** (≥15 DoD):
+  - Memory store: append/recent/subscribe/maxlen/unsubscribe/close/协议 (9)
+  - Postgres store (fake): append/session 过滤/tenant_id/subscribe/close/协议/SCHEMA_SQL (7)
+  - WebState 集成: 双写/store 失败不破内存/EventRecord.to_html (4)
+  - G-023 重启恢复: 进程 A push→close→进程 B reconnect→recent 拉回 + session 隔离 (2)
+- **守门脚本** `tools/verify_w33_dod.py` — **8/8 全过**:
+  - Schema/append/recent/subscribe/重启恢复/CLI 选项/DSN 缺省降级/性能基线 (100 append 0.5ms)
+- **决策微调**: WebStateStore 用**独立** asyncpg 池而非复用 W25 PostgresBackend 池 (不同 namespace, 避免耦合; KISS)
+
+#### 已知限制 (W33b, P5 §17.2 阶段门控)
+- `subscribe` 仅对**当前进程**有效 (PG 无 in-memory pub/sub)
+- 跨进程实时 fan-out 需 W34+ 加 LISTEN/NOTIFY
+- 本轮只保证 "重启不丢事件" (append 落盘 + recent 重启可拉回)
+
+#### DoD 验证 (W33b)
+- ruff 0 errors
+- mypy 0 errors (76 source files, +1 from 75)
+- 全量回归 **1273 passed / 0 failed** (W33a 1251 → 1273, +22 新增)
+- `tools/verify_w33_dod.py` 8/8 PASSED
+- G-022 不破 (Web UI 端到端 6 cases 仍过)
+
 #### 已知缺口 (等用户环境)
 - TestPyPI 上传: `twine check` PASSED, 实发需用户配 `~/.pypirc` token + non-interactive terminal
 - DESIGN.md 已 untrack (chore 2e1de16), §17.2 P5 DoD 内容本地保留

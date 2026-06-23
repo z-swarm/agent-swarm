@@ -249,6 +249,24 @@ cli.add_command(_doctor_cmd)
     default=None,
     help="P5-W32: WorktreeManager base_dir (worktree 输出目录); 默认 <repo>/.worktrees",
 )
+@click.option(
+    "--web-postgres-dsn",
+    "web_postgres_dsn",
+    type=str,
+    default=None,
+    help=(
+        "P5-W33: WebState Postgres 持久化 DSN (postgresql://...); "
+        "省略时维持内存 WebState (W28 行为, 零破坏); "
+        "启用后事件流落盘, 重启可拉回 (跨进程 fan-out 仍受 PG 限制)"
+    ),
+)
+@click.option(
+    "--web-postgres-table",
+    "web_postgres_table",
+    type=str,
+    default="webstate_events",
+    help="P5-W33: Postgres 表名 (默认 webstate_events)",
+)
 def run(
     config: Path,
     verbose: bool,
@@ -261,6 +279,8 @@ def run(
     web_port: int,
     web_worktree_repo: Path | None,
     web_worktree_base: Path | None,
+    web_postgres_dsn: str | None,
+    web_postgres_table: str,
 ) -> None:
     """运行 swarm（从 YAML 配置启动）"""
     _configure_logging(verbose)
@@ -318,7 +338,12 @@ def run(
         web_state = WebState()
         web_sink = WebStateSink(web_state)
         bus.register_sink(web_sink)
-        app = create_app(web_state=web_state, worktree_manager=worktree_manager)
+        app = create_app(
+            web_state=web_state,
+            worktree_manager=worktree_manager,
+            postgres_dsn=web_postgres_dsn,
+            postgres_table=web_postgres_table,
+        )
         uv_config = uvicorn.Config(
             app,
             host=web_host,
@@ -328,6 +353,10 @@ def run(
         )
         web_server = uvicorn.Server(uv_config)
         console.print(f"[bold magenta]web UI[/] → http://{web_host}:{web_port}")
+        if web_postgres_dsn:
+            console.print(
+                f"[bold magenta]web state store[/] → postgres table=[cyan]{web_postgres_table}[/]"
+            )
 
     async def _run_with_session():
         nonlocal web_task

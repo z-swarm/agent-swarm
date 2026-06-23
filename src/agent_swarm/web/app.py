@@ -7,6 +7,9 @@
     app = create_app(web_state=WebState())
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
+P5-W33: create_app 接受 postgres_dsn (None = 内存, 零破坏)
+        DSN 给出时自动实例化 PostgresWebStateStore 注入到 WebState
+
 @note 默认挂载所有 Phase 3-4 模块的 view
 @note 测试用 TestClient; 不需要真 server
 """
@@ -38,6 +41,9 @@ def create_app(
     *,
     web_state: WebState | None = None,
     worktree_manager: Any = None,
+    postgres_dsn: str | None = None,
+    postgres_table: str = "webstate_events",
+    postgres_tenant_id: str = "local",
     title: str = "agent-swarm",
     version: str = "0.5.0a1",
 ) -> FastAPI:
@@ -46,16 +52,40 @@ def create_app(
 
     @param web_state         Web UI 状态容器 (None = 新建)
     @param worktree_manager  可选 WorktreeManager (P5-W32: 注入后 /worktrees 页显真数据)
+    @param postgres_dsn      W33: Postgres DSN (None = 内存 store, 零破坏)
+    @param postgres_table    W33: 表名 (默认 webstate_events)
+    @param postgres_tenant_id W33: tenant_id 列默认值 (多租户隔离)
     @param title             app 标题 (OpenAPI docs)
     @param version           app 版本
     @return FastAPI 实例
     """
     state = web_state or WebState()
+    # W33: DSN 给出时挂 Postgres store
+    if postgres_dsn and state.store is None:
+        from agent_swarm.web.store import PostgresWebStateStore, WebStateConfig
+        state.store = PostgresWebStateStore(WebStateConfig(
+            dsn=postgres_dsn,
+            table=postgres_table,
+            tenant_id=postgres_tenant_id,
+        ))
+        log.info("WebState Postgres store attached: table=%s", postgres_table)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> Any:
         log.info("agent-swarm web ui started (uptime=0s)")
+        # W33: 启动时确保 store 已就绪 (无 DSN 时跳过)
+        if state.store is not None and hasattr(state.store, "_ensure_connected"):
+            try:
+                await state.store._ensure_connected()
+            except Exception as exc:  # noqa: BLE001
+                log.warning("WebState store init failed: %s", exc)
         yield
+        # W33: 退出时关 store
+        if state.store is not None:
+            try:
+                await state.store.close()
+            except Exception as exc:  # noqa: BLE001
+                log.debug("WebState store close failed: %s", exc)
         log.info("agent-swarm web ui stopped")
 
     app = FastAPI(
