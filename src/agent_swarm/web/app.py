@@ -47,6 +47,7 @@ def create_app(
     postgres_dsn: str | None = None,
     postgres_table: str = "webstate_events",
     postgres_tenant_id: str = "local",
+    enable_cross_process: bool = False,
     jwt_secret: str | None = None,
     jwt_algorithm: str = "HS256",
     jwt_expires_seconds: int = 3600,
@@ -62,6 +63,8 @@ def create_app(
     @param postgres_dsn      W33: Postgres DSN (None = 内存 store, 零破坏)
     @param postgres_table    W33: 表名 (默认 webstate_events)
     @param postgres_tenant_id W33: tenant_id 列默认值 (多租户隔离)
+    @param enable_cross_process W35: 启用跨进程 LISTEN/NOTIFY fan-out
+                                  (需要 postgres_dsn + fake_module 之一; DSN 缺省时无效)
     @param jwt_secret        W34: HS256 共享密钥 (None = 无鉴权, 零破坏; ${VAR} 引用支持)
     @param jwt_algorithm     W34: 算法 (固定 HS256)
     @param jwt_expires_seconds W34: token 有效期
@@ -92,6 +95,12 @@ def create_app(
             issuer=jwt_issuer_name,
         ))
         log.info("WebState JWT auth enabled: issuer=%s", jwt_issuer_name)
+    # W35: 跨进程 fan-out — 需要 DSN 才有 Postgres store
+    notifier: Any = None
+    if enable_cross_process and postgres_dsn:
+        from agent_swarm.web.store import PostgresNotifier
+        notifier = PostgresNotifier(dsn=postgres_dsn)
+        log.info("WebState cross-process fan-out enabled: origin=%s", notifier.origin_id[:8])
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> Any:
@@ -102,7 +111,21 @@ def create_app(
                 await state.store._ensure_connected()
             except Exception as exc:  # noqa: BLE001
                 log.warning("WebState store init failed: %s", exc)
+        # W35: 启动 notifier + 挂到 state (失败仅 log, 不破坏单进程路径)
+        if notifier is not None:
+            try:
+                await notifier.listen()
+                state.attach_notifier(notifier)
+                log.info("WebState cross-process notifier active")
+            except Exception as exc:  # noqa: BLE001
+                log.warning("WebState notifier listen failed: %s", exc)
         yield
+        # W35: 退出时关 notifier
+        if notifier is not None:
+            try:
+                await notifier.close()
+            except Exception as exc:  # noqa: BLE001
+                log.debug("WebState notifier close failed: %s", exc)
         # W33: 退出时关 store
         if state.store is not None:
             try:
@@ -120,6 +143,8 @@ def create_app(
     app.state.web_state = state
     # W34: JWT issuer
     app.state.jwt_issuer = jwt_issuer_obj
+    # W35: notifier
+    app.state.web_notifier = notifier
     # 可选: WorktreeManager (P5-W32) — 路由用 getattr 兜底
     if worktree_manager is not None:
         app.state.worktree_manager = worktree_manager

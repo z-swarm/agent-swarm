@@ -19,11 +19,9 @@ P5-W34 Plan §4 Check 守门点:
 
 from __future__ import annotations
 
-import asyncio
 import sys
 import time
 from pathlib import Path
-from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
@@ -90,6 +88,7 @@ def _check4_resolve_secret_ref() -> bool:
 def _check5_no_secret_zero_break() -> bool:
     """5) 无 secret: POST 不带 token 200 (零破坏)"""
     from fastapi.testclient import TestClient
+
     from agent_swarm.web import WebState, create_app
     app = create_app(web_state=WebState(), jwt_secret=None)
     client = TestClient(app)
@@ -100,6 +99,7 @@ def _check5_no_secret_zero_break() -> bool:
 def _check6_secret_required_401() -> bool:
     """6) 有 secret: POST 不带 token 401"""
     from fastapi.testclient import TestClient
+
     from agent_swarm.web import WebState, create_app
     app = create_app(web_state=WebState(), jwt_secret=SECRET)
     client = TestClient(app)
@@ -110,6 +110,7 @@ def _check6_secret_required_401() -> bool:
 def _check7_cli_options() -> bool:
     """7) CLI --web-jwt-secret / --web-jwt-expires"""
     from click.testing import CliRunner
+
     from agent_swarm.cli.main import cli
     runner = CliRunner()
     result = runner.invoke(cli, ["run", "--help"])

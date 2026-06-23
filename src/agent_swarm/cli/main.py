@@ -268,6 +268,15 @@ cli.add_command(_doctor_cmd)
     help="P5-W33: Postgres 表名 (默认 webstate_events)",
 )
 @click.option(
+    "--web-cross-process/--no-web-cross-process",
+    "web_cross_process",
+    default=False,
+    help=(
+        "P5-W35: 启用跨进程 LISTEN/NOTIFY fan-out "
+        "(需配合 --web-postgres-dsn; 多 web UI 实例实时同步事件流)"
+    ),
+)
+@click.option(
     "--web-jwt-secret",
     "web_jwt_secret",
     type=str,
@@ -298,6 +307,7 @@ def run(
     web_worktree_base: Path | None,
     web_postgres_dsn: str | None,
     web_postgres_table: str,
+    web_cross_process: bool,
     web_jwt_secret: str | None,
     web_jwt_expires: int,
 ) -> None:
@@ -362,6 +372,7 @@ def run(
             worktree_manager=worktree_manager,
             postgres_dsn=web_postgres_dsn,
             postgres_table=web_postgres_table,
+            enable_cross_process=web_cross_process,
         )
         uv_config = uvicorn.Config(
             app,

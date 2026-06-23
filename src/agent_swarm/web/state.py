@@ -141,3 +141,67 @@ class WebState:
             out[rec.event_name] = out.get(rec.event_name, 0) + 1
         return out
 
+    def attach_notifier(self, notifier: Any) -> None:
+        """
+        W35: 把 PostgresNotifier 挂到 store 上, 启用跨进程 fan-out
+
+        @note 若 store 为 None, 仅把 notifier 引用保存 (caller 自行管理)
+        @note 若 store 存在 (Postgres), 自动调 store.attach_notifier(notifier)
+              并把 notifier.on_notify 转发给本进程 _subscribers
+        """
+        self._notifier = notifier
+        if self.store is not None and hasattr(self.store, "attach_notifier"):
+            self.store.attach_notifier(notifier)
+            # 把 notifier 收到的跨进程 envelope 转发给本进程订阅者
+            # 注意: on_notify 触发是 sync (asyncpg 限制), 不能直接 async with self.lock
+            # 改用 asyncio.run_coroutine_threadsafe 走 event loop, 避免 lock 死锁
+            def _on_remote(env: Any) -> None:
+                rec = EventRecord(
+                    event_name=env.event_name,
+                    session_id=env.session_id,
+                    timestamp=env.ts,
+                    seq=env.seq,
+                    payload=env.payload,
+                )
+                try:
+                    import asyncio
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # 走 ensure_future 排到事件循环, 内部用 lock 安全写
+                        asyncio.ensure_future(self._apply_remote_event(rec))
+                    else:
+                        # 同步环境 (测试), 直接写
+                        self.events.append(rec)
+                        self.active_sessions.setdefault(rec.session_id, {
+                            "first_seen": time.time(),
+                            "event_count": 0,
+                            "last_event": None,
+                        })
+                        self.active_sessions[rec.session_id]["event_count"] += 1
+                        self.active_sessions[rec.session_id]["last_event"] = rec.event_name
+                except Exception as exc:  # noqa: BLE001
+                    log.debug("remote event apply failed: %s", exc)
+            notifier.on_notify(_on_remote)
+
+    async def _apply_remote_event(self, rec: EventRecord) -> None:
+        """W35: 把跨进程 envelope 写入本进程 state (异步 + lock)"""
+        async with self.lock:
+            self.events.append(rec)
+            if rec.session_id not in self.active_sessions:
+                self.active_sessions[rec.session_id] = {
+                    "first_seen": time.time(),
+                    "event_count": 0,
+                    "last_event": None,
+                }
+            self.active_sessions[rec.session_id]["event_count"] += 1
+            self.active_sessions[rec.session_id]["last_event"] = rec.event_name
+            subs = list(self._subscribers)
+        for sub in subs:
+            try:
+                res = sub(rec)
+                import asyncio
+                if asyncio.iscoroutine(res):
+                    await res
+            except Exception as exc:  # noqa: BLE001
+                log.debug("remote subscriber notify failed: %s", exc)
+

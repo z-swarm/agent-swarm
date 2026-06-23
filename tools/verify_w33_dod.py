@@ -188,6 +188,7 @@ async def _check5_recovery_g023() -> bool:
 def _check6_cli_options() -> bool:
     """6) CLI --web-postgres-dsn / --web-postgres-table 选项存在"""
     from click.testing import CliRunner
+
     from agent_swarm.cli.main import cli
     runner = CliRunner()
     result = runner.invoke(cli, ["run", "--help"])

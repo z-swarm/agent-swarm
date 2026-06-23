@@ -229,6 +229,55 @@ agent-swarm run examples/w32_web_with_worktree.yaml \
 - middleware 单进程: 写路径 401 拦截在多 worker 部署时需共享 secret (DSN/ENV 一致)
 - HS256 共享密钥: 需通过 SecretManager 轮换 (与 W20 Vault 风格一致)
 
+#### W35: WebState 跨进程 fan-out (LISTEN/NOTIFY) (2026-06-23)
+- **新增** `src/agent_swarm/web/store.py` (W35 段):
+  - `PostgresNotifier` — asyncpg LISTEN/NOTIFY 封装 (零新依赖)
+  - `NotifyEnvelope` — JSON 协议 (origin/seq/event_name/session_id/payload/ts)
+  - `NOTIFY_CHANNEL = "webstate_notify"` / `NOTIFY_PAYLOAD_LIMIT = 7KB`
+  - 8KB NOTIFY 硬限制保护: 超长 payload 降级为 `{"_truncated": True}` 占位
+  - origin_id (uuid4 hex) 过滤自订阅, 防 fan-out loop
+- **`PostgresWebStateStore.attach_notifier(notifier)` 钩子**:
+  - append 写盘后自动 `notifier.notify(...)` 触发跨进程 NOTIFY
+  - notifier 未挂时零变化 (W33b 兼容)
+- **`WebState.attach_notifier(notifier)` 集成入口**:
+  - 自动调 `store.attach_notifier(notifier)` (如有 store)
+  - 注册 on_notify 回调, 把跨进程 envelope 转成本地 EventRecord + 通知本地订阅者
+  - on_notify 同步回调 → 用 `asyncio.ensure_future` 走 event loop, lock 安全写
+- **`create_app` 扩展**:
+  - 接受 `enable_cross_process: bool = False`
+  - DSN 给出时实例化 `PostgresNotifier` 挂 `app.state.web_notifier`
+  - 无 DSN 时静默 (向后兼容)
+  - lifespan: 启动 `notifier.listen()` + `state.attach_notifier(...)`; 退出 `notifier.close()` (先于 store)
+- **CLI 集成**:
+  - `--web-cross-process / --no-web-cross-process` 选项 (默认 False, W28 行为零破坏)
+- **测试** `tests/unit/test_web_cross_process.py` — 18 cases 全过:
+  - NotifyEnvelope 协议 (roundtrip/截断/unicode) 3
+  - PostgresNotifier (origin 过滤/listen+notify/多 listener/幂等/close/notify 自动 listen) 8
+  - create_app 集成 (无 DSN/有 DSN/cross_process 钩子) 4
+  - WebState.attach_notifier (有 store/无 store) 2
+  - 修 W34 ruff F401 (test_web_jwt_auth.py:17 unused typing.Any)
+- **G-025 Golden Case** `tests/golden/test_g025_cross_process.py` — 4 cases 全过:
+  - 跨进程 A→B notify roundtrip
+  - 同 origin 自订阅不触发 (fan-out loop 防护)
+  - 三进程 fanout (A 推 → B+C 收到, A 收不到自己)
+  - 三进程顺序通知 (各收 2 条, 来自其他两进程)
+- **守门** `tools/verify_w35_dod.py` — **8/8 全过**:
+  - Envelope 协议 / NOTIFY 发出 / origin 过滤 / 跨进程接收 /
+    CLI 选项 / DSN 缺省降级 / create_app 集成 / 性能基线 (100 notify < 5s)
+
+#### DoD 验证 (W35)
+- ruff 0 errors (W35 范围)
+- mypy 0 errors (77 source files)
+- web 子集 108/108 passed (W34 97 + W35 18 - 7 重叠 = 108)
+- `tools/verify_w35_dod.py` 8/8 PASSED
+- G-022 / G-023 / G-024 / W33a/b / W34 全部不破
+
+#### 已知限制 (W35, 闭环 W33b 阶段门控)
+- 性能: fake 模式 100 notify 0.0ms; 真 PG 模式 100 notify 应 < 100ms (含 100 次 roundtrip)
+- 多 worker (gunicorn/uvicorn workers) 各自 origin, NOTIFY 触达所有 — 这是预期行为
+- LISTEN 需长连接, 与 append 池独立 (`notifier_conn` 单独持有)
+- HS256 secret 轮换: W36+ 接 SecretManager (W34 已知限制已记录)
+
 #### 已知缺口 (等用户环境)
 - TestPyPI 上传: `twine check` PASSED, 实发需用户配 `~/.pypirc` token + non-interactive terminal
 - DESIGN.md 已 untrack (chore 2e1de16), §17.2 P5 DoD 内容本地保留

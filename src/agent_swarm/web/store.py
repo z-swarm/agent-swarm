@@ -1,6 +1,6 @@
 """
 @module agent_swarm.web.store
-@brief  P5-W33 WebStateStore 协议 + Postgres 实现
+@brief  P5-W33 WebStateStore 协议 + Postgres 实现 + P5-W35 跨进程 fan-out
 
 DESIGN §17.2 P5-W33 DoD 拆解:
   - D1 协议 (append/recent/subscribe) + Postgres 实现, 匹配 WebState 内存 API
@@ -9,8 +9,12 @@ DESIGN §17.2 P5-W33 DoD 拆解:
   - 复用 W25 fake_module 注入模式 (零真 PG 依赖)
   - 单进程内存 subscribe (跨进程 fan-out 受 PG 限制, 见 W33 Plan R4)
 
-@note 与 WebState.push_event 行为兼容: append 内部广播给本地订阅者
-      跨进程 fan-out 是 P5 §17.2 已知限制, 后续 W34+ 加 LISTEN/NOTIFY
+P5-W35 跨进程 fan-out:
+  - PostgresNotifier: asyncpg LISTEN/NOTIFY 封装
+  - PostgresWebStateStore.append 自动 NOTIFY webstate_notify '<json>'
+  - 同进程 origin_id 过滤避免自订阅 fan-out loop
+  - payload 8KB 截断 + origin_id + ts 编码
+  - DSN 缺省时降级零破坏 (W28 行为)
 """
 
 from __future__ import annotations
@@ -211,6 +215,8 @@ class PostgresWebStateStore:
         self._init_lock: asyncio.Lock | None = None
         self._subscribers: list[Callable[..., Any]] = []
         self._subs_lock = asyncio.Lock()
+        # W35: 可选 notifier — 启用后 append 触发跨进程 NOTIFY
+        self._notifier: PostgresNotifier | None = None
 
     async def _ensure_connected(self) -> None:
         if self._initialized:
@@ -276,6 +282,18 @@ class PostgresWebStateStore:
                 await cb(rec)
             except Exception as exc:  # noqa: BLE001
                 log.debug("subscriber notify failed: %s", exc)
+        # W35: 跨进程 NOTIFY fan-out (notifier 未挂时跳过)
+        if self._notifier is not None:
+            try:
+                await self._notifier.notify(
+                    event_name=event_name,
+                    session_id=session_id,
+                    seq=seq,
+                    payload=payload or {},
+                    ts=rec["timestamp"],
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.debug("notifier.notify failed: %s", exc)
 
     async def recent(
         self,
@@ -327,6 +345,14 @@ class PostgresWebStateStore:
         with contextlib.suppress(ValueError):
             self._subscribers.remove(callback)
 
+    def attach_notifier(self, notifier: PostgresNotifier) -> None:
+        """W35: 挂 notifier 后, append 触发跨进程 NOTIFY"""
+        self._notifier = notifier
+
+    def detach_notifier(self) -> None:
+        """W35: 解绑 notifier (用于关闭 / 切换 DSN)"""
+        self._notifier = None
+
     async def close(self) -> None:
         if self._pool is not None and self.config.fake_module is None:
             await self._pool.close()
@@ -334,10 +360,203 @@ class PostgresWebStateStore:
         self._subscribers.clear()
 
 
+# ---------------------------------------------------------------------------
+# P5-W35: PostgresNotifier — 跨进程 LISTEN/NOTIFY fan-out
+# ---------------------------------------------------------------------------
+
+
+# NOTIFY payload 8KB 硬限制; 我们预留 512 字节余量给协议头
+NOTIFY_PAYLOAD_LIMIT = 7 * 1024
+
+# 协议字段常量
+NOTIFY_CHANNEL = "webstate_notify"
+
+
+@dataclass
+class NotifyEnvelope:
+    """NOTIFY 协议: {origin, seq, event_name, session_id, payload, ts}"""
+
+    origin: str
+    seq: int
+    event_name: str
+    session_id: str
+    payload: dict[str, Any]
+    ts: float
+
+    def encode(self) -> str:
+        """编码为 JSON 字符串 (8KB 截断)"""
+        body = json.dumps({
+            "origin": self.origin,
+            "seq": self.seq,
+            "event_name": self.event_name,
+            "session_id": self.session_id,
+            "payload": self.payload,
+            "ts": self.ts,
+        }, ensure_ascii=False)
+        if len(body) > NOTIFY_PAYLOAD_LIMIT:
+            # 降级: payload 用摘要占位
+            body = json.dumps({
+                "origin": self.origin,
+                "seq": self.seq,
+                "event_name": self.event_name,
+                "session_id": self.session_id,
+                "payload": {"_truncated": True, "size": len(body)},
+                "ts": self.ts,
+            }, ensure_ascii=False)
+        return body
+
+    @classmethod
+    def decode(cls, raw: str) -> NotifyEnvelope:
+        """从 NOTIFY payload 字符串解码"""
+        data = json.loads(raw)
+        return cls(
+            origin=str(data["origin"]),
+            seq=int(data["seq"]),
+            event_name=str(data["event_name"]),
+            session_id=str(data["session_id"]),
+            payload=dict(data.get("payload") or {}),
+            ts=float(data["ts"]),
+        )
+
+
+class PostgresNotifier:
+    """
+    @brief Postgres LISTEN/NOTIFY 封装 — W35 跨进程 fan-out
+
+    行为:
+      - listen(): 启动后台 task, asyncpg 监听 NOTIFY_CHANNEL
+      - notify(env): NOTIFY webstate_notify, '<json>'
+      - on_notify(callback): 收到 envelope (origin != self) 时回调
+      - 同进程 origin 过滤: 自己的 notify 不会触发自己的 on_notify
+
+    @param dsn          asyncpg DSN
+    @param origin_id    本进程唯一标识 (默认 uuid4 hex)
+    @param channel      监听/通知 channel (默认 webstate_notify)
+    @param fake_module  测试用 fake asyncpg module
+    """
+
+    def __init__(
+        self,
+        dsn: str,
+        *,
+        origin_id: str | None = None,
+        channel: str = NOTIFY_CHANNEL,
+        fake_module: Any = None,
+    ) -> None:
+        self.dsn = dsn
+        self.origin_id = origin_id or __import__("uuid").uuid4().hex
+        self.channel = channel
+        self.fake_module = fake_module
+        self._conn: Any = None
+        self._listeners: list[Callable[..., Any]] = []
+        self._listener_task: asyncio.Task[None] | None = None
+        self._running = False
+        self._lock = asyncio.Lock()
+
+    async def _connect(self) -> Any:
+        if self.fake_module is not None:
+            # fake mode: 复用 fake create_pool
+            pool = await self.fake_module.create_pool(
+                dsn=self.dsn, min_size=1, max_size=2, command_timeout=5.0,
+            )
+            # LISTEN/NOTIFY 用单一长连接 (asyncpg 限制)
+            return await pool.acquire()
+        import asyncpg
+        return await asyncpg.connect(self.dsn)
+
+    async def listen(self) -> None:
+        """启动后台 LISTEN 任务"""
+        async with self._lock:
+            if self._running:
+                return
+            self._conn = await self._connect()
+            if self.fake_module is not None:
+                # fake: 用 add_listener 模拟
+                if hasattr(self._conn, "add_listener"):
+                    self._conn.add_listener(self.channel, self._on_fake_notify)
+            else:
+                # 真 asyncpg: add_listener
+                await self._conn.add_listener(self.channel, self._on_asyncpg_notify)
+            self._running = True
+            log.info("PostgresNotifier listening: channel=%s origin=%s", self.channel, self.origin_id[:8])
+
+    def _on_asyncpg_notify(self, _conn: Any, _pid: int, channel: str, payload: str) -> None:
+        """asyncpg 收到 NOTIFY 时的回调 (同步, 不可 await)"""
+        try:
+            env = NotifyEnvelope.decode(payload)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("PostgresNotifier decode failed: %s", exc)
+            return
+        if env.origin == self.origin_id:
+            # 自己的 notify, 忽略
+            return
+        for cb in list(self._listeners):
+            try:
+                cb(env)
+            except Exception as exc:  # noqa: BLE001
+                log.debug("notifier listener failed: %s", exc)
+
+    def _on_fake_notify(self, _conn: Any, _pid: int, channel: str, payload: str) -> None:
+        """fake asyncpg 通知回调"""
+        self._on_asyncpg_notify(_conn, _pid, channel, payload)
+
+    async def notify(
+        self,
+        event_name: str,
+        session_id: str,
+        seq: int,
+        payload: dict[str, Any],
+        ts: float,
+    ) -> None:
+        """NOTIFY webstate_notify, '<json>'"""
+        if not self._running:
+            await self.listen()
+        env = NotifyEnvelope(
+            origin=self.origin_id,
+            seq=seq,
+            event_name=event_name,
+            session_id=session_id,
+            payload=payload,
+            ts=ts,
+        )
+        body = env.encode()
+        if self.fake_module is not None:
+            await self._conn.execute(
+                f"NOTIFY {self.channel}, $1", body,
+            )
+        else:
+            # 真 asyncpg: 直接用 connection.execute
+            await self._conn.execute(f"NOTIFY {self.channel}", body)
+
+    def on_notify(self, callback: Callable[..., Any]) -> None:
+        """注册 envelope 回调 (origin != self 时触发)"""
+        self._listeners.append(callback)
+
+    async def close(self) -> None:
+        async with self._lock:
+            self._running = False
+            if self._listener_task is not None:
+                self._listener_task.cancel()
+                with __import__("contextlib").suppress(Exception):
+                    await self._listener_task
+                self._listener_task = None
+            if self._conn is not None and self.fake_module is None:
+                try:
+                    await self._conn.close()
+                except Exception as exc:  # noqa: BLE001
+                    log.debug("notifier conn close failed: %s", exc)
+            self._conn = None
+            self._listeners.clear()
+
+
 __all__ = [
     "WebStateConfig",
     "WebStateStore",
     "MemoryWebStateStore",
     "PostgresWebStateStore",
+    "PostgresNotifier",
+    "NotifyEnvelope",
+    "NOTIFY_CHANNEL",
+    "NOTIFY_PAYLOAD_LIMIT",
     "SCHEMA_SQL",
 ]

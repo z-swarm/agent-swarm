@@ -19,6 +19,7 @@ from agent_swarm.web.auth import (
 from agent_swarm.web.state import WebState
 from agent_swarm.web.store import (
     MemoryWebStateStore,
+    PostgresNotifier,
     PostgresWebStateStore,
     WebStateConfig,
     WebStateStore,
@@ -30,6 +31,7 @@ __all__ = [
     "WebStateConfig",
     "MemoryWebStateStore",
     "PostgresWebStateStore",
+    "PostgresNotifier",
     "JWTConfig",
     "JWTError",
     "JWTIssuer",
