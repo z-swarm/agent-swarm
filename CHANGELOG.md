@@ -188,6 +188,47 @@ agent-swarm run examples/w32_web_with_worktree.yaml \
 - `tools/verify_w33_dod.py` 8/8 PASSED
 - G-022 不破 (Web UI 端到端 6 cases 仍过)
 
+#### W34: WebState JWT 鉴权 (2026-06-23)
+- **新增** `src/agent_swarm/web/auth.py` — JWT HS256 实现 (标准库, 零新依赖):
+  - `JWTIssuer` — `encode` / `decode` / `verify_exp` / 错密钥拒绝 / 过期拒绝 / alg 校验
+  - `JWTConfig` — secret / algorithm / expires_seconds / issuer
+  - `JWTError` — 解析 / 验签 / 过期 失败异常
+  - `get_current_user` / `require_user` — Depends 工具
+  - `resolve_secret_ref` — `${VAR}` 引用解析 (复用 W20 风格, 不存明文)
+- **create_app 扩展** (`src/agent_swarm/web/app.py`):
+  - 接受 `jwt_secret` / `jwt_algorithm` / `jwt_expires_seconds` / `jwt_issuer_name` 关键字
+  - secret 给出时: 实例化 `JWTIssuer` 挂 `app.state.jwt_issuer` + 挂全局 `jwt_middleware`
+  - middleware 解析 `Authorization: Bearer` → 注入 `request.state.user`
+  - 写路径 (POST/PUT/DELETE/PATCH) + 受保护前缀 (`/api/events`) + 无 user → 401 拦截
+- **决策变更** (W34-D4): **写路径鉴权改在 middleware 全局拦截**, 不动 `request: Request` 路由签名
+  - 原因: FastAPI 0.110+ `__future__ annotations` + `request: Request` 在多参数端点签名里触发 422 (query 参数误判)
+  - 优点: KISS, 零路由代码改动, 业务路径清晰
+- **CLI 集成** (`src/agent_swarm/cli/main.py`):
+  - `--web-jwt-secret` 选项 (默认 None, 维持 W28 无鉴权行为)
+  - `--web-jwt-expires` 选项 (默认 3600 秒)
+  - 支持 `${WEB_JWT_SECRET}` 引用环境变量 (无明文)
+- **API 扩展**: `POST /api/events` 响应增加 `by` 字段 (sub 或 "anonymous")
+  - W28 既有 `test_api_post_event` 已更新接受新字段
+- **测试** `tests/unit/test_web_jwt_auth.py` — **22 cases 全过** (≥15 DoD):
+  - JWTIssuer 单元: encode/decode/wrong-secret/expired/tampered/garbage/alg/secret-required (8)
+  - resolve_secret_ref: 字面值穿透 / ${VAR} 解析 / 缺变量拒绝 (3)
+  - create_app + middleware: 零破坏 / secret 401 / ${VAR} / Bearer 解析 / 容错 / Basic 忽略 / GET 不强制 (7)
+  - Depends: get_current_user / require_user 401 (2)
+  - G-024 Golden Case: 完整端到端 login → 持 token → 401 不带 / 401 过期 / 401 错密钥 (1)
+- **守门脚本** `tools/verify_w34_dod.py` — **8/8 全过**:
+  - roundtrip / 错密钥 / 过期 / ${VAR} / 零破坏 / 401 拦截 / CLI / 性能 (100 encode+decode 1.8ms)
+
+#### DoD 验证 (W34)
+- ruff 0 errors
+- mypy 0 errors (77 source files, +1 from 76)
+- 全量回归 **1295 passed / 0 failed** (W33b 1273 → 1295, +22 新增)
+- `tools/verify_w34_dod.py` 8/8 PASSED
+- G-022 / W33a / W33b 全部不破
+
+#### 已知限制 (W34)
+- middleware 单进程: 写路径 401 拦截在多 worker 部署时需共享 secret (DSN/ENV 一致)
+- HS256 共享密钥: 需通过 SecretManager 轮换 (与 W20 Vault 风格一致)
+
 #### 已知缺口 (等用户环境)
 - TestPyPI 上传: `twine check` PASSED, 实发需用户配 `~/.pypirc` token + non-interactive terminal
 - DESIGN.md 已 untrack (chore 2e1de16), §17.2 P5 DoD 内容本地保留

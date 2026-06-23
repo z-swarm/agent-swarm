@@ -237,7 +237,10 @@ def test_api_post_event(client: TestClient, state: WebState) -> None:
         },
     )
     assert r.status_code == 200
-    assert r.json() == {"ok": True}
+    body = r.json()
+    # W34: 鉴权启用时含 by 字段 (sub 或 anonymous)
+    assert body["ok"] is True
+    assert "by" in body
     assert state.events[-1].event_name == "injected"
 
 

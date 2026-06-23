@@ -267,6 +267,23 @@ cli.add_command(_doctor_cmd)
     default="webstate_events",
     help="P5-W33: Postgres 表名 (默认 webstate_events)",
 )
+@click.option(
+    "--web-jwt-secret",
+    "web_jwt_secret",
+    type=str,
+    default=None,
+    help=(
+        "P5-W34: HS256 共享密钥; 省略时无鉴权 (开发模式, 零破坏); "
+        "支持 ${WEB_JWT_SECRET} 引用环境变量; 启用后写路径 (POST/PUT/DELETE) 需 Bearer token"
+    ),
+)
+@click.option(
+    "--web-jwt-expires",
+    "web_jwt_expires",
+    type=int,
+    default=3600,
+    help="P5-W34: JWT 有效期 (秒, 默认 3600)",
+)
 def run(
     config: Path,
     verbose: bool,
@@ -281,6 +298,8 @@ def run(
     web_worktree_base: Path | None,
     web_postgres_dsn: str | None,
     web_postgres_table: str,
+    web_jwt_secret: str | None,
+    web_jwt_expires: int,
 ) -> None:
     """运行 swarm（从 YAML 配置启动）"""
     _configure_logging(verbose)

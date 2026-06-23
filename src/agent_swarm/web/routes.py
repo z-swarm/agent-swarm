@@ -14,7 +14,6 @@
   - GET /partials/tasks        Task 列表 fragment
 """
 
-from __future__ import annotations
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -209,6 +208,8 @@ async def api_post_event(request: Request) -> JSONResponse:
     """
     注入一条事件 (测试 / 外部系统接入)
 
+    W34: 写操作强制鉴权——由 middleware 全局拦截, 缺/无效 token 直接 401
+
     @note 实际生产中, WebState 由 SessionEvent bus 自动填充
     """
     state = _state(request)
@@ -219,7 +220,10 @@ async def api_post_event(request: Request) -> JSONResponse:
         seq=body.get("seq", 0),
         payload=body.get("payload", {}),
     )
-    return JSONResponse({"ok": True})
+    # W34: middleware 注入 user; 无 user 时 by="anonymous" (W28 行为兼容)
+    user = getattr(request.state, "user", None)
+    by = user.get("sub", "anonymous") if user else "anonymous"
+    return JSONResponse({"ok": True, "by": by})
 
 
 @router.get("/healthz")
