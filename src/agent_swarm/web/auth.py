@@ -81,31 +81,35 @@ class JWTConfig:
 
 
 # ---------------------------------------------------------------------------
-# SecretRef 协议 (W36a)
+# SecretRef 协议 (W36a + W36c)
 # ---------------------------------------------------------------------------
 
 
-SecretRefKind = Literal["literal", "env", "secret_ref"]
+SecretRefKind = Literal["literal", "env", "secret_ref", "vault"]
 
 
 @dataclass(frozen=True)
 class SecretRef:
     """
-    @brief W36a secret 引用协议
+    @brief W36a secret 引用协议 (+ W36c vault:// 扩展)
 
-    三种 kind:
+    四种 kind:
       - "literal": 字面值 (W34 兼容, ref 字符串本身就是 secret)
       - "env": ${VAR} 引用, value 是 env var 名 (W34 兼容, 调用方 resolve)
       - "secret_ref": secret://key 引用, value 是 SecretManager key (W36a 新)
+      - "vault": vault://path#field 引用 (W36c 新)
+          - value = path
+          - field = JSON field 名 (None = 整个 value)
 
     @note value 的语义由 kind 决定
     """
 
     kind: SecretRefKind
     value: str
+    field: str | None = None  # W36c: vault://path#field 提取的 field
 
     def __post_init__(self) -> None:
-        if self.kind not in ("literal", "env", "secret_ref"):
+        if self.kind not in ("literal", "env", "secret_ref", "vault"):
             raise ValueError(f"invalid SecretRef kind: {self.kind!r}")
         if not self.value:
             raise ValueError(f"SecretRef.value cannot be empty (kind={self.kind!r})")
@@ -115,14 +119,16 @@ def parse_secret_ref(ref: str) -> SecretRef:
     """
     @brief 解析 secret 引用字符串 → SecretRef
 
-    支持格式:
+    支持格式 (W36a + W36c):
       - "literal-value" → SecretRef(kind="literal", value=ref)
       - "${VAR}" → SecretRef(kind="env", value="VAR")
       - "secret://key" → SecretRef(kind="secret_ref", value="key")
+      - "vault://path" → SecretRef(kind="vault", value=path, field=None)
+      - "vault://path#field" → SecretRef(kind="vault", value=path, field=field)
 
     @param ref  引用字符串
     @return SecretRef dataclass (frozen)
-    @raise ValueError ref 为空 或 secret:// 后无 key
+    @raise ValueError ref 为空 / secret:// 后无 key / vault:// 后空 path / 空 field
     """
     if not ref:
         raise ValueError("empty secret ref")
@@ -132,13 +138,25 @@ def parse_secret_ref(ref: str) -> SecretRef:
         if not var_name:
             raise ValueError(f"empty env var name in {ref!r}")
         return SecretRef(kind="env", value=var_name)
-    # 2) secret://key 模式 (W36a 新)
+    # 2) secret://key 模式 (W36a)
     if ref.startswith("secret://"):
         key = ref[len("secret://"):]
         if not key:
             raise ValueError(f"empty SecretManager key in {ref!r}")
         return SecretRef(kind="secret_ref", value=key)
-    # 3) 字面值
+    # 3) vault://path#field 模式 (W36c)
+    if ref.startswith("vault://"):
+        body = ref[len("vault://"):]
+        if "#" in body:
+            path, _, field = body.partition("#")
+        else:
+            path, field = body, None
+        if not path:
+            raise ValueError(f"empty Vault path in {ref!r}")
+        if field is not None and not field:
+            raise ValueError(f"empty Vault field in {ref!r}")
+        return SecretRef(kind="vault", value=path, field=field)
+    # 4) 字面值
     return SecretRef(kind="literal", value=ref)
 
 
@@ -196,21 +214,20 @@ class JWTIssuer:
                 )
             # W36a 模式: 校验 secret_ref 格式合法
             self._ref = parse_secret_ref(config.secret_ref)
-            if self._ref.kind != "secret_ref":
-                # 字面值 / env 模式在 W36a 走 secret_ref 字段但仍可工作
-                # (字面值: 直接用; env: 一次性 resolve 进 secret 字段)
-                if self._ref.kind == "env":
-                    # env 模式: 走 resolve_secret_ref 一次性 resolve
-                    import os
-                    env_val = os.environ.get(self._ref.value)
-                    if env_val is None:
-                        raise ValueError(
-                            f"env var {self._ref.value!r} not set "
-                            f"(referenced by {config.secret_ref!r})"
-                        )
-                    config.secret = env_val
-                else:  # literal
-                    config.secret = self._ref.value
+            if self._ref.kind == "literal":
+                # literal: 直接用 ref 字符串作为 secret (W34 兼容)
+                config.secret = self._ref.value
+            elif self._ref.kind == "env":
+                # env 模式: 走 os.environ 一次性 resolve
+                import os
+                env_val = os.environ.get(self._ref.value)
+                if env_val is None:
+                    raise ValueError(
+                        f"env var {self._ref.value!r} not set "
+                        f"(referenced by {config.secret_ref!r})"
+                    )
+                config.secret = env_val
+            # secret_ref / vault 模式: 保持 self._ref, 由 resolve_secret 走 SecretManager
         self.config = config
         # W36a cache: (key, version) → secret_bytes
         self._cached_secret: bytes | None = None
@@ -220,26 +237,28 @@ class JWTIssuer:
     async def resolve_secret(self) -> bytes:
         """
         @brief W36a: 从 SecretManager 解析最新 secret (走 cache)
+                W36c: vault:// 模式额外支持 field JSON 提取
 
         行为:
           - 首次调用: 走 SecretManager.get, 写入 cache
           - 后续调用: version 未变 → 返 cache; version 变 → 重读
           - SecretManager.get 失败: cache 命中 → 返 cache; miss → 抛 JWTError
+          - vault:// + field: 解析 JSON, 提取 field (失败 → JWTError)
 
         @return 解析后的 secret bytes
-        @raise JWTError  cache miss + SecretManager 失败
+        @raise JWTError  cache miss + SecretManager 失败 / JSON 解析失败 / field 不存在
         """
         if self.config.secret is not None:
             # W34 模式: 直接返 (无 SecretManager)
             return self.config.secret.encode("utf-8")
         assert self._ref is not None
         assert self.config.secret_manager is not None
-        # 仅 secret_ref 模式需要 SecretManager
-        if self._ref.kind != "secret_ref":
+        # 仅 secret_ref / vault 模式需要 SecretManager
+        if self._ref.kind not in ("secret_ref", "vault"):
             # env / literal 在 __init__ 已 resolve 进 secret
             assert self.config.secret is not None
             return self.config.secret.encode("utf-8")
-        # secret_ref 模式: 走 SecretManager (always-fresh 语义)
+        # secret_ref / vault 模式: 走 SecretManager (always-fresh 语义)
         # 性能: decode 走 cache (sync); resolve_secret 用于刷新 (lifespan 启动 / 定时)
         key = self._ref.value
         try:
@@ -256,7 +275,29 @@ class JWTIssuer:
             raise JWTError(
                 f"SecretManager.get({key!r}) failed and no cache: {exc}"
             ) from exc
-        secret_bytes = secret_obj.value.encode("utf-8")
+        # vault 模式: 提取 field (W36c)
+        if self._ref.kind == "vault" and self._ref.field is not None:
+            try:
+                import json
+                data = json.loads(secret_obj.value)
+            except json.JSONDecodeError as exc:
+                raise JWTError(
+                    f"vault://{self._ref.value}# field={self._ref.field!r}: "
+                    f"value is not JSON: {exc}"
+                ) from exc
+            except Exception as exc:
+                raise JWTError(
+                    f"vault://{self._ref.value}# field={self._ref.field!r}: "
+                    f"unexpected error: {exc}"
+                ) from exc
+            if self._ref.field not in data:
+                raise JWTError(
+                    f"vault://{self._ref.value}# field={self._ref.field!r}: "
+                    f"field not in document (keys: {list(data.keys())})"
+                )
+            secret_bytes = str(data[self._ref.field]).encode("utf-8")
+        else:
+            secret_bytes = secret_obj.value.encode("utf-8")
         # cache 更新: version 变化时刷新
         if (
             self._cached_secret is None

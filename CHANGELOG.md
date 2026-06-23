@@ -376,6 +376,51 @@ agent-swarm run examples/w32_web_with_worktree.yaml \
 - `web_repo_root` 默认 None → 用 FastAPI app 启动 cwd (通常是 repo_root, 但生产部署需显式配)
 - `run_full_review` (LLM + 对抗式) 不在 W36b 范围, 留 W36f
 
+#### W36c: vault://path#field URI 扩展 (闭环 W36a 协议) (2026-06-24)
+- **闭环 W36a 留口子**: "vault:// URI 留 W36c"
+- **`parse_secret_ref` 扩展** 4 种格式:
+  - `literal` / `env` / `secret://key` (W36a 兼容)
+  - `vault://path` (无 field) → SecretRef(kind=vault, value=path, field=None)
+  - `vault://path#field` → SecretRef(kind=vault, value=path, field=field)
+- **`SecretRef` 扩展** `field: str | None = None` 字段 (frozen dataclass, 向后兼容 W36a 3 kinds)
+- **`JWTIssuer.resolve_secret` vault 模式**:
+  - 调 `secret_manager.get(path)` 拿 Secret
+  - `field` 给出时: 解析 JSON, 提取字段
+  - `field` 缺失 → JWTError("field not in document")
+  - value 非 JSON → JWTError("not JSON")
+  - 走 (key, version) cache, version 变化时重读 (W36a 模式复用)
+- **`create_app` 扩展**:
+  - 接受 `vault_url` / `vault_role_id` / `vault_secret_id` 关键字 (W36c 新)
+  - `vault://` + 无 `secret_manager` → 自动实例化 `VaultSecretManager`
+- **CLI 集成**:
+  - `--web-jwt-secret-ref` 接受 `vault://` URI (W36a CLI 扩展)
+  - `--web-secret-manager vault` + `--vault-url/--vault-role-id/--vault-secret-id` 复用 (W36a 已就位)
+- **新增** `tests/unit/test_web_jwt_vault_ref.py` (14 cases):
+  - parse 5 cases (无 field / 有 field / 空 path / 空 field / 复杂 path)
+  - SecretRef field 字段 3 cases
+  - JWTConfig vault 模式 1 case
+  - JWTIssuer resolve 5 cases (无 field / 有 field / field 缺失 / 非 JSON / 轮换 cache 失效)
+- **新增** `tests/golden/test_g028_vault_ref.py` (5 cases):
+  - vault 无 field 直接用 value
+  - vault 有 field 提取 JSON
+  - rotate 后 field 变化 → cache 失效
+  - Vault 不可用 + cache 命中 → 降级
+  - 端到端: parse + resolve + encode + decode + rotate
+- **守门** `tools/verify_w36c_dod.py` — **8/8 全过**
+- **向后兼容**: W36a 3 kinds (literal / env / secret_ref) 全部不破, 老 22 case 全过
+
+#### DoD 验证 (W36c)
+- ruff 0 errors (W36c 范围 + 全项目)
+- mypy 0 errors (78 source files)
+- 全量回归 **1204+ passed / 0 failed** (W36b 1185 → W36c 1204, +19 新增: 14 unit + 5 G-028)
+- `tools/verify_w36c_dod.py` 8/8 PASSED
+- W36a/W36b 全部不破 (跨 6 commit 兼容)
+
+#### 已知限制 (W36c)
+- vault:// 仅支持 JSON 文档 (Vault KV v2 风格); YAML 文档留 W36c+
+- vault:// 触发自动 VaultSecretManager 实例化时, 测试需注入 fake (CLI 模式不支持)
+- 多 worker 部署时 SecretManager 各自一份 (W36a 限制延续)
+
 ## [0.4.0a1] - 2026-06-22
 
 ### Phase 4 收尾 (W22-W26)

@@ -57,6 +57,9 @@ def create_app(
     jwt_algorithm: str = "HS256",
     jwt_expires_seconds: int = 3600,
     jwt_issuer_name: str = "agent-swarm",
+    vault_url: str = "http://127.0.0.1:8200",
+    vault_role_id: str | None = None,
+    vault_secret_id: str | None = None,
     title: str = "agent-swarm",
     version: str = "0.5.0a1",
 ) -> FastAPI:
@@ -78,6 +81,9 @@ def create_app(
     @param jwt_algorithm     W34: 算法 (固定 HS256)
     @param jwt_expires_seconds W34: token 有效期
     @param jwt_issuer_name   W34: iss 字段
+    @param vault_url         W36c: Vault URL (vault:// 模式自动实例化时使用)
+    @param vault_role_id     W36c: Vault AppRole role_id (vault:// 模式自动实例化时使用)
+    @param vault_secret_id   W36c: Vault AppRole secret_id (vault:// 模式自动实例化时使用)
     @param title             app 标题 (OpenAPI docs)
     @param version           app 版本
     @return FastAPI 实例
@@ -121,7 +127,7 @@ def create_app(
             # W36a 模式: SecretRef 协议 + SecretManager
             assert jwt_secret_ref is not None  # 上层已校验
             ref = parse_secret_ref(jwt_secret_ref)
-            # secret:// 模式: 必须有 SecretManager
+            # secret:// / vault:// 模式: 必须有 SecretManager
             if ref.kind == "secret_ref":
                 if secret_manager is None:
                     # 缺省: EnvSecretManager (W20 风格, 与 W34 ${VAR} 兼容路径同源)
@@ -139,6 +145,34 @@ def create_app(
                 # 失败仅 log, 不破 (降级路径: cache miss 时 middleware 仍跑)
                 log.info(
                     "WebState JWT auth enabled (W36a mode): ref=%s issuer=%s",
+                    jwt_secret_ref, jwt_issuer_name,
+                )
+            elif ref.kind == "vault":
+                # W36c: vault://path#field 模式
+                if secret_manager is None:
+                    # 缺省: VaultSecretManager (需 vault_url/role_id/secret_id)
+                    from agent_swarm.security.secret_manager import (
+                        VaultConfig,
+                        VaultSecretManager,
+                    )
+                    secret_manager = VaultSecretManager(VaultConfig(
+                        url=vault_url,
+                        role_id=vault_role_id or "",
+                        secret_id=vault_secret_id or "",
+                    ))
+                    log.info(
+                        "WebState JWT auth: default VaultSecretManager attached url=%s",
+                        vault_url,
+                    )
+                jwt_issuer_obj = JWTIssuer(JWTConfig(
+                    secret_ref=jwt_secret_ref,
+                    secret_manager=secret_manager,
+                    algorithm=jwt_algorithm,
+                    expires_seconds=jwt_expires_seconds,
+                    issuer=jwt_issuer_name,
+                ))
+                log.info(
+                    "WebState JWT auth enabled (W36c vault mode): ref=%s issuer=%s",
                     jwt_secret_ref, jwt_issuer_name,
                 )
             elif ref.kind == "env":

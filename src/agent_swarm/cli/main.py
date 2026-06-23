@@ -414,9 +414,12 @@ def run(
         web_state = WebState()
         web_sink = WebStateSink(web_state)
         bus.register_sink(web_sink)
-        # P5-W36a: 构造 SecretManager (仅 W36a 模式)
+        # P5-W36a/W36c: 构造 SecretManager (secret:// + vault:// 模式)
         cli_secret_manager: Any = None
-        if web_jwt_secret_ref and web_jwt_secret_ref.startswith("secret://"):
+        if web_jwt_secret_ref and (
+            web_jwt_secret_ref.startswith("secret://")
+            or web_jwt_secret_ref.startswith("vault://")
+        ):
             if web_secret_manager.lower() == "vault":
                 try:
                     from agent_swarm.security.secret_manager import (
