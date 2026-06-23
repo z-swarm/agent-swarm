@@ -1,0 +1,48 @@
+# P5-W36a 示例: Web UI + JWT 鉴权 + SecretManager (轮换支持)
+#
+# 启动:
+#   # 1) 设置环境变量 (开发模式, 走 EnvSecretManager 默认)
+#   export WEB_JWT_SECRET_V36A="dev-secret-rotate-me-v1"
+#   # 2) 启动
+#   agent-swarm run examples/w36a_jwt_rotation.yaml \
+#     --web \
+#     --web-jwt-secret-ref "secret://WEB_JWT_SECRET_V36A"
+#
+# 生产模式 (Vault):
+#   agent-swarm run examples/w36a_jwt_rotation.yaml \
+#     --web \
+#     --web-jwt-secret-ref "secret://web/jwt-secret" \
+#     --web-secret-manager vault \
+#     --vault-url https://vault.example.com \
+#     --vault-role-id ${VAULT_ROLE_ID} \
+#     --vault-secret-id ${VAULT_SECRET_ID}
+#
+# 轮换 (不重启):
+#   # Vault 端 rotate
+#   vault kv put secret/web/jwt-secret value="new-secret-v2"
+#   # Web UI 下次 resolve_secret 自动感知 version 变化, 旧 token 在 cache TTL 内仍可用
+
+name: w36a-jwt-rotation
+session_id: w36a-demo
+
+agents:
+  - id: writer-a
+    role: writer
+    provider: openai
+    model: gpt-4o-mini
+    tools: []
+
+  - id: writer-b
+    role: writer
+    provider: openai
+    model: gpt-4o-mini
+    tools: []
+
+tasks:
+  - title: "Task 1: write a haiku about JWT rotation"
+    assignee: writer-a
+
+  - title: "Task 2: review the haiku"
+    assignee: writer-b
+    depends_on:
+      - "Task 1: write a haiku about JWT rotation"

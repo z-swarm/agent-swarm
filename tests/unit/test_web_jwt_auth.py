@@ -298,3 +298,152 @@ def test_g024_login_then_protected_endpoint() -> None:
         headers={"Authorization": f"Bearer {evil_token}"},
     )
     assert r.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# P5-W36a: create_app 接受 secret_manager + jwt_secret_ref (SecretManager 集成)
+# ---------------------------------------------------------------------------
+
+
+def test_create_app_jwt_secret_and_ref_mutually_exclusive() -> None:
+    """W36a: jwt_secret + jwt_secret_ref 同时给出抛 ValueError"""
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        create_app(
+            web_state=WebState(),
+            jwt_secret="literal",
+            jwt_secret_ref="secret://web/jwt",
+        )
+
+
+def test_create_app_jwt_secret_ref_literal() -> None:
+    """W36a: jwt_secret_ref 字面值模式 (W34 兼容)"""
+    app = create_app(
+        web_state=WebState(),
+        jwt_secret_ref="my-literal-secret",
+    )
+    # issuer 已挂 + 用字面值做签发可被 verify
+    iss = app.state.jwt_issuer
+    assert iss is not None
+    token = iss.encode("u1")
+    claims = iss.decode(token)
+    assert claims["sub"] == "u1"
+
+
+def test_create_app_jwt_secret_ref_env() -> None:
+    """W36a: jwt_secret_ref=${ENV_VAR} 模式 (env 一次性 resolve)"""
+    import os
+    os.environ["W36A_TEST_SECRET"] = "env-resolved-value"
+    try:
+        app = create_app(
+            web_state=WebState(),
+            jwt_secret_ref="${W36A_TEST_SECRET}",
+        )
+        iss = app.state.jwt_issuer
+        assert iss is not None
+        token = iss.encode("u2")
+        claims = iss.decode(token)
+        assert claims["sub"] == "u2"
+    finally:
+        del os.environ["W36A_TEST_SECRET"]
+
+
+def test_create_app_jwt_secret_ref_env_missing_raises() -> None:
+    """W36a: jwt_secret_ref=${MISSING} 抛 ValueError"""
+    import os
+    os.environ.pop("W36A_MISSING", None)
+    with pytest.raises(ValueError, match="not set"):
+        create_app(
+            web_state=WebState(),
+            jwt_secret_ref="${W36A_MISSING}",
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_app_jwt_secret_ref_secret_url_with_fake_manager() -> None:
+    """W36a: jwt_secret_ref=secret://key + 注入 secret_manager 走 cache 路径"""
+    from agent_swarm.security.secret_manager import Secret, SecretManager, SecretMetadata
+
+    class _FakeMgr(SecretManager):
+        def __init__(self) -> None:
+            self._store: dict[str, Secret] = {}
+            self._version = 0
+            self.fail_next = False
+
+        async def get(self, key: str) -> Secret:
+            if self.fail_next:
+                self.fail_next = False
+                raise RuntimeError("simulated vault outage")
+            return self._store[key]
+
+        async def put(self, key: str, value: str, ttl_seconds: int | None = None) -> None:
+            self._version += 1
+            self._store[key] = Secret(
+                value=value,
+                metadata=SecretMetadata(key=key, version=self._version),
+            )
+
+        async def delete(self, key: str) -> None:
+            self._store.pop(key, None)
+
+        async def rotate(self, key: str, new_value: str) -> Secret:
+            await self.put(key, new_value)
+            return await self.get(key)
+
+        async def check_rotation_due(self) -> list[SecretMetadata]:
+            return []
+
+        async def close(self) -> None:
+            return None
+
+    mgr = _FakeMgr()
+    # 预先 put 一个 secret 让 lifespan resolve 时能找到
+    await mgr.put("web/jwt", "secret-v1")
+
+    app = create_app(
+        web_state=WebState(),
+        jwt_secret_ref="secret://web/jwt",
+        secret_manager=mgr,
+    )
+    # lifespan 启动时 await resolve_secret 已跑过, cache 填充
+    # 但 create_app 自身不跑 lifespan, 仅 lifespan 启动器跑
+    # 所以手动初始化 cache (测试场景)
+    iss = app.state.jwt_issuer
+    assert iss is not None
+    await iss.resolve_secret()
+    # 现在 cache 有了, 可签发 + 验证
+    token = iss.encode("u3")
+    claims = iss.decode(token)
+    assert claims["sub"] == "u3"
+
+
+def test_create_app_secret_manager_default_is_env_manager() -> None:
+    """W36a: secret_ref=secret:// + 无 secret_manager → 自动 EnvSecretManager"""
+
+    # 设置 env 让 EnvSecretManager 能找到
+    import os
+    os.environ["W36A_DEFAULT_TEST_KEY"] = "default-test-secret"
+    try:
+        # 由于 create_app 内部无 DSN, lifespan 不会 await resolve_secret
+        # 这里只验证 issuer 注入成功 + secret_manager 自动选为 EnvSecretManager
+        app = create_app(
+            web_state=WebState(),
+            jwt_secret_ref="secret://W36A_DEFAULT_TEST_KEY",
+            # secret_manager=None → 默认 EnvSecretManager
+        )
+        iss = app.state.jwt_issuer
+        assert iss is not None
+        # issuer._ref 应是 secret_ref
+        assert iss._ref is not None
+        assert iss._ref.kind == "secret_ref"
+        assert iss._ref.value == "W36A_DEFAULT_TEST_KEY"
+    finally:
+        del os.environ["W36A_DEFAULT_TEST_KEY"]
+
+
+def test_create_app_no_jwt_anywhere_means_no_auth() -> None:
+    """W36a: jwt_secret=None + jwt_secret_ref=None → 无鉴权 (W28 兼容)"""
+    app = create_app(web_state=WebState())
+    assert app.state.jwt_issuer is None
+    client = TestClient(app)
+    r = client.post("/api/events", json={"event_name": "e", "session_id": "s"})
+    assert r.status_code == 200

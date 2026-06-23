@@ -12,6 +12,8 @@ P5-W33: create_app 接受 postgres_dsn (None = 内存, 零破坏)
 P5-W34: create_app 接受 jwt_secret (None = 无鉴权, 零破坏)
         给出时挂 JWTIssuer + middleware 解析 Authorization: Bearer
         关键 API 路由用 Depends(require_user) 强制鉴权
+P5-W36a: create_app 接受 secret_manager + jwt_secret_ref (SecretManager 集成, 支持轮换)
+         secret_manager 缺省 → 自动实例化 EnvSecretManager
 
 @note 默认挂载所有 Phase 3-4 模块的 view
 @note 测试用 TestClient; 不需要真 server
@@ -49,6 +51,8 @@ def create_app(
     postgres_tenant_id: str = "local",
     enable_cross_process: bool = False,
     jwt_secret: str | None = None,
+    jwt_secret_ref: str | None = None,
+    secret_manager: Any = None,
     jwt_algorithm: str = "HS256",
     jwt_expires_seconds: int = 3600,
     jwt_issuer_name: str = "agent-swarm",
@@ -65,14 +69,23 @@ def create_app(
     @param postgres_tenant_id W33: tenant_id 列默认值 (多租户隔离)
     @param enable_cross_process W35: 启用跨进程 LISTEN/NOTIFY fan-out
                                   (需要 postgres_dsn + fake_module 之一; DSN 缺省时无效)
-    @param jwt_secret        W34: HS256 共享密钥 (None = 无鉴权, 零破坏; ${VAR} 引用支持)
+    @param jwt_secret        W34: HS256 共享密钥字面值 / ${VAR} 引用 (None = 无鉴权, 零破坏)
+    @param jwt_secret_ref    W36a: secret 引用字符串 (literal / ${VAR} / secret://key)
+                              与 jwt_secret 互斥; 与 secret_manager 配合支持轮换
+    @param secret_manager    W36a: SecretManager 实例 (None = 自动 EnvSecretManager, 仅 W36a 模式)
     @param jwt_algorithm     W34: 算法 (固定 HS256)
     @param jwt_expires_seconds W34: token 有效期
     @param jwt_issuer_name   W34: iss 字段
     @param title             app 标题 (OpenAPI docs)
     @param version           app 版本
     @return FastAPI 实例
+    @raise ValueError jwt_secret 与 jwt_secret_ref 同时给出
     """
+    if jwt_secret is not None and jwt_secret_ref is not None:
+        raise ValueError(
+            "jwt_secret and jwt_secret_ref are mutually exclusive: "
+            "use jwt_secret (W34 字面值) or jwt_secret_ref (W36a SecretManager)"
+        )
     state = web_state or WebState()
     # W33: DSN 给出时挂 Postgres store
     if postgres_dsn and state.store is None:
@@ -83,18 +96,75 @@ def create_app(
             tenant_id=postgres_tenant_id,
         ))
         log.info("WebState Postgres store attached: table=%s", postgres_table)
-    # W34: secret 给出时挂 JWT issuer
+    # W34/W36a: 挂 JWT issuer
     jwt_issuer_obj: Any = None
-    if jwt_secret:
-        from agent_swarm.web.auth import JWTConfig, JWTIssuer, resolve_secret_ref
-        resolved = resolve_secret_ref(jwt_secret)
-        jwt_issuer_obj = JWTIssuer(JWTConfig(
-            secret=resolved,
-            algorithm=jwt_algorithm,
-            expires_seconds=jwt_expires_seconds,
-            issuer=jwt_issuer_name,
-        ))
-        log.info("WebState JWT auth enabled: issuer=%s", jwt_issuer_name)
+    if jwt_secret or jwt_secret_ref:
+        from agent_swarm.web.auth import (
+            JWTConfig,
+            JWTIssuer,
+            parse_secret_ref,
+            resolve_secret_ref,
+        )
+        if jwt_secret is not None:
+            # W34 模式: 字面值 / ${VAR} 一次性 resolve
+            resolved = resolve_secret_ref(jwt_secret)
+            jwt_issuer_obj = JWTIssuer(JWTConfig(
+                secret=resolved,
+                algorithm=jwt_algorithm,
+                expires_seconds=jwt_expires_seconds,
+                issuer=jwt_issuer_name,
+            ))
+            log.info("WebState JWT auth enabled (W34 mode): issuer=%s", jwt_issuer_name)
+        else:
+            # W36a 模式: SecretRef 协议 + SecretManager
+            assert jwt_secret_ref is not None  # 上层已校验
+            ref = parse_secret_ref(jwt_secret_ref)
+            # secret:// 模式: 必须有 SecretManager
+            if ref.kind == "secret_ref":
+                if secret_manager is None:
+                    # 缺省: EnvSecretManager (W20 风格, 与 W34 ${VAR} 兼容路径同源)
+                    from agent_swarm.security.secret_manager import EnvSecretManager
+                    secret_manager = EnvSecretManager()
+                    log.info("WebState JWT auth: default EnvSecretManager attached")
+                jwt_issuer_obj = JWTIssuer(JWTConfig(
+                    secret_ref=jwt_secret_ref,
+                    secret_manager=secret_manager,
+                    algorithm=jwt_algorithm,
+                    expires_seconds=jwt_expires_seconds,
+                    issuer=jwt_issuer_name,
+                ))
+                # W36a 模式: lifespan 启动时 await resolve_secret() 初始化 cache
+                # 失败仅 log, 不破 (降级路径: cache miss 时 middleware 仍跑)
+                log.info(
+                    "WebState JWT auth enabled (W36a mode): ref=%s issuer=%s",
+                    jwt_secret_ref, jwt_issuer_name,
+                )
+            elif ref.kind == "env":
+                # ${VAR} 通过 secret_ref 字段: 一次性 resolve 进 secret
+                import os
+                env_val = os.environ.get(ref.value)
+                if env_val is None:
+                    raise ValueError(
+                        f"env var {ref.value!r} not set (referenced by {jwt_secret_ref!r})"
+                    )
+                jwt_issuer_obj = JWTIssuer(JWTConfig(
+                    secret=env_val,
+                    algorithm=jwt_algorithm,
+                    expires_seconds=jwt_expires_seconds,
+                    issuer=jwt_issuer_name,
+                ))
+                log.info(
+                    "WebState JWT auth enabled (env ref %s): issuer=%s",
+                    ref.value, jwt_issuer_name,
+                )
+            else:  # literal
+                jwt_issuer_obj = JWTIssuer(JWTConfig(
+                    secret=ref.value,
+                    algorithm=jwt_algorithm,
+                    expires_seconds=jwt_expires_seconds,
+                    issuer=jwt_issuer_name,
+                ))
+                log.info("WebState JWT auth enabled (literal ref): issuer=%s", jwt_issuer_name)
     # W35: 跨进程 fan-out — 需要 DSN 才有 Postgres store
     notifier: Any = None
     if enable_cross_process and postgres_dsn:
@@ -119,6 +189,17 @@ def create_app(
                 log.info("WebState cross-process notifier active")
             except Exception as exc:  # noqa: BLE001
                 log.warning("WebState notifier listen failed: %s", exc)
+        # W36a: 启动时 await resolve_secret 初始化 cache (失败仅 log, 不破)
+        if (
+            jwt_issuer_obj is not None
+            and jwt_issuer_obj.config.secret is None
+            and jwt_issuer_obj.config.secret_manager is not None
+        ):
+            try:
+                await jwt_issuer_obj.resolve_secret()
+                log.info("WebState JWT cache initialized (W36a mode)")
+            except Exception as exc:  # noqa: BLE001
+                log.warning("WebState JWT cache init failed (degrade): %s", exc)
         yield
         # W35: 退出时关 notifier
         if notifier is not None:
@@ -141,7 +222,7 @@ def create_app(
     )
     # 挂状态
     app.state.web_state = state
-    # W34: JWT issuer
+    # W34/W36a: JWT issuer
     app.state.jwt_issuer = jwt_issuer_obj
     # W35: notifier
     app.state.web_notifier = notifier
@@ -149,7 +230,7 @@ def create_app(
     if worktree_manager is not None:
         app.state.worktree_manager = worktree_manager
 
-    # W34: JWT 解析 + 写路径强制鉴权 middleware (secret 未配置时不挂)
+    # W34/W36a: JWT 解析 + 写路径强制鉴权 middleware (issuer 未配置时不挂)
     if jwt_issuer_obj is not None:
         from fastapi.responses import JSONResponse
 

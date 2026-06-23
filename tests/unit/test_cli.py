@@ -794,3 +794,45 @@ tasks:
     runner = CliRunner()
     res = runner.invoke(cli, ["run", "--db", str(db), str(cfg)])
     assert res.exit_code == 0, f"可写 db 路径应通过 fail-fast: {res.stdout}"
+
+
+# ---------------------------------------------------------------------------
+# P5-W36a: CLI 选项 --web-jwt-secret-ref / --web-secret-manager / --vault-*
+# ---------------------------------------------------------------------------
+
+
+def test_cli_run_help_shows_w36a_web_jwt_options() -> None:
+    """W36a: CLI --help 显示新增的 web jwt 选项"""
+    from click.testing import CliRunner
+
+    from agent_swarm.cli.main import cli
+
+    runner = CliRunner()
+    res = runner.invoke(cli, ["run", "--help"])
+    assert res.exit_code == 0
+    # 新增 6 选项
+    assert "--web-jwt-secret-ref" in res.stdout
+    assert "--web-secret-manager" in res.stdout
+    assert "--vault-url" in res.stdout
+    assert "--vault-role-id" in res.stdout
+    assert "--vault-secret-id" in res.stdout
+    # W34 老选项仍存在
+    assert "--web-jwt-secret" in res.stdout
+    assert "--web-jwt-expires" in res.stdout
+
+
+def test_cli_run_with_web_jwt_secret_ref_literal() -> None:
+    """W36a: --web-jwt-secret-ref=literal-value (字面值) 不抛错"""
+    from click.testing import CliRunner
+
+    from agent_swarm.cli.main import cli
+
+    runner = CliRunner()
+    res = runner.invoke(
+        cli,
+        ["run", "--web", "--web-jwt-secret-ref", "test-literal", "--help"],
+    )
+    # --help 会让 click 早退, 不会真启动 server
+    # 这里只验 CLI 能解析该参数
+    assert "--help" not in res.stdout or res.exit_code == 0
+

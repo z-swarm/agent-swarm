@@ -30,9 +30,12 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
 
 log = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from agent_swarm.security.secret_manager import SecretManager
 
 
 # ---------------------------------------------------------------------------
@@ -45,16 +48,98 @@ class JWTConfig:
     """
     @brief JWT 鉴权配置
 
-    @param secret          HS256 共享密钥 (从 CLI / YAML 注入, 或 ${VAR} 引用)
+    W34 模式 (向后兼容, 字面值预解析):
+        JWTConfig(secret="literal-or-${RESOLVED}")
+        调用方在传入前自行 resolve_secret_ref
+    W36a 模式 (SecretManager 集成, 支持轮换):
+        JWTConfig(secret_ref="secret://web/jwt-secret", secret_manager=EnvSecretManager())
+        decode 时实时从 SecretManager 拿 secret, version 变化自动失效 cache
+
+    @param secret          W34 兼容: 预解析的字面值
+    @param secret_ref      W36a 新: 引用字符串 (literal / ${VAR} / secret://key)
+    @param secret_manager  W36a 新: SecretManager 实例 (仅 secret_ref="secret://" 模式需要)
     @param algorithm       算法 (默认 HS256; 本类仅实现 HS256)
     @param expires_seconds token 有效期 (默认 1 小时)
     @param issuer          iss 字段 (默认 agent-swarm)
     """
 
-    secret: str
+    secret: str | None = None
+    secret_ref: str | None = None
+    secret_manager: SecretManager | None = None
     algorithm: str = "HS256"
     expires_seconds: int = 3600
     issuer: str = "agent-swarm"
+
+    def __post_init__(self) -> None:
+        # 校验:secret 与 secret_ref 互斥,secret_ref="secret://" 必须配 secret_manager
+        if self.secret is None and self.secret_ref is None:
+            raise ValueError("JWTConfig requires either secret (W34) or secret_ref (W36a)")
+        if self.secret is not None and self.secret_ref is not None:
+            raise ValueError("JWTConfig.secret and secret_ref are mutually exclusive")
+        if self.algorithm != "HS256":
+            raise ValueError(f"only HS256 supported, got {self.algorithm!r}")
+
+
+# ---------------------------------------------------------------------------
+# SecretRef 协议 (W36a)
+# ---------------------------------------------------------------------------
+
+
+SecretRefKind = Literal["literal", "env", "secret_ref"]
+
+
+@dataclass(frozen=True)
+class SecretRef:
+    """
+    @brief W36a secret 引用协议
+
+    三种 kind:
+      - "literal": 字面值 (W34 兼容, ref 字符串本身就是 secret)
+      - "env": ${VAR} 引用, value 是 env var 名 (W34 兼容, 调用方 resolve)
+      - "secret_ref": secret://key 引用, value 是 SecretManager key (W36a 新)
+
+    @note value 的语义由 kind 决定
+    """
+
+    kind: SecretRefKind
+    value: str
+
+    def __post_init__(self) -> None:
+        if self.kind not in ("literal", "env", "secret_ref"):
+            raise ValueError(f"invalid SecretRef kind: {self.kind!r}")
+        if not self.value:
+            raise ValueError(f"SecretRef.value cannot be empty (kind={self.kind!r})")
+
+
+def parse_secret_ref(ref: str) -> SecretRef:
+    """
+    @brief 解析 secret 引用字符串 → SecretRef
+
+    支持格式:
+      - "literal-value" → SecretRef(kind="literal", value=ref)
+      - "${VAR}" → SecretRef(kind="env", value="VAR")
+      - "secret://key" → SecretRef(kind="secret_ref", value="key")
+
+    @param ref  引用字符串
+    @return SecretRef dataclass (frozen)
+    @raise ValueError ref 为空 或 secret:// 后无 key
+    """
+    if not ref:
+        raise ValueError("empty secret ref")
+    # 1) ${VAR} 模式 (W34 兼容)
+    if ref.startswith("${") and ref.endswith("}"):
+        var_name = ref[2:-1]
+        if not var_name:
+            raise ValueError(f"empty env var name in {ref!r}")
+        return SecretRef(kind="env", value=var_name)
+    # 2) secret://key 模式 (W36a 新)
+    if ref.startswith("secret://"):
+        key = ref[len("secret://"):]
+        if not key:
+            raise ValueError(f"empty SecretManager key in {ref!r}")
+        return SecretRef(kind="secret_ref", value=key)
+    # 3) 字面值
+    return SecretRef(kind="literal", value=ref)
 
 
 class JWTError(Exception):
@@ -81,18 +166,133 @@ class JWTIssuer:
     """
     @brief JWT HS256 签发 + 验证
 
-    用法:
-        issuer = JWTIssuer(JWTConfig(secret="..."))
+    用法 (W34 字面值模式, 向后兼容):
+        issuer = JWTIssuer(JWTConfig(secret="literal-secret"))
         token = issuer.encode("user-1", {"role": "admin"})
-        claims = issuer.decode(token)  # {"sub": "user-1", "role": "admin", "exp": ..., "iat": ..., "iss": ...}
+        claims = issuer.decode(token)
+
+    用法 (W36a SecretManager 模式, 支持轮换):
+        mgr = EnvSecretManager()
+        config = JWTConfig(secret_ref="secret://web/jwt", secret_manager=mgr)
+        issuer = JWTIssuer(config)
+        await issuer.resolve_secret()  # 初始化 cache
+        token = issuer.encode(...)
+        claims = issuer.decode(token)  # 走 cache (sync)
+        # 轮换: 调 issuer.invalidate_cache() 让下次 resolve_secret 重读
     """
 
     def __init__(self, config: JWTConfig) -> None:
-        if not config.secret:
-            raise ValueError("JWTConfig.secret is required")
-        if config.algorithm != "HS256":
-            raise ValueError(f"only HS256 supported, got {config.algorithm!r}")
+        # W34 模式: secret 必须非空
+        # W36a 模式: secret_ref + secret_manager 必须给
+        self._ref: SecretRef | None = None
+        if config.secret is not None and config.secret == "":
+            # W34 兼容: 空字符串仍视为缺省 (保持 W34 行为)
+            raise ValueError("JWTConfig.secret is required (W34 mode)")
+        if config.secret is None:
+            if config.secret_ref is None or config.secret_manager is None:
+                raise ValueError(
+                    "JWTConfig requires either secret (W34) "
+                    "or secret_ref + secret_manager (W36a)"
+                )
+            # W36a 模式: 校验 secret_ref 格式合法
+            self._ref = parse_secret_ref(config.secret_ref)
+            if self._ref.kind != "secret_ref":
+                # 字面值 / env 模式在 W36a 走 secret_ref 字段但仍可工作
+                # (字面值: 直接用; env: 一次性 resolve 进 secret 字段)
+                if self._ref.kind == "env":
+                    # env 模式: 走 resolve_secret_ref 一次性 resolve
+                    import os
+                    env_val = os.environ.get(self._ref.value)
+                    if env_val is None:
+                        raise ValueError(
+                            f"env var {self._ref.value!r} not set "
+                            f"(referenced by {config.secret_ref!r})"
+                        )
+                    config.secret = env_val
+                else:  # literal
+                    config.secret = self._ref.value
         self.config = config
+        # W36a cache: (key, version) → secret_bytes
+        self._cached_secret: bytes | None = None
+        self._cached_version: int = -1
+        self._cached_key: str | None = None
+
+    async def resolve_secret(self) -> bytes:
+        """
+        @brief W36a: 从 SecretManager 解析最新 secret (走 cache)
+
+        行为:
+          - 首次调用: 走 SecretManager.get, 写入 cache
+          - 后续调用: version 未变 → 返 cache; version 变 → 重读
+          - SecretManager.get 失败: cache 命中 → 返 cache; miss → 抛 JWTError
+
+        @return 解析后的 secret bytes
+        @raise JWTError  cache miss + SecretManager 失败
+        """
+        if self.config.secret is not None:
+            # W34 模式: 直接返 (无 SecretManager)
+            return self.config.secret.encode("utf-8")
+        assert self._ref is not None
+        assert self.config.secret_manager is not None
+        # 仅 secret_ref 模式需要 SecretManager
+        if self._ref.kind != "secret_ref":
+            # env / literal 在 __init__ 已 resolve 进 secret
+            assert self.config.secret is not None
+            return self.config.secret.encode("utf-8")
+        # secret_ref 模式: 走 SecretManager (always-fresh 语义)
+        # 性能: decode 走 cache (sync); resolve_secret 用于刷新 (lifespan 启动 / 定时)
+        key = self._ref.value
+        try:
+            secret_obj = await self.config.secret_manager.get(key)
+        except Exception as exc:
+            if self._cached_secret is not None and self._cached_key == key:
+                # 降级: cache 命中, 继续用 (不破)
+                log.warning(
+                    "JWTIssuer.resolve_secret: SecretManager.get(%r) failed, "
+                    "using cached version=%d: %s",
+                    key, self._cached_version, exc,
+                )
+                return self._cached_secret
+            raise JWTError(
+                f"SecretManager.get({key!r}) failed and no cache: {exc}"
+            ) from exc
+        secret_bytes = secret_obj.value.encode("utf-8")
+        # cache 更新: version 变化时刷新
+        if (
+            self._cached_secret is None
+            or self._cached_key != key
+            or self._cached_version != secret_obj.metadata.version
+        ):
+            self._cached_secret = secret_bytes
+            self._cached_key = key
+            self._cached_version = secret_obj.metadata.version
+            log.debug(
+                "JWTIssuer.resolve_secret: cache updated key=%r version=%d",
+                key, secret_obj.metadata.version,
+            )
+        return secret_bytes
+
+    def invalidate_cache(self) -> None:
+        """
+        @brief W36a: 强制下次 resolve_secret 重读 (轮换时调)
+        """
+        self._cached_secret = None
+        self._cached_version = -1
+        self._cached_key = None
+
+    def _current_secret_bytes(self) -> bytes:
+        """
+        @brief 内部: 取当前 secret bytes (sync, 走 cache 或 W34 字面值)
+
+        W36a 必须先 await resolve_secret() 初始化 cache
+        """
+        if self.config.secret is not None:
+            return self.config.secret.encode("utf-8")
+        if self._cached_secret is None:
+            raise JWTError(
+                "JWTIssuer cache empty: call await resolve_secret() first"
+            )
+        return self._cached_secret
 
     def encode(self, subject: str, claims: dict[str, Any] | None = None) -> str:
         """
@@ -116,7 +316,7 @@ class JWTIssuer:
         p_b64 = _b64url_encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
         signing_input = f"{h_b64}.{p_b64}".encode("ascii")
         sig = hmac.new(
-            self.config.secret.encode("utf-8"),
+            self._current_secret_bytes(),
             signing_input,
             hashlib.sha256,
         ).digest()
@@ -125,10 +325,10 @@ class JWTIssuer:
 
     def decode(self, token: str) -> dict[str, Any]:
         """
-        @brief 解析 + 验证 token
+        @brief 解析 + 验证 token (走 cache, sync)
 
         @return claims dict
-        @raise JWTError 格式错 / 签名错 / 过期
+        @raise JWTError 格式错 / 签名错 / 过期 / cache 未初始化
         """
         if not token:
             raise JWTError("empty token")
@@ -139,7 +339,7 @@ class JWTIssuer:
         # 验签 (constant-time compare 防时序攻击)
         signing_input = f"{h_b64}.{p_b64}".encode("ascii")
         expected_sig = hmac.new(
-            self.config.secret.encode("utf-8"),
+            self._current_secret_bytes(),
             signing_input,
             hashlib.sha256,
         ).digest()
@@ -234,8 +434,10 @@ __all__ = [
     "JWTConfig",
     "JWTError",
     "JWTIssuer",
+    "SecretRef",
     "get_jwt_issuer",
     "get_current_user",
+    "parse_secret_ref",
     "require_user",
     "resolve_secret_ref",
 ]

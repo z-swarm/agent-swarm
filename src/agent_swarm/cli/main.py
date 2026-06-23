@@ -16,6 +16,7 @@ import os  # P-4 修复:从函数内 inline import 提升到顶部
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import click
 from rich.console import Console
@@ -287,6 +288,47 @@ cli.add_command(_doctor_cmd)
     ),
 )
 @click.option(
+    "--web-jwt-secret-ref",
+    "web_jwt_secret_ref",
+    type=str,
+    default=None,
+    help=(
+        "P5-W36a: secret 引用字符串 (literal / ${VAR} / secret://key); "
+        "与 --web-jwt-secret 互斥; secret:// 模式走 SecretManager 支持轮换不重启"
+    ),
+)
+@click.option(
+    "--web-secret-manager",
+    "web_secret_manager",
+    type=click.Choice(["env", "vault"], case_sensitive=False),
+    default="env",
+    help=(
+        "P5-W36a: SecretManager 后端 (仅 --web-jwt-secret-ref=secret:// 模式生效); "
+        "env=EnvSecretManager (默认, 零依赖); vault=VaultSecretManager (需 hvac + --vault-*)"
+    ),
+)
+@click.option(
+    "--vault-url",
+    "vault_url",
+    type=str,
+    default="http://127.0.0.1:8200",
+    help="P5-W36a: Vault URL (仅 --web-secret-manager=vault 生效)",
+)
+@click.option(
+    "--vault-role-id",
+    "vault_role_id",
+    type=str,
+    default=None,
+    help="P5-W36a: Vault AppRole role_id (仅 --web-secret-manager=vault 生效)",
+)
+@click.option(
+    "--vault-secret-id",
+    "vault_secret_id",
+    type=str,
+    default=None,
+    help="P5-W36a: Vault AppRole secret_id (仅 --web-secret-manager=vault 生效)",
+)
+@click.option(
     "--web-jwt-expires",
     "web_jwt_expires",
     type=int,
@@ -309,6 +351,11 @@ def run(
     web_postgres_table: str,
     web_cross_process: bool,
     web_jwt_secret: str | None,
+    web_jwt_secret_ref: str | None,
+    web_secret_manager: str,
+    vault_url: str,
+    vault_role_id: str | None,
+    vault_secret_id: str | None,
     web_jwt_expires: int,
 ) -> None:
     """运行 swarm（从 YAML 配置启动）"""
@@ -367,12 +414,42 @@ def run(
         web_state = WebState()
         web_sink = WebStateSink(web_state)
         bus.register_sink(web_sink)
+        # P5-W36a: 构造 SecretManager (仅 W36a 模式)
+        cli_secret_manager: Any = None
+        if web_jwt_secret_ref and web_jwt_secret_ref.startswith("secret://"):
+            if web_secret_manager.lower() == "vault":
+                try:
+                    from agent_swarm.security.secret_manager import (
+                        VaultConfig,
+                        VaultSecretManager,
+                    )
+                except ImportError as exc:
+                    console.print(
+                        f"[red]--web-secret-manager=vault 需要 hvac: {exc}. "
+                        f"运行: pip install hvac[/]"
+                    )
+                    sys.exit(2)
+                cli_secret_manager = VaultSecretManager(VaultConfig(
+                    url=vault_url,
+                    role_id=vault_role_id or "",
+                    secret_id=vault_secret_id or "",
+                ))
+                console.print(
+                    f"[bold magenta]web secret manager[/] → vault url={vault_url}"
+                )
+            else:
+                # env 模式: create_app 内部自动实例化, 此处不传
+                cli_secret_manager = None
         app = create_app(
             web_state=web_state,
             worktree_manager=worktree_manager,
             postgres_dsn=web_postgres_dsn,
             postgres_table=web_postgres_table,
             enable_cross_process=web_cross_process,
+            jwt_secret=web_jwt_secret,
+            jwt_secret_ref=web_jwt_secret_ref,
+            secret_manager=cli_secret_manager,
+            jwt_expires_seconds=web_jwt_expires,
         )
         uv_config = uvicorn.Config(
             app,

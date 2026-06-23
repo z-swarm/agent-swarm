@@ -284,6 +284,49 @@ agent-swarm run examples/w32_web_with_worktree.yaml \
 - docs/ 已 untrack (chore 943f432), 计划/复盘文档本地保留
 - 端到端: `WorktreeManager initialized` + `web UI started (uptime=0s)`
 
+#### W36a: WebState JWT Secret 走 SecretManager (轮换不重启) (2026-06-24)
+- **闭环 W34 已知限制** #2: HS256 共享密钥需 SecretManager 轮换
+- **新增** `src/agent_swarm/web/auth.py`:
+  - `SecretRef` frozen dataclass (kind: Literal["literal","env","secret_ref"], value: str)
+  - `parse_secret_ref(ref)` — 识别 literal / `${VAR}` / `secret://key` 三种格式 + 错误路径
+  - `JWTConfig` 扩展: 新增 `secret_ref: str | None` + `secret_manager: SecretManager | None` 字段
+  - `JWTIssuer` 重构: 持 SecretManager + `(key, version) → bytes` cache
+  - `resolve_secret()` async — always-fresh 拉取 (lifespan 启动 / 定时任务调用)
+  - `decode()` 走 cache (sync, 性能)
+  - `invalidate_cache()` — 强制下次重读
+- **`create_app` 扩展**:
+  - 接受 `jwt_secret_ref: str | None` (与 `jwt_secret` 互斥)
+  - 接受 `secret_manager: SecretManager | None` (secret:// 模式缺省 = EnvSecretManager)
+  - W34 字面值 / W36a secret_ref 双向兼容, 零破坏
+- **CLI 集成**:
+  - `--web-jwt-secret-ref TEXT` (W36a 引用字符串)
+  - `--web-secret-manager [env|vault]` (缺省 env, vault 需 hvac)
+  - `--vault-url / --vault-role-id / --vault-secret-id` (Vault AppRole 三件套)
+- **新增** `tests/unit/test_web_jwt_secret_ref.py` (21 cases) — SecretRef 协议 + parse
+- **新增** `tests/unit/test_web_jwt_rotation.py` (7 cases) — 轮换 cache + 降级路径
+- **新增** `tests/golden/test_g026_jwt_rotation.py` (5 cases) — Phase A-D 端到端:
+  - Phase A: v1 签发 token + verify
+  - Phase B: rotate 到 v2
+  - Phase C: 旧 token 在 cache TTL 内 verify / 触发 resolve 后失效
+  - Phase D: v2 签发新 token + verify
+  - Full lifecycle: A→B→C→D 串联
+- **守门** `tools/verify_w36a_dod.py` — **8/8 全过**:
+  - SecretRef 协议 / 错误路径 / JWTConfig 互斥 / create_app 4 模式
+  - EnvSecretManager 集成 / 失败降级 / version 失效 / CLI 选项
+- **向后兼容**: W34 `JWTConfig(secret="...")` 字面值模式零破坏, 22 老 case 全过
+
+#### DoD 验证 (W36a)
+- ruff 0 errors (W36a 范围 + 全项目)
+- mypy 0 errors (77 source files)
+- 全量回归 **1185+ passed / 0 failed** (W35 1126 → W36a 1185, +59 新增)
+- `tools/verify_w36a_dod.py` 8/8 PASSED
+- W34/W35 全部不破 (cross-version 兼容)
+
+#### 已知限制 (W36a)
+- `vault://path#field` URI scheme 留 W36c (W36a 只做 `secret://` 单协议)
+- SecretManager cache TTL 由 SecretManager 自管 (W20 VaultSecretManager 5min), JWTIssuer 不额外加 TTL
+- 多 worker (gunicorn/uvicorn) 各自 SecretManager 实例, 轮换时各自 cache 失效 (符合预期)
+
 ## [0.4.0a1] - 2026-06-22
 
 ### Phase 4 收尾 (W22-W26)

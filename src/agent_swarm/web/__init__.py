@@ -5,6 +5,7 @@
 实时仪表盘: agents / worktrees / tasks + 事件流 + Prometheus 代理
 P5-W33: 加 WebStateStore 抽象 + Postgres 持久化
 P5-W34: 加 JWT 鉴权 (HS256, ${VAR} 引用)
+P5-W36a: 加 SecretRef 协议 (literal / ${VAR} / secret://key) + SecretManager 集成
 """
 
 from agent_swarm.web.app import create_app
@@ -12,7 +13,9 @@ from agent_swarm.web.auth import (
     JWTConfig,
     JWTError,
     JWTIssuer,
+    SecretRef,
     get_current_user,
+    parse_secret_ref,
     require_user,
     resolve_secret_ref,
 )
@@ -35,7 +38,9 @@ __all__ = [
     "JWTConfig",
     "JWTError",
     "JWTIssuer",
+    "SecretRef",
     "get_current_user",
+    "parse_secret_ref",
     "require_user",
     "resolve_secret_ref",
     "create_app",
