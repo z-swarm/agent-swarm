@@ -107,6 +107,26 @@ agent-swarm run examples/w32_web_with_worktree.yaml \
 - 4 cases (test_web W32) passed
 - 全量回归 909 passed / 115 skipped / 0 failed (W31 905 + 4)
 - CLI `--help` 显示 `--web-worktree-repo` / `--web-worktree-base`
+
+#### G-022: Web UI 端到端 Golden Case (随 0.5.0a1 落地)
+- **新增**: `tests/golden/test_g022_web_ui_e2e.py` — 6 cases 全过
+  - `test_g022_sink_pushes_to_state` — WebStateSink → WebState 推送
+  - `test_g022_ws_receives_pushed_events` — WebSocket 端到端 (含 _hello 心跳)
+  - `test_g022_partials_events_renders_html` — HTMX partial HTML 渲染
+  - `test_g022_multi_subscriber_fanout` — 多订阅 fan-out
+  - `test_g022_buffer_overflow_drops_old` — deque 缓冲丢老
+  - `test_g022_sink_exception_isolated` — sink 异常隔离
+- **目的**: 把 W28 (Web UI v1) + W31 (CLI 集成) + W32 (Worktree 注入) 三切片锁进 CI 守门链
+
+#### 决策锁定 (W33/W34, 2026-06-23)
+- **W33 WebState 持久化后端** = **Postgres** (与 W25 PostgresBackend 复用 asyncpg 池;表 `webstate_events(seq PK, ts, event_type, payload JSONB, session_id, tenant_id)`)
+- **W34 RBAC / auth 模式** = **JWT** (HS256;与 MCP source 分级 + 飞书 HMAC 风格一致;`Authorization: Bearer` 头)
+- **PyPI 发版策略** = **0.5.0a1 → TestPyPI → 2 周 CI → 0.5.0 stable** (沿用 P3/P4 节奏)
+
+#### 已知缺口 (等用户环境)
+- TestPyPI 上传: `twine check` PASSED, 实发需用户配 `~/.pypirc` token + non-interactive terminal
+- DESIGN.md 已 untrack (chore 2e1de16), §17.2 P5 DoD 内容本地保留
+- docs/ 已 untrack (chore 943f432), 计划/复盘文档本地保留
 - 端到端: `WorktreeManager initialized` + `web UI started (uptime=0s)`
 
 ## [0.4.0a1] - 2026-06-22
