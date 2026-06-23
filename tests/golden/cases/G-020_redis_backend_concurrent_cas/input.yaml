@@ -1,0 +1,30 @@
+# G-020 input.yaml — Redis 后端并发 CAS 验证
+# W18-⑤ 测试专用：实际跑测试时不依赖真 Redis server
+# —— 用 fakeredis (use_fakeredis=True) 走单进程 WATCH/MULTI/EXEC 验证
+# 这里 input.yaml 留作 golden framework 的最小占位 (与 G-018 同模式)
+
+name: g020-redis-concurrent-cas
+
+agents:
+  - id: redis-claimer
+    role: backend cas tester
+    role_type: worker
+    persona: |
+      You are an agent that attempts to claim a shared task_id via the
+      Redis-backed task queue. Multiple agents race for the same task;
+      exactly one must succeed, the other 99 must see version mismatch
+      and back off. Report: how many got OK vs conflict, and the final
+      task version after all claims resolve.
+    provider: openai
+    model: gpt-4o-mini
+    max_iterations: 1
+
+tasks:
+  - id: hot-task
+    title: Hot task claimed by 100 concurrent agents
+    description: |
+      100 agents race to claim `hot-task` simultaneously. The Redis
+      backend uses WATCH/MULTI/EXEC to guarantee that exactly one
+      agent's claim succeeds (version bumps 0 → 1, assigned_to is set),
+      and the other 99 see VersionMismatchError and roll back.
+      Report: ok_count, conflict_count, final_version, final_assigned.

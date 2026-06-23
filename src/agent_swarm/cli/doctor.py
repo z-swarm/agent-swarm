@@ -440,11 +440,17 @@ def check_secrets() -> CheckResult:
     is_flag=True,
     help="跳过 MCP server 状态检查",
 )
+@click.option(
+    "--skip-sandbox",
+    is_flag=True,
+    help="跳过 Docker sandbox 可用性检查（无 Docker 环境的 CI 友好）",
+)
 def doctor(
     db_path: Path,
     mcp_config: Path | None,
     skip_llm: bool,
     skip_mcp: bool,
+    skip_sandbox: bool,
 ) -> None:
     """agent-swarm 健康检查——LLM/SQLite/MCP/密钥"""
     report = DoctorReport()
@@ -496,39 +502,46 @@ def doctor(
     report.add(check_secrets())
 
     # 5) Docker sandbox (W19-4) —— 检查 Docker 可用性
-    try:
-        from agent_swarm.security.sandbox_docker import (
-            DockerSandboxManager,
-        )
-        # 用临时 workspace 跑 doctor_check
-        with tempfile.TemporaryDirectory() as td:
-            ws = Path(td) / "ws"
-            ws.mkdir()
-            docker_mgr = DockerSandboxManager(ws)
-            dck_report = asyncio.run(docker_mgr.doctor_check())
-        if dck_report.get("docker_available"):
-            msg = (
-                f"Docker available (v{dck_report['docker_version']}). "
-                f"{len(dck_report['cis_checks'])} CIS checks enabled, "
-                f"{dck_report['escape_attempts_count']} escape attempts blocked. "
-                f"Recommendation: {dck_report['recommendation'][:80]}"
-            )
-            status = CheckStatus.OK
-        else:
-            msg = (
-                "Docker not available. WORKSPACE_ONLY mode active. "
-                f"Recommendation: {dck_report['recommendation'][:80]}"
-            )
-            status = CheckStatus.WARN
-        report.add(CheckResult(
-            name="sandbox.docker", status=status, message=msg,
-        ))
-    except Exception as exc:  # noqa: BLE001
+    if skip_sandbox:
         report.add(CheckResult(
             name="sandbox.docker",
-            status=CheckStatus.WARN,
-            message=f"Docker check skipped: {exc}",
+            status=CheckStatus.SKIP,
+            message="skipped (--skip-sandbox)",
         ))
+    else:
+        try:
+            from agent_swarm.security.sandbox_docker import (
+                DockerSandboxManager,
+            )
+            # 用临时 workspace 跑 doctor_check
+            with tempfile.TemporaryDirectory() as td:
+                ws = Path(td) / "ws"
+                ws.mkdir()
+                docker_mgr = DockerSandboxManager(ws)
+                dck_report = asyncio.run(docker_mgr.doctor_check())
+            if dck_report.get("docker_available"):
+                msg = (
+                    f"Docker available (v{dck_report['docker_version']}). "
+                    f"{len(dck_report['cis_checks'])} CIS checks enabled, "
+                    f"{dck_report['escape_attempts_count']} escape attempts blocked. "
+                    f"Recommendation: {dck_report['recommendation'][:80]}"
+                )
+                status = CheckStatus.OK
+            else:
+                msg = (
+                    "Docker not available. WORKSPACE_ONLY mode active. "
+                    f"Recommendation: {dck_report['recommendation'][:80]}"
+                )
+                status = CheckStatus.WARN
+            report.add(CheckResult(
+                name="sandbox.docker", status=status, message=msg,
+            ))
+        except Exception as exc:  # noqa: BLE001
+            report.add(CheckResult(
+                name="sandbox.docker",
+                status=CheckStatus.WARN,
+                message=f"Docker check skipped: {exc}",
+            ))
 
     report.render()
     sys.exit(report.exit_code())

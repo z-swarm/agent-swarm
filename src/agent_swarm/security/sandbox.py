@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import shlex
 import subprocess
 import time
@@ -32,6 +33,14 @@ from enum import Enum
 from pathlib import Path
 
 log = logging.getLogger(__name__)
+
+
+# P0-1: 环境变量脱敏——名称（大小写无关）命中以下任一片段即不透传给沙箱子进程。
+# 防 `env`/`cat`/`grep` 等白名单命令读出宿主进程里的 OPENAI_API_KEY / LARK_APP_SECRET /
+# PGPASSWORD 等。脱敏是 defense-in-depth：即使命令在白名单内也拿不到密钥。
+_SECRET_ENV_NAME_RE = re.compile(
+    r"(?i)(PASS|PASSWD|SECRET|TOKEN|CREDENTIAL|PRIVATE|API_KEY|_KEY)"
+)
 
 
 class SandboxMode(Enum):
@@ -72,11 +81,14 @@ class SandboxManager:
       4) 每 token 路径 realpath 验证在 workspace 内（防 symlink + 绝对路径逃逸）
     """
 
-    # 保守只读型命令白名单——不包含任何能写文件/执行代码/全盘搜索的命令
+    # 保守只读型命令白名单——不包含任何能写文件/执行代码/全盘搜索的命令。
+    # P0-1: 移除 `env`/`ps`——它们会把进程环境/进程表全量吐出，即使 env 已脱敏，
+    #       仍是泄密面（且对 workspace_only 沙箱无实际用途）。
+    #       `printenv` 保留（按名打印单变量；批量环境已脱敏，无密钥可读）。
     DEFAULT_ALLOWED_PREFIXES: tuple[str, ...] = (
         "ls", "cat", "head", "tail", "wc", "grep",
-        "echo", "pwd", "env", "which", "file", "stat",
-        "du", "df", "ps", "sort", "uniq", "tr",
+        "echo", "pwd", "which", "file", "stat", "printenv",
+        "du", "df", "sort", "uniq", "tr",
         "cut", "paste", "diff", "tree", "less", "more",
         "date", "uname", "whoami", "id", "true", "false",
         "git status", "git log", "git diff", "git show", "git branch",
@@ -150,8 +162,14 @@ class SandboxManager:
             self._assert_path_in_workspace(tok)
 
         # 准备环境
+        # P0-1: 不直接 copy() 宿主环境——先脱敏掉含密钥语义的变量，
+        # 否则 `cat`/`grep` 等白名单命令可读出 OPENAI_API_KEY 等。
         cwd = str(self.workspace)
-        env = os.environ.copy()
+        env = {
+            name: value
+            for name, value in os.environ.items()
+            if not _SECRET_ENV_NAME_RE.search(name)
+        }
         env["PWD"] = cwd
         env["HOME"] = str(self.workspace)
         if env_overrides:

@@ -1,3 +1,41 @@
+# G-020 expected.yaml — 双 schema 并存
+#   1) GoldenExpectation 字段 (id/title/phase/swarm_config/expected/performance)
+#      给 tools/benchmark.py + load_expectation() 用
+#   2) G-020 专用 invariants 字段 (ok_count/invariant_* 等)
+#      给 tests/golden/test_g020_redis_backend.py::test_g020_expected_yaml_matches 用
+# G-020 是 W18-⑤ hand-crafted Python case (run_case.py 自跑),不依赖 input.yaml 跑通,
+# 但保持与 GoldenExpectation 兼容以便 benchmark smoke 也能加载。
+
+id: G-020
+title: Redis 后端并发 CAS 验证——100 agent 抢 1 task 仅 1 成功
+phase: 3
+swarm_config: input.yaml
+
+# --- GoldenExpectation ---
+expected:
+  # W18-⑤ 验证: 100 并发 agent 抢同 task_id
+  # - 恰 1 个 OK(assigned_to 持久化)
+  # - 99 个 VersionMismatchError(version 不动)
+  # - final_version=1, final_assigned 非空
+  must_find:
+    - keyword: "ok_count"
+      location: "case=G-020_redis_backend_concurrent_cas"
+    - keyword: "conflict_count"
+      location: "case=G-020_redis_backend_concurrent_cas"
+    - keyword: "final_version"
+    - keyword: "agent-x"
+      location: "final_assigned"
+    - keyword: "namespace=golden-g020"
+
+  must_not_claim:
+    - keyword: "race_condition_unresolved"
+    - keyword: "partial_state_persisted"
+
+  performance:
+    # G-020 100 并发 claim 应在 1s 内完成(单 namespace fakeredis)
+    max_duration_seconds: 1.0
+
+# --- G-020 专用 invariants (test_g020_expected_yaml_matches 验) ---
 case: G-020_redis_backend_concurrent_cas
 agents: 100
 ok_count: 1

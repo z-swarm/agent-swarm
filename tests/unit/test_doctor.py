@@ -277,6 +277,7 @@ def test_doctor_cli_all_skipped_via_fake_llm(tmp_path: Path) -> None:
             "--db", str(tmp_path / "sessions.db"),
             "--skip-llm",
             "--skip-mcp",
+            "--skip-sandbox",
         ],
         env={"AGENT_SWARM_FAKE_LLM": "1", "PATH": "/usr/bin"},
     )

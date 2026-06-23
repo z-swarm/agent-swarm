@@ -123,6 +123,30 @@ agent-swarm run examples/w32_web_with_worktree.yaml \
 - **W34 RBAC / auth 模式** = **JWT** (HS256;与 MCP source 分级 + 飞书 HMAC 风格一致;`Authorization: Bearer` 头)
 - **PyPI 发版策略** = **0.5.0a1 → TestPyPI → 2 周 CI → 0.5.0 stable** (沿用 P3/P4 节奏)
 
+#### W33a: P0-1 防御深度加固 + 遗留修复 (2026-06-23)
+- **P0-1 安全修复** (`src/agent_swarm/security/sandbox.py`):
+  - 新增 `_SECRET_ENV_NAME_RE` 正则: 名称 (大小写无关) 命中 `PASS|PASSWD|SECRET|TOKEN|CREDENTIAL|PRIVATE|API_KEY|_KEY` 整段即不透传给沙箱子进程
+  - 防御 `cat` / `grep` 等白名单命令读出宿主进程里的 `OPENAI_API_KEY` / `LARK_APP_SECRET` / `PGPASSWORD` 等
+  - 白名单移除 `env` / `ps`: 它们会把进程环境/进程表全量吐出, 即便 env 已脱敏仍是泄密面
+  - `printenv` 保留 (按名打印单变量; 批量环境已脱敏, 无密钥可读)
+  - `env_overrides` 显式注入的变量**不**被脱敏 (用户明确知情)
+- **doctor CLI 新增 `--skip-sandbox`**: 与 `--skip-llm` / `--skip-mcp` 对称, 无 Docker 环境的 CI 可显式跳过 sandbox 检查
+- **测试修复 / 补充**:
+  - `test_sandbox_home_is_workspace`: 改用 `printenv HOME` (P0-1 移除 `env`)
+  - `test_doctor_cli_all_skipped_via_fake_llm`: 加 `--skip-sandbox` 标志拿到 exit 0
+  - **新增 4 个 P0-1 单测**: `_SECRET_ENV_NAME_RE` 命中/跳过 + `execute()` 透传脱敏 + `env_overrides` 不脱敏
+- **G-020 Golden Case fixture 修复**:
+  - 补 `input.yaml` (G-018/G-019 同模式占位)
+  - 重写 `expected.yaml`: 同时含 GoldenExpectation schema (`id/title/phase/swarm_config/expected/performance`) + G-020 专用 invariants 字段
+  - 解锁 benchmark smoke 加载 G-020 + 修 `test_g020_expected_yaml_matches`
+
+#### DoD 验证 (W33a)
+- ruff 0 errors
+- mypy 0 errors (75 source files)
+- 全量回归 **1251 passed / 0 failed** (W32 时 909 → 1251, +342 cases 含 P0-1 + G-020 + 历史累计)
+- 4 cases (test_sandbox P0-1) passed
+- `agent-swarm doctor --skip-llm --skip-mcp --skip-sandbox` exit 0
+
 #### 已知缺口 (等用户环境)
 - TestPyPI 上传: `twine check` PASSED, 实发需用户配 `~/.pypirc` token + non-interactive terminal
 - DESIGN.md 已 untrack (chore 2e1de16), §17.2 P5 DoD 内容本地保留
