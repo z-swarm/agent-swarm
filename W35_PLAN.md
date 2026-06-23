@@ -76,10 +76,12 @@
 
 ## 5. Act 输出 (本轮 C 通过后必须落)
 
-- `CHANGELOG.md` 新增 W35 节点 (DoD/数据/差距/Act 段)
-- `MEMORY.md` 新增 1 条经验 (LISTEN/NOTIFY 协议 + origin 过滤 + 8KB 限制)
-- 本地 `docs/P5-RETRO.md` (untrack) W35 段
-- 不开 tag (W35 是 P5 中间切片, 0.5.0a2 时再批量打)
+- [x] `CHANGELOG.md` 新增 W35 节点 (DoD/数据/差距/Act 段) — commit 285baa3
+- [x] `docs/MEMORY.md` 新增 1 条经验 (LISTEN/NOTIFY 协议 + origin 过滤 + 8KB 限制) — 本地 untrack
+- [x] 本地 `docs/P5-RETRO.md` (untrack) W35 段 — 完成 (做对/做错/风险/数据/MEMORY 链接)
+- [x] 不开 tag (W35 是 P5 中间切片, 0.5.0a2 时再批量打)
+
+**W35 闭环状态: ✅ 全部 4 项 Act 输出完成,本轮 PDCA 已闭环**
 
 ## 6. 下一轮 (W36) 预告
 
