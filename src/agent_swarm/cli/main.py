@@ -379,6 +379,17 @@ cli.add_command(_doctor_cmd)
     default=None,
     help="P5-W40: Redis DSN (redis://..., 仅 --web-task-store=redis 模式生效)",
 )
+@click.option(
+    "--web-workers",
+    "web_workers",
+    type=int,
+    default=1,
+    help=(
+        "P5-W41: uvicorn workers 数 (默认 1, 零破坏); "
+        ">1 时强烈建议配合 --web-postgres-dsn + --web-task-store=redis "
+        "否则多 worker 间 WebState/TaskStore 状态不同步"
+    ),
+)
 def run(
     config: Path,
     verbose: bool,
@@ -406,6 +417,7 @@ def run(
     web_review_timeout: float,
     web_task_store: str,
     web_redis_dsn: str | None,
+    web_workers: int,
 ) -> None:
     """运行 swarm（从 YAML 配置启动）"""
     _configure_logging(verbose)
@@ -447,6 +459,47 @@ def run(
         except ImportError as exc:
             console.print(f"[red]--web 需要额外依赖: {exc}. 运行: pip install -e .[web][/]")
             sys.exit(2)
+        # P5-W41: 多 worker 模式 (uvicorn workers=N factory 模式)
+        if web_workers > 1:
+            if not web_postgres_dsn:
+                console.print(
+                    "[yellow]警告[/]: --web-workers > 1 但未给 --web-postgres-dsn, "
+                    "WebState 跨 worker 状态不同步 (W33 限制)"
+                )
+            if web_task_store != "redis":
+                console.print(
+                    "[yellow]警告[/]: --web-workers > 1 但 --web-task-store != redis, "
+                    "TaskStore 跨 worker 状态不同步 (W40 限制)"
+                )
+            # 把 web_* 配置 export 到 env (factory 模式从 env 读)
+            os.environ["WEB_POSTGRES_DSN"] = web_postgres_dsn or ""
+            os.environ["WEB_POSTGRES_TABLE"] = web_postgres_table
+            os.environ["WEB_CROSS_PROCESS"] = "1" if web_cross_process else "0"
+            os.environ["WEB_JWT_SECRET"] = web_jwt_secret or ""
+            os.environ["WEB_JWT_SECRET_REF"] = web_jwt_secret_ref or ""
+            os.environ["WEB_REVIEW_MODE"] = web_review_mode
+            os.environ["WEB_REVIEW_LLM"] = web_review_llm
+            os.environ["WEB_REVIEW_TIMEOUT"] = str(web_review_timeout)
+            os.environ["WEB_TASK_STORE"] = web_task_store
+            os.environ["WEB_REDIS_DSN"] = web_redis_dsn or ""
+            if web_worktree_repo:
+                os.environ["WEB_WORKTREE_REPO"] = str(web_worktree_repo)
+            if web_worktree_base:
+                os.environ["WEB_WORKTREE_BASE"] = str(web_worktree_base)
+            console.print(
+                f"[bold magenta]web UI[/] → http://{web_host}:{web_port} "
+                f"[cyan]workers={web_workers} (factory mode, swarm 流程跳过)[/]"
+            )
+            # uvicorn.run 同步阻塞, fork 子进程, 自动接管 loop
+            uvicorn.run(
+                "agent_swarm.web:app_factory",
+                host=web_host,
+                port=web_port,
+                workers=web_workers,
+                factory=True,
+                log_level="warning",
+            )
+            sys.exit(0)
         # P5-W32: 可选 WorktreeManager 注入
         if web_worktree_repo is not None:
             try:

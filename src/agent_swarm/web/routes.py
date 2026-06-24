@@ -396,8 +396,9 @@ async def api_review(request: Request, background_tasks: BackgroundTasks) -> JSO
             {"detail": "not a git repository", "hint": "configure --web-review-repo"},
             status_code=500,
         )
-    # 创建 task
-    task = _rr.create_task(pr_ref, llm)
+    # W41: 用 app.state.task_store (支持 Redis backend 跨 worker 共享)
+    task_store: Any = request.app.state.task_store
+    task = await task_store.create_task(pr_ref, llm)
     # 调度后台任务
     review_timeout: float = float(getattr(request.app.state, "web_review_timeout", 60.0))
     background_tasks.add_task(
@@ -407,6 +408,7 @@ async def api_review(request: Request, background_tasks: BackgroundTasks) -> JSO
         web_repo_root,
         llm,
         review_timeout,
+        task_store,
     )
     return JSONResponse(
         {
@@ -538,8 +540,9 @@ async def api_review_v2(request: Request, background_tasks: BackgroundTasks) -> 
             {"detail": "not a git repository", "hint": "configure --web-review-repo"},
             status_code=500,
         )
-    # 创建 task
-    task = _rr.create_task(pr_ref, llm)
+    # W41: 用 app.state.task_store (支持 Redis backend 跨 worker 共享)
+    task_store_v1: Any = request.app.state.task_store
+    task = await task_store_v1.create_task(pr_ref, llm)
     # 调度后台任务
     background_tasks.add_task(
         _rr.run_full_review_async,
@@ -547,6 +550,7 @@ async def api_review_v2(request: Request, background_tasks: BackgroundTasks) -> 
         pr_ref,
         web_repo_root,
         llm,
+        task_store=task_store_v1,
     )
     return JSONResponse(
         {
@@ -567,10 +571,10 @@ async def api_review_status(request: Request, task_id: str) -> JSONResponse:
 
     @param task_id 任务 ID
     @return 200 = 状态 JSON, 404 = 不存在
+    @note  W41: 走 app.state.task_store (支持 Redis backend 跨 worker)
     """
-    from agent_swarm.web import review_runner as _rr
-
-    task = _rr.get_task(task_id)
+    task_store: Any = request.app.state.task_store
+    task = await task_store.get_task(task_id)
     if task is None:
         return JSONResponse({"detail": "task not found"}, status_code=404)
     body: dict[str, Any] = {
@@ -599,10 +603,10 @@ async def api_review_events(request: Request, task_id: str):
     @return StreamingResponse (SSE)
     @note  事件格式: data: {json}\n\n
            事件类型: update (进度更新) / done (完成) / error
+    @note  W41: 走 app.state.task_store (支持 Redis backend 跨 worker)
     """
-    from agent_swarm.web import review_runner as _rr
-
-    task = _rr.get_task(task_id)
+    task_store: Any = request.app.state.task_store
+    task = await task_store.get_task(task_id)
     if task is None:
         return JSONResponse({"detail": "task not found"}, status_code=404)
     # 已完成: 立即发完所有状态, 然后关流
@@ -623,7 +627,7 @@ async def api_review_events(request: Request, task_id: str):
 
         return StreamingResponse(_immediate(), media_type="text/event-stream")
     # 未完成: 订阅 + 推送
-    queue = _rr.subscribe_task(task_id)
+    queue = await task_store.subscribe_task(task_id)
     if queue is None:
         return JSONResponse({"detail": "task not found"}, status_code=404)
 
@@ -649,9 +653,7 @@ async def api_review_events(request: Request, task_id: str):
                 if event.get("status") in ("done", "error"):
                     break
         finally:
-            # 清理: 从订阅列表移除
-            queues = _rr._TASK_QUEUES.get(task_id, [])
-            if queue in queues:
-                queues.remove(queue)
+            # W41: 不再操作 _TASK_QUEUES, store 内部管理订阅生命周期
+            pass
 
     return StreamingResponse(_event_stream(), media_type="text/event-stream")

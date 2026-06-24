@@ -203,6 +203,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - asyncio.Queue 跨进程不可序列化 → Redis pub/sub 替代 (Redis 内部 queue)
   - 0 新依赖 (redis>=5.0.0 W18 已装, fakeredis>=2.20.0 dev 已装)
 
+#### W41: 多 worker 部署实战 (uvicorn workers=N + 跨 worker SSE + fault tolerance) (2026-06-24)
+
+- **新增**: `src/agent_swarm/web/__init__.py` `app_factory()` (uvicorn factory 模式入口)
+  - 无参, 全配置从 env 读 (WEB_POSTGRES_DSN / WEB_REDIS_DSN / WEB_TASK_STORE / WEB_JWT_* 等)
+  - 缺省全 None → 走 W28 单进程内存路径 (零破坏)
+- **新增**: `RedisTaskStore.from_redis_client()` classmethod (e2e 共享 fakeredis 用)
+- **升级**: `run_full_review_async` 加 `task_store: TaskStore | None = None` 参数
+  - None 时走模块级 _TASK_STORE (W36f 零破坏)
+  - 给定时用 store.update_task / get_task (W41 多 worker)
+- **BUG 闭环**: `routes.py` 4 个端点 (api_review_v2 / api_review / api_review_status / api_review_events) 改用 `request.app.state.task_store`
+  - W40 闭环时漏了这步, 多 worker 下每 worker 用自己的 _TASK_STORE / _TASK_QUEUES, 跨 worker 状态永远不可见
+- **新增**: CLI `--web-workers N` 选项 (默认 1, 零破坏)
+  - N=1: 走现有 uvicorn.Server(uv_config).serve() 协程路径
+  - N>1: 警告 (要 redis + postgres) + 同步阻塞 `uvicorn.run("agent_swarm.web:app_factory", workers=N, factory=True, ...)` 模式
+  - 多 worker 模式跳过 swarm 主流程 (web-only multi-worker, YAGNI)
+- **新增**: `tools/multi_worker_smoke.py` 3 场景
+  - ① uvicorn workers=2 启动 + 干净退出
+  - ② 单 worker 端到端 (W28 零破坏回归)
+  - ③ app_factory() 无参 → MemoryTaskStore
+- **新增**: `tests/e2e/test_w41_multi_worker_e2e.py` 11 case
+  - 跨 worker 状态可见 / SSE pub/sub / update 传播 / cleanup 幂等 / HTTP / SSE done / Memory 兼容 / app_factory / 工厂降级
+- **DoD**: `tools/verify_w41_dod.py` 8/8 PASSED (全量 1368 passed)
+- **已知限制**: 真跨 worker SSE 通知需真 Redis (e2e fakeredis 模拟); gunicorn 模式 W42+ 实战
+- **详见**: `tools/verify_w41_dod.py` + `docs/MEMORY.md` W41 段
+
+#### 阶段统计 (W41)
+- **新增代码**: 5 文件 (e2e 1 + tools 2 + web 模块 2)
+- **测试增量**: 1270 → 1368 passed (+98)
+- **守门脚本**: 1 个新增 (verify_w41_dod.py 8 项)
+- **W40 闭环缺口**: 修 routes.py 走 app.state.task_store (4 端点)
+- **向后兼容**: W28-W40 全部 baseline 零破坏
+
+
 ## [0.5.0a2] - 2026-06-24
 
 ### Phase 5 增量 release (W33a-W36c)
@@ -929,3 +962,4 @@ Phase 1 alpha: 核心 swarm + TaskQueue + Mailbox + KB + sandbox 基础
 
 ### Added
 - W1-W7 Phase 1 全部交付 (见 git log)
+

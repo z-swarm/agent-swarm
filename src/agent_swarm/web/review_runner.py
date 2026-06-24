@@ -278,6 +278,20 @@ class RedisTaskStore:
         self._dsn = dsn
         self._redis = redis_async.from_url(dsn, decode_responses=True)
 
+    @classmethod
+    def from_redis_client(cls, client: Any) -> RedisTaskStore:
+        """
+        @brief W41: 用已有 redis client 构造 (e2e 测试共享 fakeredis 用)
+
+        @param client 已初始化的 redis.asyncio.Redis 实例
+        @return RedisTaskStore 实例 (共享 client 状态)
+        @note  内部不再建 client, 调用方负责生命周期
+        """
+        instance = cls.__new__(cls)
+        instance._dsn = "<shared>"
+        instance._redis = client
+        return instance
+
     async def create_task(self, pr_ref: str, llm_provider: str) -> Any:
         task_id = uuid.uuid4().hex
         task = ReviewTask(
@@ -554,6 +568,7 @@ async def run_full_review_async(
     repo_root: Path | None,
     llm_provider: str = "fake",
     timeout: float = 60.0,
+    task_store: TaskStore | None = None,
 ) -> None:
     """
     @brief W36f: 异步跑 full review (LLM + 对抗式), 进度推到 task store
@@ -563,13 +578,28 @@ async def run_full_review_async(
     @param repo_root     git 仓库根 (None = cwd)
     @param llm_provider  openai / anthropic / fake
     @param timeout       LLM 调用超时 (秒)
+    @param task_store    W41: TaskStore 实例 (None = 模块级 _TASK_STORE, W36f 零破坏)
     @note  本函数由 FastAPI BackgroundTasks 调度, 完成后 task 状态 = done
     @note  失败: task 状态 = error + error 字段
     """
-    task = _TASK_STORE.get(task_id)
+
+    async def _update(tid: str, **kw: Any) -> None:
+        """W41: 优先用 store, 否则模块级 _update_task (W36f 兼容)"""
+        if task_store is not None:
+            await task_store.update_task(tid, **kw)
+        else:
+            _update_task(tid, **kw)
+
+    async def _fetch(tid: str) -> Any:
+        """W41: 优先用 store, 否则模块级 _TASK_STORE"""
+        if task_store is not None:
+            return await task_store.get_task(tid)
+        return _TASK_STORE.get(tid)
+
+    task = await _fetch(task_id)
     if task is None:
         return  # task 已被清理, 静默丢
-    _update_task(
+    await _update(
         task_id, status="running", progress=5, log=[f"start full review, llm={llm_provider}"]
     )
     try:
@@ -582,7 +612,7 @@ async def run_full_review_async(
         check_path = Path(cwd) if cwd else Path.cwd()
         if not _is_git_repo(check_path):
             raise RuntimeError(f"not a git repository: {check_path}")
-        _update_task(task_id, progress=15, log=["git repo OK"])
+        await _update(task_id, progress=15, log=["git repo OK"])
         # 临时设 env (agent_review 内部 REPO 读此 env)
         old_env: str | None = os.environ.get("AGENT_REVIEW_REPO")
         if cwd is not None:
@@ -592,16 +622,16 @@ async def run_full_review_async(
             # 延迟 import + 拿 LLM judge
             # (run_full_review 在 _run_full_in_thread 内导入, 避免此处未使用)
             judge_fn = llm_judge_factory(llm_provider)
-            _update_task(task_id, progress=30, log=[f"judge factory OK ({llm_provider})"])
+            await _update(task_id, progress=30, log=[f"judge factory OK ({llm_provider})"])
             # 跑 full review (在 thread 中执行, 不阻塞 event loop)
             # W37 真实流程: 传入 llm_provider 让 run_full_review 选 judge
             report = await asyncio.wait_for(
                 asyncio.to_thread(_run_full_in_thread, pr_ref, judge_fn, llm_provider),
                 timeout=timeout,
             )
-            _update_task(task_id, progress=90, log=["full review done, serializing"])
+            await _update(task_id, progress=90, log=["full review done, serializing"])
             result = asdict(report)
-            _update_task(task_id, status="done", progress=100, log=["done"], result=result)
+            await _update(task_id, status="done", progress=100, log=["done"], result=result)
         finally:
             if old_env is None:
                 os.environ.pop("AGENT_REVIEW_REPO", None)
@@ -609,12 +639,12 @@ async def run_full_review_async(
                 os.environ["AGENT_REVIEW_REPO"] = old_env
             sys.modules.pop("agent_review", None)
     except TimeoutError:
-        _update_task(task_id, status="error", error=f"timeout after {timeout}s")
+        await _update(task_id, status="error", error=f"timeout after {timeout}s")
     except RuntimeError as exc:
-        _update_task(task_id, status="error", error=str(exc))
+        await _update(task_id, status="error", error=str(exc))
     except Exception as exc:  # noqa: BLE001
         log.exception("async full review failed")
-        _update_task(task_id, status="error", error=f"{type(exc).__name__}: {exc}")
+        await _update(task_id, status="error", error=f"{type(exc).__name__}: {exc}")
 
 
 def _run_full_in_thread(
