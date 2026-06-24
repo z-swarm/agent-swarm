@@ -51,3 +51,8 @@ tests/_recordings_local/
 
 # 演示录屏（大文件不进主仓库；用 git-lfs 或外部存储）
 demos/*.mp4
+
+# W 阶段计划文档 (本地保留, 不入 git; W40 起所有 W 阶段 PLAN 都不上传)
+W*_PLAN.md
+W*_RETRO_PLAN.md
+W*_RETRO.md
