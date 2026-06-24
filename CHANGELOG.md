@@ -105,6 +105,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 慢响应走 `--web-review-timeout` 默认 60s, 异步不阻塞 event loop
   - SDK 升级需重跑测试 (openai>=1.40 / anthropic>=0.40 已固定)
 
+#### W38: Phase 5 收口 (.git-blame-ignore-revs + pyproject description + 0.5.0 准备) (2026-06-24)
+
+- **新增**: `.git-blame-ignore-revs` 文件
+  - 记录 W36e 150 文件 commit `16a8556` (大规模格式化 commit)
+  - 用户启用: `git config blame.ignoreRevsFile .git-blame-ignore-revs` (per-repo, 不放全局)
+  - 验证: `git blame` 自动跳过 W36e, 回到上一次实质修改
+- **升级**: `pyproject.toml` description / keywords / classifiers
+  - description: "Phase 2: ..." → "Phase 5: GUI Web UI + WebState 协议 + 真实 LLM 接入"
+  - keywords: 5 → 13 (加 web / fastapi / webstate / jwt / secrets / adversarial / sse / async)
+  - classifiers: 0 → 9 (Python 3.11/3.12 + MIT License + AsyncIO)
+- **新增**: `RELEASE.md` (从 docs/ 移到根目录入 git)
+  - TestPyPI 上传步骤: `twine upload --repository testpypi dist/agent_swarm-0.5.0*`
+  - PyPI 正式发布: `twine upload dist/agent_swarm-0.5.0*` (默认走 PyPI)
+  - `~/.pypirc` token 配置 + 失败处理表
+  - 上传后验证清单 (TestPyPI/PyPI 页面 + 试装)
+- **新增**: `README.md` "Git Blame Ignore (W38)" 段
+  - 解释 .git-blame-ignore-revs 用途 + 启用方法
+  - W36e 历史说明
+- **测试**: 0 新增 (纯配置 + 文档, 不需要测试)
+- **DoD**: `verify_w38_dod.py` 6/6 全过
+  - .git-blame-ignore-revs 含 16a8556
+  - description 含 Phase 5
+  - keywords 13 (≥10)
+  - classifiers 9 (≥3 + Python 3.11/3.12 + MIT)
+  - RELEASE.md 含 upload 命令
+  - W36/W37 baseline 不破 (41 case)
+- **衔接**: W39+ 候选
+  - TestPyPI 真实上传 (需用户环境 `~/.pypirc` token)
+  - Phase 6 计划 (多 worker / Redis / 1.0.0)
+  - 用户 git config 启用 .git-blame-ignore-revs
+
 ## [0.5.0a2] - 2026-06-24
 
 ### Phase 5 增量 release (W33a-W36c)

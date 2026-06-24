@@ -83,7 +83,9 @@ class _FakeOpenAIResponse:
 
 @dataclass
 class _FakeAnthropicText:
-    text: str = '{"stance": "refute", "confidence": 0.8, "reasoning": "false positive", "evidence": []}'
+    text: str = (
+        '{"stance": "refute", "confidence": 0.8, "reasoning": "false positive", "evidence": []}'
+    )
 
 
 @dataclass
@@ -102,14 +104,42 @@ def _make_git_repo(path: Path) -> Path:
     ]:
         subprocess.run(cmd, cwd=str(path), capture_output=True, text=True, timeout=15, check=True)
     (path / "app.py").write_text("# app\n", encoding="utf-8")
-    subprocess.run(["git", "add", "app.py"], cwd=str(path), capture_output=True, text=True, timeout=15, check=True)
-    subprocess.run(["git", "commit", "-m", "init"], cwd=str(path), capture_output=True, text=True, timeout=15, check=True)
+    subprocess.run(
+        ["git", "add", "app.py"],
+        cwd=str(path),
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "init"],
+        cwd=str(path),
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=True,
+    )
     (path / "app.py").write_text(
         '# app\nAPI_KEY = "sk-1234567890abcdefghijklmnopqrstuvwxyz1234567890abcd"\n',
         encoding="utf-8",
     )
-    subprocess.run(["git", "add", "app.py"], cwd=str(path), capture_output=True, text=True, timeout=15, check=True)
-    subprocess.run(["git", "commit", "-m", "add api key"], cwd=str(path), capture_output=True, text=True, timeout=15, check=True)
+    subprocess.run(
+        ["git", "add", "app.py"],
+        cwd=str(path),
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "add api key"],
+        cwd=str(path),
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=True,
+    )
     return path
 
 
@@ -139,7 +169,9 @@ async def test_openai_judge_parse_support() -> None:
 @pytest.mark.asyncio
 async def test_openai_judge_parse_refute() -> None:
     """openai judge 解析 REFUTE stance"""
-    msg = _FakeOpenAIMessage(content='{"stance": "refute", "confidence": 0.7, "reasoning": "no", "evidence": []}')
+    msg = _FakeOpenAIMessage(
+        content='{"stance": "refute", "confidence": 0.7, "reasoning": "no", "evidence": []}'
+    )
     resp = _FakeOpenAIResponse(choices=[_FakeChoice(message=msg)])
     with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
         from agent_review import _openai_judge_fn
@@ -200,7 +232,9 @@ async def test_anthropic_judge_parse_refute() -> None:
 @pytest.mark.asyncio
 async def test_anthropic_judge_parse_code_block() -> None:
     """anthropic 返 ```json ... ``` 包裹也能解析"""
-    text = _FakeAnthropicText(text='```json\n{"stance": "support", "confidence": 0.85, "reasoning": "ok", "evidence": []}\n```')
+    text = _FakeAnthropicText(
+        text='```json\n{"stance": "support", "confidence": 0.85, "reasoning": "ok", "evidence": []}\n```'
+    )
     resp = _FakeAnthropicResponse(content=[text])
     with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
         from agent_review import _anthropic_judge_fn
@@ -293,8 +327,22 @@ async def test_run_full_review_fake_no_findings_returns_approve(tmp_path: Path) 
     repo = _make_git_repo(tmp_path / "clean-repo")
     # 重写第二个 commit 为干净 PR
     (repo / "app.py").write_text("# app\n", encoding="utf-8")
-    subprocess.run(["git", "add", "app.py"], cwd=str(repo), capture_output=True, text=True, timeout=15, check=True)
-    subprocess.run(["git", "commit", "-m", "revert"], cwd=str(repo), capture_output=True, text=True, timeout=15, check=True)
+    subprocess.run(
+        ["git", "add", "app.py"],
+        cwd=str(repo),
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "revert"],
+        cwd=str(repo),
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=True,
+    )
     with patch.dict(os.environ, {"AGENT_REVIEW_REPO": str(repo)}):
         from agent_review import run_full_review
 
@@ -380,7 +428,11 @@ async def test_run_full_review_async_uses_real_judge(tmp_path: Path) -> None:
         mock_client.chat.completions.create = AsyncMock(return_value=_FakeOpenAIResponse())
         with patch("openai.AsyncOpenAI", return_value=mock_client):
             await review_runner.run_full_review_async(
-                task.task_id, "HEAD~1..HEAD", repo, "openai", timeout=10.0,
+                task.task_id,
+                "HEAD~1..HEAD",
+                repo,
+                "openai",
+                timeout=10.0,
             )
     done = review_runner.get_task(task.task_id)
     assert done is not None

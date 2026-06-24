@@ -11,11 +11,37 @@ build-backend = "hatchling.build"
 [project]
 name = "agent-swarm"
 version = "0.5.0"
-description = "通用多 Agent 协作框架（Phase 2: Delegate Mode + Adversarial Verify + MCP 集成）"
+description = "通用多 Agent 协作框架（Phase 5: GUI Web UI + WebState 协议 + 真实 LLM 接入）"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "agent-swarm contributors" }]
+keywords = [
+    "multi-agent",
+    "swarm",
+    "orchestration",
+    "llm",
+    "pydantic",
+    "web",
+    "fastapi",
+    "webstate",
+    "jwt",
+    "secrets",
+    "adversarial",
+    "sse",
+    "async",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Framework :: AsyncIO",
+    "Operating System :: OS Independent",
+]
 dependencies = [
     "openai>=1.40.0",            # OpenAI provider（W1）
     "anthropic>=0.40.0",         # Anthropic provider（W2 提前装好，避免后续打断）

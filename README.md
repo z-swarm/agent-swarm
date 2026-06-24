@@ -184,6 +184,30 @@ flow.append_approver(lambda d, c: d.reason.startswith("whitelist:"))
 
 **端到端 e2e**：`tests/e2e/test_w10_approval_e2e.py`（11 个场景）。
 
+## Git Blame Ignore (W38)
+
+本项目在历史上有大规模格式化 commit (W36e 1 原子 commit ruff format 150 文件), 这些 commit 会污染 `git blame`, 每行都显示该 commit 为最后修改者, 影响代码溯源。
+
+为此, 仓库根目录有 `.git-blame-ignore-revs` 文件, 记录需要跳过的大规模 commit。
+
+**启用方法 (per-repo, 不放全局配置):**
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
+**验证效果:**
+
+```bash
+# 不启用时: blame W36e 的 commit hash
+git log --oneline -1 -- README.md
+
+# 启用后: blame 跳过 W36e, 回到上一次实质修改
+git blame README.md | head -5
+```
+
+详见 `.git-blame-ignore-revs` 文件内嵌注释。
+
 ## 开发
 
 ```bash

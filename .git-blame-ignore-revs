@@ -1,0 +1,18 @@
+# .git-blame-ignore-revs
+#
+# @file .git-blame-ignore-revs
+# @brief W38: 配置 git blame 跳过的 commit (隔离大规模格式化 commit)
+#
+# @note  启用方法 (per-repo, 不放全局配置):
+#          git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# @note  为什么需要:
+#          W36e 1 原子 commit ruff format 150 文件 (+3515/-2133),
+#          git blame 默认会显示 "W36e" 作为每行最后修改者, 污染 blame 跟踪.
+#          配置此文件后, git blame 自动跳过这些 commit, 回到上一次"实质修改".
+#
+# @note  格式: <full commit hash> # <description>
+# @note  后续新增大规模 commit 时, 追加一行 (不删除历史)
+
+# W36e: repo 级 ruff format 150 文件欠债清理 (1 原子 commit)
+16a855672e4680d205d0c51e806d4c3a911a4b1f # W36e: ruff format 150 files (PEP 8 标准化, 0 逻辑变化)
