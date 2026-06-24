@@ -17,7 +17,6 @@ P5-W38 Plan §5 Check 守门点:
 
 from __future__ import annotations
 
-import re
 import subprocess
 import sys
 import tomllib
@@ -129,7 +128,7 @@ def main() -> int:
                 if p.isdigit():
                     w36_passed = max(w36_passed, int(p))
     ok = rc == 0 and w36_passed >= 41
-    results.append(_check(f"6. W36/W37 baseline 不破 (≥41 case)", ok,
+    results.append(_check("6. W36/W37 baseline 不破 (≥41 case)", ok,
                           f"rc={rc} passed={w36_passed}"))
 
     print()

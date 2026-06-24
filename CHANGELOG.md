@@ -136,6 +136,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Phase 6 计划 (多 worker / Redis / 1.0.0)
   - 用户 git config 启用 .git-blame-ignore-revs
 
+#### W39: Phase 6 启动 (PHASE6-PLAN.md + W40 候选) (2026-06-24)
+
+- **新增**: `docs/PHASE6-PLAN.md` (Phase 6 完整计划)
+  - 阶段背景: 0.5.0 final 收口, Phase 5 累计 11 slice
+  - 阶段目标: 1.0.0 production release (多 worker / 真实分布式 / 实战验证)
+  - 范围: 8-12 周 (W40-W50 灵活调整)
+  - 阶段 DoD: 1.0.0 final + 多 worker 部署 + 实战验证 + TestPyPI/PyPI 上传
+  - W40 候选 (5-8 个, 优先级):
+    1. **W40**: Redis task store 真实接入 (W36f 留口子)
+    2. **W41**: 真实多 worker 部署 (W33b 留口子)
+    3. **W42**: TestPyPI 真实上传 (W38 留口子)
+    4. **W43**: 1.0.0 release 准备
+    5. **W44+**: 实战验证 + 用户反馈循环
+  - 风险 + 衔接 W36-W38 + 已知缺口
+- **测试**: 0 新增 (Phase 6 启动 PLAN, 跟 W28 Phase 5 启动对称)
+- **DoD**: `verify_w39_dod.py` 5/5 全过
+  - PHASE6-PLAN.md ≥500 字
+  - PHASE6-PLAN.md 含 4 关键词 (1.0.0/W40/Phase 5/TestPyPI)
+  - CHANGELOG W39 节点
+  - ruff 0 / mypy 0
+  - W36/W37/W38 baseline 不破 (41 case)
+- **衔接**:
+  - **W40**: Redis task store 真实接入 (Phase 6 第一个具体 slice)
+  - **W41-W50**: 多 worker / TestPyPI 上传 / 1.0.0 release / 实战验证
+
 ## [0.5.0a2] - 2026-06-24
 
 ### Phase 5 增量 release (W33a-W36c)
