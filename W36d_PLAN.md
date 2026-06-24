@@ -100,15 +100,18 @@ git tag | grep 0.5.0a2                      # 必存在
 
 ## 6. Act 输出 (本轮 C 通过后必须落)
 
-- `pyproject.toml` version 升级
-- `src/agent_swarm/__init__.py` `__version__` 同步
-- `CHANGELOG.md` 0.5.0a2 节点合并
-- `dist/` sdist + wheel (本地构建产物, gitignored)
-- `git tag 0.5.0a2`
-- `tools/verify_w36d_dod.py` 守门脚本
-- `docs/MEMORY.md` release 经验
-- `docs/P5-RETRO.md` W36d 段
-- 本地 commit (按 [[local-commit-no-push]]), push 由用户决定
+- [x] `pyproject.toml` version 升级 0.5.0a1 → 0.5.0a2
+- [x] `src/agent_swarm/__init__.py` `__version__` 同步
+- [x] `src/agent_swarm/web/app.py` + `base.html` 2 处硬编码同步
+- [x] `CHANGELOG.md` 0.5.0a2 节点合并 (汇总表 + 7 slice 简述)
+- [x] `dist/` sdist + wheel (本地构建产物, gitignored)
+- [x] `git tag 0.5.0a2` (新增)
+- [x] `tools/verify_w36d_dod.py` 守门脚本 — 8/8 PASSED
+- [x] `docs/MEMORY.md` release 经验 (6 条)
+- [x] `docs/P5-RETRO.md` W36d 段
+- [x] 本地 commit (e7171a6) + push (含 tag 0.5.0a2)
+
+**W36d 闭环状态: ✅ 全部 10 项 Act 输出完成,本轮 PDCA 已闭环**
 
 ## 7. 下一轮 (W36e) 预告
 
