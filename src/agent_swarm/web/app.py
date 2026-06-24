@@ -64,7 +64,7 @@ def create_app(
     review_llm: str = "fake",
     review_timeout: float = 60.0,
     title: str = "agent-swarm",
-    version: str = "0.5.0a2",
+    version: str = "0.5.0",
 ) -> FastAPI:
     """
     构造 FastAPI app

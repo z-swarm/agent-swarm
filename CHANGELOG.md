@@ -5,6 +5,82 @@ All notable changes to agent-swarm will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-06-24
+
+### Phase 5 final release (W36 阶段收口)
+
+#### 汇总: 6 个 W36 slice 全部 PDCA 闭环
+
+| Slice | 内容 | 关键 commit |
+|-------|------|------------|
+| **W36a** | JWT Secret 走 SecretManager (轮换不重启) | `fff1823` |
+| **W36b** | agent_review Web 入口 (UI 按钮触发 review) | `ecfbe73` |
+| **W36c** | vault://path#field URI 扩展 (闭环 W36a 协议) | `6ca24eb` |
+| **W36d** | 0.5.0a2 release 推进 (CHANGELOG 合并 + dist + tag) | `e7171a6` |
+| **W36e** | repo 级 ruff format 150 文件欠债清理 (1 原子 commit) | `16a8556` |
+| **W36f** | agent_review 异步入口 (LLM + SSE) | `82937f2` |
+
+#### W36a: JWT Secret 走 SecretManager (2026-06-24)
+- **SecretRef 协议三态**: literal / env / secret:// 三种, 互斥校验
+- **resolve_secret always-fresh**: version 校验 + cache 更新, 不靠 TTL
+- **降级路径二态**: cache 命中继续用 / cache miss 硬错
+- **DoD**: 8/8; 22 老 case 不破 (W34 兼容零破坏)
+- **详见**: `CHANGELOG.md` 0.5.0a2 节点 + `docs/MEMORY.md` W36a 段
+
+#### W36b: agent_review Web 入口 (2026-06-24)
+- **写路径鉴权**: PROTECTED_PREFIXES 元组加 `"/api/review"` (W34 模式)
+- **pr_ref 注入防御**: shell 危险字符黑名单 + shlex 校验
+- **HTMX 表单**: `hx-post` + `hx-target` + `hx-indicator` 零 JS 全 SPA 体验
+- **DoD**: 8/8; 14 unit + 4 G-027
+- **详见**: 0.5.0a2 节点 + `docs/MEMORY.md` W36b 段
+
+#### W36c: vault://path#field URI 扩展 (2026-06-24)
+- **URI scheme 扩展**: 4 种 kind (literal/env/secret_ref/vault) 增量识别
+- **SecretRef field 字段**: `str | None = None` (default 模式向后兼容)
+- **JSON 文档 field 提取**: 协议层兜底, 不污染 SecretManager ABC
+- **DoD**: 8/8; 14 unit + 5 G-028
+- **详见**: 0.5.0a2 节点 + `docs/MEMORY.md` W36c 段
+
+#### W36d: 0.5.0a2 release 推进 (2026-06-24)
+- **version 三处同步**: pyproject / __init__ / app.py
+- **release 节点模式**: 汇总表 + 各 W 段简述, 不重写 detail
+- **dist 模式复用 W27**: hatchling build + twine check + git tag
+- **DoD**: 8/8; 1204 passed
+- **详见**: `tools/verify_w36d_dod.py` + `docs/MEMORY.md` W36d 段
+
+#### W36e: ruff format 150 文件欠债清理 (2026-06-24)
+- **1 原子 commit**: 150 files reformatted, 35 already (共 185)
+- **改动**: +3308/-2133 行 (无逻辑变化, 全 PEP 8 格式调整)
+- **守门**: 5/5 (format 0 / check 0 / mypy 0 / pytest 1238 / HEAD 153 files)
+- **已知限制**: 150 文件 commit 污染 blame, `.git-blame-ignore-revs` 留 W37+
+- **详见**: `tools/verify_w36e_dod.py` + `docs/MEMORY.md` W36e 段
+
+#### W36f: agent_review 异步入口 (LLM + SSE) (2026-06-24)
+- **ReviewTask dataclass**: 7 字段 + 内存 task store (单进程)
+- **llm_judge_factory**: 3 provider (fake/openai/anthropic) + API key fail-fast
+- **run_full_review_async**: `asyncio.to_thread` 跑同步 LLM, event loop 不阻塞
+- **3 端点**: POST 异步 (202 + task_id) + GET 状态 + GET SSE 流
+- **CLI**: `--web-review-mode/--web-review-llm/--web-review-timeout` 3 选项
+- **DoD**: 8/8; 18 unit + 5 G-029; 1233 passed
+- **0 新依赖**: sse-starlette 拒, asyncio.Queue 自实现
+- **详见**: `tools/verify_w36f_dod.py` + `docs/MEMORY.md` W36f 段
+
+#### 阶段统计 (W36a-W36f)
+- **新增代码**: 38+ 文件 (web 9 + security 3 + tests 25+)
+- **测试增量**: 1204 → 1238 passed (+34: 14+4+14+5+0+18+5)
+- **守门脚本**: 7 个 (verify_w36{a,b,c,d,e,f}_dod.py + verify_p5_dod.py)
+- **Golden Case**: G-022 → G-029 (8 个, 端到端 35+ cases)
+- **新增 CLI 选项**: 12 个 (W33 系列 + W34 + W36a/c/f 系列)
+- **向后兼容**: W28 baseline 100% 不破, 跨 7 commit 兼容 (W36a-f + 整阶段归档)
+
+#### 已知缺口 (W37+ 处理)
+- TestPyPI 上传: dist ready (sdist + wheel), `twine check` PASSED, 实发需用户配 `~/.pypirc` token + non-interactive terminal
+- DESIGN.md / docs/ 已 untrack (chore 2e1de16 / 943f432), 计划/复盘文档本地保留
+- W36e 150 文件 commit 污染 blame → `.git-blame-ignore-revs` 完整配置留 W37+
+- pyproject description 仍说 "Phase 2: ..." → W37+ 更新 (release 节奏不混 description)
+- 多 worker 部署下 WebState 内存 task store 单进程限制 → W37+ Redis 共享
+- OpenAI/Anthropic SDK 真实接入 → W37+ (W36f 留口子)
+
 ## [0.5.0a2] - 2026-06-24
 
 ### Phase 5 增量 release (W33a-W36c)
