@@ -362,6 +362,23 @@ cli.add_command(_doctor_cmd)
     default=60.0,
     help="P5-W36f: full mode LLM 调用超时 (秒, 默认 60)",
 )
+@click.option(
+    "--web-task-store",
+    "web_task_store",
+    type=click.Choice(["memory", "redis"], case_sensitive=False),
+    default="memory",
+    help=(
+        "P5-W40: task 存储后端; memory 单进程 (W36f 兼容), "
+        "redis 多 worker 共享 (需 --web-redis-dsn)"
+    ),
+)
+@click.option(
+    "--web-redis-dsn",
+    "web_redis_dsn",
+    type=str,
+    default=None,
+    help="P5-W40: Redis DSN (redis://..., 仅 --web-task-store=redis 模式生效)",
+)
 def run(
     config: Path,
     verbose: bool,
@@ -387,6 +404,8 @@ def run(
     web_review_mode: str,
     web_review_llm: str,
     web_review_timeout: float,
+    web_task_store: str,
+    web_redis_dsn: str | None,
 ) -> None:
     """运行 swarm（从 YAML 配置启动）"""
     _configure_logging(verbose)
@@ -486,6 +505,11 @@ def run(
             review_llm=web_review_llm,
             review_timeout=web_review_timeout,
         )
+        # W40: task store (memory / redis)
+        from agent_swarm.web.review_runner import create_task_store
+
+        task_store = create_task_store(web_task_store, web_redis_dsn)
+        app.state.task_store = task_store
         uv_config = uvicorn.Config(
             app,
             host=web_host,

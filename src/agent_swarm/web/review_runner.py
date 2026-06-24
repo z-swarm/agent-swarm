@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import os
 import subprocess
@@ -28,7 +29,7 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 log = logging.getLogger(__name__)
 
@@ -166,6 +167,251 @@ _TASK_QUEUES: dict[str, list[asyncio.Queue]] = {}
 # task 过期时间 (秒): 完成后保留 1 小时供查; 超时清理
 _TASK_TTL_SECONDS = 3600
 _CLEANUP_INTERVAL = 600  # 10 min
+
+
+# ---------------------------------------------------------------------------
+# W40: TaskStore Protocol + Memory / Redis 双实现
+# ---------------------------------------------------------------------------
+# @brief TaskStore 抽象接口, 支持多 worker 部署 (W36f 留口子)
+# @note  MemoryTaskStore: 单进程 (W36f 行为)
+# @note  RedisTaskStore: 多 worker 共享 (W40 新增)
+# ---------------------------------------------------------------------------
+
+
+class TaskStore(Protocol):
+    """
+    @brief W40: 异步 task 存储抽象接口
+
+    @method create_task       创建 task, 返回 ReviewTask
+    @method get_task          按 task_id 查 task
+    @method update_task       更新 task 字段 (status / progress / log / result / error)
+    @method subscribe_task    订阅 task 状态变化 (SSE), 返 asyncio.Queue
+    @method cleanup_expired   清理过期 task (done/error 超过 TTL)
+    """
+
+    async def create_task(self, pr_ref: str, llm_provider: str) -> Any: ...
+
+    async def get_task(self, task_id: str) -> Any: ...
+
+    async def update_task(self, task_id: str, **kwargs: Any) -> None: ...
+
+    async def subscribe_task(self, task_id: str) -> Any: ...
+
+    async def cleanup_expired(self) -> int: ...
+
+
+class MemoryTaskStore:
+    """
+    @brief W40: 内存 TaskStore (单进程, W36f 行为零破坏)
+
+    @note  包装现有 _TASK_STORE / _TASK_QUEUES 模块级 dict
+    @note  Protocol 兼容, 但方法不 async (sync 包装)
+    """
+
+    async def create_task(self, pr_ref: str, llm_provider: str) -> ReviewTask:
+        task_id = uuid.uuid4().hex
+        task = ReviewTask(
+            task_id=task_id,
+            pr_ref=pr_ref,
+            llm_provider=llm_provider,
+        )
+        _TASK_STORE[task_id] = task
+        _TASK_QUEUES[task_id] = []
+        return task
+
+    async def get_task(self, task_id: str) -> ReviewTask | None:
+        return _TASK_STORE.get(task_id)
+
+    async def update_task(self, task_id: str, **kwargs: Any) -> None:
+        task = _TASK_STORE.get(task_id)
+        if task is None:
+            return
+        for k, v in kwargs.items():
+            setattr(task, k, v)
+        # 推 SSE 事件
+        event: dict[str, Any] = {"type": "update", "task_id": task_id}
+        if "status" in kwargs:
+            event["status"] = kwargs["status"]
+        if "progress" in kwargs:
+            event["progress"] = kwargs["progress"]
+        if "log" in kwargs and kwargs["log"]:
+            event["log"] = kwargs["log"][-1]
+        if "result" in kwargs and kwargs["result"] is not None:
+            event["result"] = kwargs["result"]
+        if "error" in kwargs and kwargs["error"] is not None:
+            event["error"] = kwargs["error"]
+        _emit_event(task_id, event)
+
+    async def subscribe_task(self, task_id: str) -> asyncio.Queue | None:
+        task = _TASK_STORE.get(task_id)
+        if task is None:
+            return None
+        q: asyncio.Queue = asyncio.Queue()
+        _TASK_QUEUES.setdefault(task_id, []).append(q)
+        return q
+
+    async def cleanup_expired(self) -> int:
+        now = time.time()
+        expired = [
+            tid for tid, t in _TASK_STORE.items()
+            if t.status in ("done", "error") and (now - t.created_at) > _TASK_TTL_SECONDS
+        ]
+        for tid in expired:
+            _TASK_STORE.pop(tid, None)
+            _TASK_QUEUES.pop(tid, None)
+        return len(expired)
+
+
+class RedisTaskStore:
+    """
+    @brief W40: Redis TaskStore (多 worker 共享)
+
+    @note  redis.asyncio.Redis (W18 已装 redis>=5.0.0)
+    @note  hash key=`task:{task_id}` 存 task 字段 (status/progress/log/result/error)
+    @note  sorted set `tasks:pending` 存待清理 task_id
+    @note  pub/sub channel `task:{task_id}:events` 推 SSE 事件
+    """
+
+    def __init__(self, dsn: str) -> None:
+        import redis.asyncio as redis_async
+
+        self._dsn = dsn
+        self._redis = redis_async.from_url(dsn, decode_responses=True)
+
+    async def create_task(self, pr_ref: str, llm_provider: str) -> Any:
+        task_id = uuid.uuid4().hex
+        task = ReviewTask(
+            task_id=task_id,
+            pr_ref=pr_ref,
+            llm_provider=llm_provider,
+        )
+        await self._redis.hset(
+            f"task:{task_id}",
+            mapping={
+                "task_id": task_id,
+                "status": task.status,
+                "progress": str(task.progress),
+                "pr_ref": task.pr_ref,
+                "llm_provider": task.llm_provider,
+                "created_at": str(task.created_at),
+                "log": json.dumps([]),
+                "result": "",
+                "error": "",
+            },
+        )
+        await self._redis.zadd("tasks:pending", {task_id: task.created_at})
+        return task
+
+    async def get_task(self, task_id: str) -> Any:
+        data = await self._redis.hgetall(f"task:{task_id}")
+        if not data:
+            return None
+        # decode_responses=True 让 redis 返 str, 但 mypy 类型是 bytes|str
+        s = {k: (v.decode() if isinstance(v, bytes) else v) for k, v in data.items()}
+        task = ReviewTask(
+            task_id=str(s["task_id"]),
+            status=str(s["status"]),  # type: ignore[arg-type]
+            progress=int(s["progress"]),
+            pr_ref=str(s["pr_ref"]),
+            llm_provider=str(s["llm_provider"]),
+            created_at=float(s["created_at"]),
+            log=json.loads(str(s.get("log", "[]"))),
+            result=json.loads(str(s["result"])) if s.get("result") else None,
+            error=str(s.get("error")) if s.get("error") else None,
+        )
+        return task
+
+    async def update_task(self, task_id: str, **kwargs: Any) -> None:
+        mapping: dict[str, Any] = {}
+        if "status" in kwargs:
+            mapping["status"] = str(kwargs["status"])
+        if "progress" in kwargs:
+            mapping["progress"] = str(kwargs["progress"])
+        if "log" in kwargs:
+            mapping["log"] = json.dumps(kwargs["log"])
+        if "result" in kwargs:
+            mapping["result"] = json.dumps(kwargs["result"]) if kwargs["result"] is not None else ""
+        if "error" in kwargs:
+            mapping["error"] = str(kwargs["error"]) if kwargs["error"] else ""
+        if mapping:
+            # redis-py hset 的 mapping 类型包含 bytes, 但 decode_responses=True 返 str
+            # 显式 cast 让 mypy 通过
+            await self._redis.hset(f"task:{task_id}", mapping=mapping)  # type: ignore[arg-type]
+        # 推 pub/sub
+        event: dict[str, Any] = {"type": "update", "task_id": task_id}
+        for k in ("status", "progress", "log", "result", "error"):
+            if k in kwargs:
+                event[k] = kwargs[k]
+        await self._redis.publish(f"task:{task_id}:events", json.dumps(event))
+
+    async def subscribe_task(self, task_id: str) -> Any:
+        """返 (queue, unsubscribe_fn) 元组, caller 需在 done 时 unsubscribe"""
+        task = await self.get_task(task_id)
+        if task is None:
+            return None
+        pubsub = self._redis.pubsub()
+        await pubsub.subscribe(f"task:{task_id}:events")
+        q: asyncio.Queue = asyncio.Queue()
+
+        async def _reader() -> None:
+            try:
+                async for msg in pubsub.listen():
+                    if msg.get("type") != "message":
+                        continue
+                    try:
+                        event = json.loads(msg["data"])
+                        await q.put(event)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            finally:
+                try:
+                    await pubsub.unsubscribe(f"task:{task_id}:events")
+                    await pubsub.close()
+                except Exception:
+                    pass
+
+        asyncio.create_task(_reader())  # 后台 reader, 跟 queue 生命周期绑定
+        return q
+
+    async def cleanup_expired(self) -> int:
+        cutoff = time.time() - _TASK_TTL_SECONDS
+        # 查 created_at < cutoff 的 task_id
+        task_ids = await self._redis.zrangebyscore("tasks:pending", 0, cutoff)
+        removed = 0
+        for tid in task_ids:
+            tid_str = tid.decode() if isinstance(tid, bytes) else tid
+            status = await self._redis.hget(f"task:{tid_str}", "status")
+            status_str = status.decode() if isinstance(status, bytes) else status
+            if status_str in ("done", "error"):
+                await self._redis.delete(f"task:{tid_str}")
+                await self._redis.zrem("tasks:pending", tid_str)  # type: ignore[arg-type]
+                removed += 1
+        return removed
+
+
+def create_task_store(backend: str, redis_dsn: str | None = None) -> TaskStore:
+    """
+    @brief W40: TaskStore 工厂
+
+    @param backend   "memory" / "redis"
+    @param redis_dsn redis://... (仅 redis 后端用)
+    @return TaskStore 实例
+    @note  缺 redis 包 / DSN 缺省 → 自动降级 MemoryTaskStore (W33b 模式)
+    """
+    if backend == "memory":
+        return MemoryTaskStore()
+    if backend == "redis":
+        if not redis_dsn:
+            log.warning("redis backend requires --web-redis-dsn; falling back to memory")
+            return MemoryTaskStore()
+        try:
+            return RedisTaskStore(redis_dsn)
+        except ImportError:
+            log.warning("redis package not installed; falling back to memory store")
+            return MemoryTaskStore()
+    raise ValueError(f"unknown task store backend: {backend!r}")
 
 
 def create_task(pr_ref: str, llm_provider: str) -> ReviewTask:

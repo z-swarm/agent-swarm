@@ -161,6 +161,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **W40**: Redis task store 真实接入 (Phase 6 第一个具体 slice)
   - **W41-W50**: 多 worker / TestPyPI 上传 / 1.0.0 release / 实战验证
 
+#### W40: Redis task store 真实接入 (TaskStore Protocol + Memory/Redis 双实现) (2026-06-24)
+
+- **新增**: `src/agent_swarm/web/review_runner.py` `TaskStore` Protocol
+  - 5 方法 (async): `create_task` / `get_task` / `update_task` / `subscribe_task` / `cleanup_expired`
+  - 抽象接口, 跟 W33b `WebStateStore` Protocol 对称
+- **新增**: `MemoryTaskStore` 包装现有 (W36f 兼容)
+  - 用现有 `_TASK_STORE` / `_TASK_QUEUES` 模块级 dict
+  - 零行为变化 (W36f 14 unit + 5 G-029 不破)
+- **新增**: `RedisTaskStore` 真实实现 (W18 已装 redis>=5.0.0)
+  - hash `task:{task_id}` 存 task 字段
+  - sorted set `tasks:pending` 存待清理 task_id
+  - pub/sub `task:{task_id}:events` 推 SSE 事件 (跨 worker 通知)
+  - serialize: dataclass → JSON (asdict)
+- **新增**: `create_task_store(backend, redis_dsn)` 工厂
+  - `memory` → MemoryTaskStore
+  - `redis` + DSN → RedisTaskStore
+  - 缺 redis 包 / 缺 DSN → 警告 + 降级 MemoryTaskStore (W33b "DSN 缺省降级零破坏" 模式)
+- **升级**: `create_app(task_store: Any = None)` 参数
+  - 默认 MemoryTaskStore (W36f 兼容)
+  - `app.state.task_store` 存储
+- **CLI**: `--web-task-store {memory,redis}` (默认 memory) + `--web-redis-dsn` 选项
+  - cli/main.py 调 `create_task_store` 工厂 + 注入 app
+- **测试**: 14 case (`tests/unit/test_web_review_task_store.py`, fakeredis 模拟)
+  - MemoryTaskStore: CRUD + subscribe + cleanup (5 case)
+  - RedisTaskStore: CRUD + subscribe + cleanup (5 case, fakeredis)
+  - create_task_store 工厂: 3 case (memory / redis 降级 / 未知 backend)
+  - 跨 "worker" 任务同步 (1 case, fakeredis 共享)
+- **DoD**: `verify_w40_dod.py` 8/8 全过
+  - TaskStore Protocol 定义
+  - MemoryTaskStore 包装 (5 方法 async)
+  - RedisTaskStore 真实实现 + create_task_store 工厂
+  - create_app 接 task_store
+  - CLI --web-task-store / --web-redis-dsn
+  - test_web_review_task_store.py ≥10 cases
+  - ruff 0 / mypy 0
+  - 全量 1270 passed (W39 1256 + W40 +14)
+- **已知限制**:
+  - 真实 Redis pub/sub 跨 worker 通知延迟 < 1ms (实战 W41 验证)
+  - 任务清理 (cleanup_expired) 跨 worker 需 all worker 都跑 (idempotent)
+  - asyncio.Queue 跨进程不可序列化 → Redis pub/sub 替代 (Redis 内部 queue)
+  - 0 新依赖 (redis>=5.0.0 W18 已装, fakeredis>=2.20.0 dev 已装)
+
 ## [0.5.0a2] - 2026-06-24
 
 ### Phase 5 增量 release (W33a-W36c)

@@ -63,6 +63,7 @@ def create_app(
     review_mode: str = "full",
     review_llm: str = "fake",
     review_timeout: float = 60.0,
+    task_store: Any = None,
     title: str = "agent-swarm",
     version: str = "0.5.0",
 ) -> FastAPI:
@@ -90,6 +91,7 @@ def create_app(
     @param review_mode       W36f: agent_review 模式 (simple / full; 默认 full)
     @param review_llm        W36f: full mode LLM provider (openai / anthropic / fake; 默认 fake)
     @param review_timeout    W36f: full mode LLM 调用超时 (秒, 默认 60)
+    @param task_store        W40: TaskStore 实例 (None = 默认 MemoryTaskStore)
     @param title             app 标题 (OpenAPI docs)
     @param version           app 版本
     @return FastAPI 实例
@@ -298,6 +300,11 @@ def create_app(
     app.state.web_review_mode = review_mode
     app.state.web_review_llm = review_llm
     app.state.web_review_timeout = review_timeout
+    # W40: task store (None = 默认 MemoryTaskStore)
+    from agent_swarm.web.review_runner import MemoryTaskStore
+    if task_store is None:
+        task_store = MemoryTaskStore()
+    app.state.task_store = task_store
     # 可选: WorktreeManager (P5-W32) — 路由用 getattr 兜底
     if worktree_manager is not None:
         app.state.worktree_manager = worktree_manager
