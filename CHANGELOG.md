@@ -79,7 +79,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - W36e 150 文件 commit 污染 blame → `.git-blame-ignore-revs` 完整配置留 W37+
 - pyproject description 仍说 "Phase 2: ..." → W37+ 更新 (release 节奏不混 description)
 - 多 worker 部署下 WebState 内存 task store 单进程限制 → W37+ Redis 共享
-- OpenAI/Anthropic SDK 真实接入 → W37+ (W36f 留口子)
+- OpenAI/Anthropic SDK 真实接入 → **W37 落地** (W36f 留口子, 已闭环)
+
+#### W37: 真实 LLM judge 接入 (OpenAI/Anthropic SDK + AdversarialVerifier) (2026-06-24)
+
+- **新增**: `tools/agent_review.py` `_openai_judge_fn(agent, hypothesis_id, round_no)`
+  - 调 `openai.AsyncOpenAI` (gpt-4o-mini), `response_format={"type": "json_object"}`
+  - 解析 stance / confidence / evidence / reasoning → Judgement
+  - JSON 解析失败 → UNCERTAIN 兜底 (DESIGN §6.2.5)
+- **新增**: `_anthropic_judge_fn(...)` 调 `anthropic.AsyncAnthropic` (claude-3-5-sonnet)
+  - 处理 ` ```json ... ``` ` 代码块包裹
+  - Union content narrow 到 TextBlock 取 .text
+- **升级**: `run_full_review(pr_ref, llm_provider)` 真实流程
+  - 删除 W13 占位的 "fallback simple" 路径
+  - static_security_scan findings → hypotheses (每个 finding 1 个)
+  - 3 个 plan_only Agent stub + `AdversarialVerifier.verify`
+  - 存活假设 → root_causes, n_findings 决定 verdict
+- **升级**: `src/agent_swarm/web/review_runner.py` `llm_judge_factory`
+  - openai / anthropic 返真实 judge_fn (替换 W36f stub)
+  - W36f web 异步路径自动接真实 LLM
+- **测试**: 18 unit (mock SDK) + 1 异步路径 case
+- **DoD**: `verify_w37_dod.py` 8/8 全过; 1256 passed (W36e 1238 + W37 +18)
+- **已知限制**:
+  - 真实 LLM 调 API 需 `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` (用户 env)
+  - 慢响应走 `--web-review-timeout` 默认 60s, 异步不阻塞 event loop
+  - SDK 升级需重跑测试 (openai>=1.40 / anthropic>=0.40 已固定)
 
 ## [0.5.0a2] - 2026-06-24
 

@@ -286,27 +286,19 @@ def llm_judge_factory(provider: str) -> Any:
     if provider == "openai":
         if not os.environ.get("OPENAI_API_KEY"):
             raise RuntimeError("OPENAI_API_KEY not set; please set it or use --web-review-llm fake")
+        # W37: 真实 LLM judge, 调 OpenAI SDK
+        from agent_review import _openai_judge_fn
 
-        # 真实 LLM judge: 占位 (W36f 范围收口, 留 W37+ 接入 OpenAI SDK)
-        # 模式: 返回一个 stub, fail-fast 提示用户
-        async def _openai_stub(agent: Any, hypothesis_id: str, round_no: int) -> Any:
-            raise RuntimeError(
-                "openai LLM judge not yet implemented; W36f 范围收口, 留 W37+ 接入 openai SDK"
-            )
-
-        return _openai_stub
+        return _openai_judge_fn
     if provider == "anthropic":
         if not os.environ.get("ANTHROPIC_API_KEY"):
             raise RuntimeError(
                 "ANTHROPIC_API_KEY not set; please set it or use --web-review-llm fake"
             )
+        # W37: 真实 LLM judge, 调 Anthropic SDK
+        from agent_review import _anthropic_judge_fn
 
-        async def _anthropic_stub(agent: Any, hypothesis_id: str, round_no: int) -> Any:
-            raise RuntimeError(
-                "anthropic LLM judge not yet implemented; W36f 范围收口, 留 W37+ 接入 anthropic SDK"
-            )
-
-        return _anthropic_stub
+        return _anthropic_judge_fn
     raise ValueError(f"unknown LLM provider {provider!r}; choose from openai / anthropic / fake")
 
 
@@ -356,10 +348,9 @@ async def run_full_review_async(
             judge_fn = llm_judge_factory(llm_provider)
             _update_task(task_id, progress=30, log=[f"judge factory OK ({llm_provider})"])
             # 跑 full review (在 thread 中执行, 不阻塞 event loop)
-            # 注: agent_review.run_full_review 内部 await, 但 LLM 调用可能 sync (openai sync SDK)
-            #     所以用 to_thread 包一层
+            # W37 真实流程: 传入 llm_provider 让 run_full_review 选 judge
             report = await asyncio.wait_for(
-                asyncio.to_thread(_run_full_in_thread, pr_ref, judge_fn),
+                asyncio.to_thread(_run_full_in_thread, pr_ref, judge_fn, llm_provider),
                 timeout=timeout,
             )
             _update_task(task_id, progress=90, log=["full review done, serializing"])
@@ -380,25 +371,28 @@ async def run_full_review_async(
         _update_task(task_id, status="error", error=f"{type(exc).__name__}: {exc}")
 
 
-def _run_full_in_thread(pr_ref: str, judge_fn: Any) -> Any:
+def _run_full_in_thread(
+    pr_ref: str,
+    judge_fn: Any,
+    llm_provider: str = "fake",
+) -> Any:
     """
     @brief 内部: 在 thread 中跑 full review (event loop 不阻塞)
 
-    @param pr_ref   git diff range
-    @param judge_fn LLM judge 工厂返的 JudgeFn (W36f 阶段未使用, 占位参数)
+    @param pr_ref       git diff range
+    @param judge_fn     LLM judge 工厂返的 JudgeFn (W37 真实接入)
+    @param llm_provider openai / anthropic / fake
     @return ReviewReport
-    @note  W36f 阶段策略:
-            - fake LLM: 走 run_simple_review (确定性, 等同 simple mode + 异步)
-            - openai/anthropic: 走 run_full_review (W13 占位, 缺 API key 报错)
-            - 真实 LLM 接入 (OpenAI/Anthropic SDK + AdversarialVerifier.verify) 留 W37+
+    @note  W37 真实流程: 跑 run_full_review (AdversarialVerifier + judge_fn)
+            - fake: deterministic
+            - openai/anthropic: 真实 LLM 调用
     """
     import asyncio as _asyncio
 
     async def _wrapper() -> Any:
-        # W36f fake 模式走 simple (确定性); 真实 LLM 留 W37+
-        from agent_review import run_simple_review
+        from agent_review import run_full_review
 
-        return run_simple_review(pr_ref)
+        return await run_full_review(pr_ref, llm_provider=llm_provider)
 
     return _asyncio.run(_wrapper())
 

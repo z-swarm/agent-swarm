@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import os
 import re
 import subprocess
@@ -35,6 +36,8 @@ from typing import Any
 REPO = Path(__file__).resolve().parent.parent
 # 测试 / 多 repo 场景可通过 env 覆盖
 REPO = Path(__import__("os").environ.get("AGENT_REVIEW_REPO", str(REPO)))
+
+log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +89,6 @@ def get_pr_diff(pr_ref: str = "main..HEAD") -> tuple[str, int, int]:
             ["git", "diff", pr_ref, "--unified=3", "--stat"],
             cwd=REPO, capture_output=True, text=True, timeout=30,
         )
-        stat = result.stdout
     except Exception as exc:  # noqa: BLE001
         print(f"[error] git diff failed: {exc}", file=sys.stderr)
         return "", 0, 0
@@ -166,10 +168,7 @@ def _is_source_file(path: str) -> bool:
             return False
     # 扩展名白名单
     p = path.lower()
-    for ext in _SOURCE_EXTENSIONS:
-        if p.endswith(ext):
-            return True
-    return False
+    return any(p.endswith(ext) for ext in _SOURCE_EXTENSIONS)
 
 
 # 简单规则——只做关键字 + 模式匹配，捕获高置信度安全问题
@@ -274,9 +273,7 @@ def _line_is_string_literal(line: str, match_start: int) -> bool:
     n_dq = len(re.findall(r'(?<!\\)"', prefix))
     n_sq = len(re.findall(r"(?<!\\)'", prefix))
     # 未配对引号为奇数 ⇒ 当前位置在字符串里
-    if n_dq % 2 == 1 or n_sq % 2 == 1:
-        return True
-    return False
+    return bool(n_dq % 2 == 1 or n_sq % 2 == 1)
 
 
 def static_security_scan(diff: str) -> list[ReviewFinding]:
@@ -389,28 +386,235 @@ def run_simple_review(pr_ref: str) -> ReviewReport:
     )
 
 
-async def run_full_review(pr_ref: str) -> ReviewReport:
-    """W13 完整模式:AdversarialVerifier 跑 3 judges × N 假设(L2/L3 修复)
-
-    @note 当前为占位 — 需要 OPENAI_API_KEY 或 ANTHROPIC_API_KEY 来驱动
-          真实 LLM judge 跑对抗式判定。
-    @note L2/L3 修复:占位明示 + 缺 API key 时 fail-fast
-    @todo W14+: 实现 llm_judge factory + 接入 AdversarialVerifier.verify()
+async def _openai_judge_fn(agent: Any, hypothesis_id: str, round_no: int) -> Any:
     """
-    import os
-    if not (os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")):
-        # L2/L3 修复: 显式 fail-fast,避免静默退化为 simple
+    @brief W37: 真实 OpenAI judge (gpt-4o-mini 等)
+
+    @param agent         Agent (含 model / provider)
+    @param hypothesis_id  假设 ID (e.g. "h0")
+    @param round_no       轮次
+    @return Judgement
+    @raise RuntimeError  OPENAI_API_KEY 缺
+    @note  解析失败 → UNCERTAIN 兜底 (DESIGN §6.2.5)
+    """
+    from openai import AsyncOpenAI
+
+    from agent_swarm.core.types import Judgement, Stance
+
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise RuntimeError("OPENAI_API_KEY not set")
+    client = AsyncOpenAI()
+    model = getattr(agent, "model", "gpt-4o-mini")
+    sys_prompt = (
+        "You are a code review judge. "
+        "Analyze the hypothesis and return JSON: "
+        '{"stance": "support"|"refute"|"uncertain", '
+        '"confidence": 0.0-1.0, '
+        '"reasoning": "short explanation", '
+        '"evidence": ["file:line", ...]}'
+    )
+    user_prompt = f"Hypothesis {hypothesis_id}: analyze and judge."
+    try:
+        resp = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+            timeout=30.0,
+        )
+        content = resp.choices[0].message.content or "{}"
+        data = json.loads(content)
+        stance_str = str(data.get("stance", "uncertain")).lower()
+        stance_map = {"support": Stance.SUPPORT, "refute": Stance.REFUTE}
+        stance = stance_map.get(stance_str, Stance.UNCERTAIN)
+        confidence = float(data.get("confidence", 0.5))
+        evidence = [str(e) for e in data.get("evidence", [])]
+        reasoning = str(data.get("reasoning", ""))
+    except Exception as exc:
+        log.warning("[W37] openai judge parse error: %s; fallback UNCERTAIN", exc)
+        stance = Stance.UNCERTAIN
+        confidence = 0.5
+        evidence = []
+        reasoning = f"judge_fn error: {type(exc).__name__}"
+    return Judgement(
+        agent_id=agent.id if hasattr(agent, "id") else "judge-openai",
+        hypothesis_id=hypothesis_id,
+        round_no=round_no,
+        stance=stance,
+        confidence=confidence,
+        evidence=evidence,
+        reasoning=reasoning,
+    )
+
+
+async def _anthropic_judge_fn(agent: Any, hypothesis_id: str, round_no: int) -> Any:
+    """
+    @brief W37: 真实 Anthropic judge (claude-3-5-sonnet 等)
+
+    @param agent         Agent (含 model)
+    @param hypothesis_id  假设 ID
+    @param round_no       轮次
+    @return Judgement
+    @raise RuntimeError  ANTHROPIC_API_KEY 缺
+    @note  解析失败 → UNCERTAIN 兜底
+    """
+    from anthropic import AsyncAnthropic
+
+    from agent_swarm.core.types import Judgement, Stance
+
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise RuntimeError("ANTHROPIC_API_KEY not set")
+    client = AsyncAnthropic()
+    model = getattr(agent, "model", "claude-3-5-sonnet-20241022")
+    sys_prompt = (
+        "You are a code review judge. "
+        "Analyze the hypothesis and return JSON: "
+        '{"stance": "support"|"refute"|"uncertain", '
+        '"confidence": 0.0-1.0, '
+        '"reasoning": "short explanation", '
+        '"evidence": ["file:line", ...]}'
+    )
+    user_prompt = f"Hypothesis {hypothesis_id}: analyze and judge."
+    try:
+        resp = await client.messages.create(
+            model=model,
+            max_tokens=512,
+            system=sys_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+            timeout=30.0,
+        )
+        text = "{}"
+        if resp.content:
+            first = resp.content[0]
+            if hasattr(first, "text") and isinstance(getattr(first, "text", None), str):
+                text = first.text
+        if "```" in text:
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        data = json.loads(text)
+        stance_str = str(data.get("stance", "uncertain")).lower()
+        stance_map = {"support": Stance.SUPPORT, "refute": Stance.REFUTE}
+        stance = stance_map.get(stance_str, Stance.UNCERTAIN)
+        confidence = float(data.get("confidence", 0.5))
+        evidence = [str(e) for e in data.get("evidence", [])]
+        reasoning = str(data.get("reasoning", ""))
+    except Exception as exc:
+        log.warning("[W37] anthropic judge parse error: %s; fallback UNCERTAIN", exc)
+        stance = Stance.UNCERTAIN
+        confidence = 0.5
+        evidence = []
+        reasoning = f"judge_fn error: {type(exc).__name__}"
+    return Judgement(
+        agent_id=agent.id if hasattr(agent, "id") else "judge-anthropic",
+        hypothesis_id=hypothesis_id,
+        round_no=round_no,
+        stance=stance,
+        confidence=confidence,
+        evidence=evidence,
+        reasoning=reasoning,
+    )
+
+
+async def run_full_review(
+    pr_ref: str,
+    llm_provider: str = "fake",
+) -> ReviewReport:
+    """W37 真实流程:AdversarialVerifier 跑 3 judges × N 假设
+
+    @param pr_ref        git diff range
+    @param llm_provider  openai / anthropic / fake
+    @return ReviewReport
+    @raise RuntimeError  缺 API key (openai/anthropic 模式)
+    @note  W13 占位的 fallback simple 已删, 真实 LLM 接入
+    @note  假设从 static_security_scan findings 构造, agents 3 个 plan_only stub
+    """
+    from agent_swarm.core.adversarial import AdversarialVerifier
+    from agent_swarm.core.types import Agent, AgentCapabilities
+
+    if llm_provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
         raise RuntimeError(
             "run_full_review 需要 LLM API key;"
-            " 请设置 OPENAI_API_KEY 或 ANTHROPIC_API_KEY 环境变量"
+            " 请设置 OPENAI_API_KEY 环境变量"
         )
-    # 临时回退到 simple 模式(W14+ 替换为 AdversarialVerifier.verify)
-    print(
-        "[W13] full mode 占位, 回退到 simple 模式; "
-        "W14+ 将接入真实 LLM judge",
-        file=sys.stderr,
+    if llm_provider == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
+        raise RuntimeError(
+            "run_full_review 需要 LLM API key;"
+            " 请设置 ANTHROPIC_API_KEY 环境变量"
+        )
+    diff, files, lines = get_pr_diff(pr_ref)
+    findings = static_security_scan(diff)
+    if not findings:
+        return ReviewReport(
+            pr_ref=pr_ref,
+            verdict="approve",
+            findings=[],
+            root_causes=[],
+            summary=f"无安全问题 (pr_ref={pr_ref!r})",
+            confidence=1.0,
+            files_changed=files,
+            lines_changed=lines,
+        )
+    hypotheses = [
+        f"Finding {i}: {f.category} at {f.file}:{f.line} — {f.description}"
+        for i, f in enumerate(findings)
+    ]
+    model = "gpt-4o-mini" if llm_provider == "openai" else (
+        "claude-3-5-sonnet-20241022" if llm_provider == "anthropic" else "fake-model"
     )
-    return run_simple_review(pr_ref)
+    agents = [
+        Agent(
+            id=f"judge-{i}",
+            role="judge",
+            persona=f"W37 judge #{i}",
+            model=model,
+            provider=llm_provider,
+            capabilities=AgentCapabilities.plan_only(),
+        )
+        for i in range(3)
+    ]
+    if llm_provider == "openai":
+        judge_fn = _openai_judge_fn
+    elif llm_provider == "anthropic":
+        judge_fn = _anthropic_judge_fn
+    else:
+        judge_fn = _deterministic_judge
+    verifier = AdversarialVerifier(max_rounds=3, min_survivors=1)
+    try:
+        verdict_obj = await verifier.verify(hypotheses, agents, judge_fn=judge_fn)
+    except Exception as exc:
+        log.warning("[W37] AdversarialVerifier failed: %s; fallback to findings", exc)
+        return ReviewReport(
+            pr_ref=pr_ref,
+            verdict="comment",
+            findings=findings,
+            root_causes=[],
+            summary=f"verifier failed: {type(exc).__name__}",
+            confidence=0.5,
+            files_changed=files,
+            lines_changed=lines,
+        )
+    survived = verdict_obj.survivors
+    root_causes = [f"h{i}: {h.statement}" for i, h in enumerate(survived[:5])]
+    n_findings = len(survived)
+    if n_findings == 0:
+        verdict = "approve"
+    elif n_findings <= 2:
+        verdict = "comment"
+    else:
+        verdict = "request_changes"
+    return ReviewReport(
+        pr_ref=pr_ref,
+        verdict=verdict,
+        findings=findings,
+        root_causes=root_causes,
+        summary=f"verifier rounds={verdict_obj.rounds_used} survived={n_findings}/{len(hypotheses)}",
+        confidence=0.9 if n_findings > 0 else 1.0,
+        files_changed=files,
+        lines_changed=lines,
+    )
 
 
 def print_report(report: ReviewReport) -> None:

@@ -110,8 +110,6 @@ def main() -> int:
 
     # 4. routes.py 3 端点存在
     try:
-        from agent_swarm.web.routes import api_review
-        from agent_swarm.web import routes as _routes
         # 通过源码扫描确认 3 端点 (POST /api/review + GET /api/review/{id} + GET /api/review/{id}/events)
         src = (SRC / "agent_swarm" / "web" / "routes.py").read_text(encoding="utf-8")
         ok_post = 'def api_review(' in src
@@ -163,7 +161,7 @@ def main() -> int:
         elif "::" in line and " PASSED" in line:
             case_count += 1
     ok = rc == 0 and case_count >= 10
-    results.append(_check(f"6. test_web_review_async.py ≥10 cases 全过", ok,
+    results.append(_check("6. test_web_review_async.py ≥10 cases 全过", ok,
                           f"rc={rc} cases={case_count}"))
 
     # 7. test_g029_review_async_e2e.py 5 cases 全过
@@ -181,7 +179,7 @@ def main() -> int:
                 if p.isdigit():
                     case_count = max(case_count, int(p))
     ok = rc == 0 and case_count >= 4
-    results.append(_check(f"7. test_g029_review_async_e2e.py 5 cases 全过", ok,
+    results.append(_check("7. test_g029_review_async_e2e.py 5 cases 全过", ok,
                           f"rc={rc} cases={case_count}"))
 
     # 8. ruff 0 + mypy 0 + 全量 0 新失败

@@ -45,7 +45,6 @@ async def main() -> int:
     )
     from agent_swarm.web.auth import (
         JWTConfig,
-        JWTError,
         JWTIssuer,
         SecretRef,
         parse_secret_ref,

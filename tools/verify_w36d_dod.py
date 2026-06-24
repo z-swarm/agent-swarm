@@ -140,7 +140,7 @@ def main() -> int:
         slices = ["W33a", "W33b", "W34", "W35", "W36a", "W36b", "W36c"]
         missing = [s for s in slices if s not in segment]
         ok = not missing
-        detail = f"missing: {missing}" if missing else f"all 7 slices in 0.5.0a2 segment"
+        detail = f"missing: {missing}" if missing else "all 7 slices in 0.5.0a2 segment"
         results.append(_check("8. CHANGELOG 0.5.0a2 含 7 个 slice 节点", ok, detail))
     except Exception as exc:
         results.append(_check("8. CHANGELOG 0.5.0a2 7 slice 节点", False, str(exc)))

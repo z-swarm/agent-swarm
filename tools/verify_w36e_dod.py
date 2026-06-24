@@ -50,7 +50,7 @@ def main() -> int:
     would = "would reformat" in out
     ok = rc == 0 and not would
     n = already.group(1) if already else "?"
-    results.append(_check(f"1. ruff format --check 0 欠债", ok,
+    results.append(_check("1. ruff format --check 0 欠债", ok,
                           f"already_formatted={n} would_reformat={would} rc={rc}"))
 
     # 2. ruff check 0 errors
@@ -76,7 +76,7 @@ def main() -> int:
                 if p.isdigit():
                     full_passed = max(full_passed, int(p))
     ok = rc == 0 and full_passed >= 1233
-    results.append(_check(f"4. pytest 全量 ≥1233 passed (W36f baseline)", ok,
+    results.append(_check("4. pytest 全量 ≥1233 passed (W36f baseline)", ok,
                           f"rc={rc} passed={full_passed}"))
 
     # 5. 查 HEAD commit (W36e) 的 stat
@@ -87,7 +87,7 @@ def main() -> int:
         if m:
             file_count = int(m.group(1))
     ok = 145 <= file_count <= 200
-    results.append(_check(f"5. HEAD (W36e commit) 含 ~150 files", ok,
+    results.append(_check("5. HEAD (W36e commit) 含 ~150 files", ok,
                           f"HEAD files_changed={file_count} (expect 145-200)"))
 
     print()

@@ -44,14 +44,13 @@ async def main() -> int:
         SecretManager,
         SecretMetadata,
     )
+    from agent_swarm.web import WebState, create_app
     from agent_swarm.web.auth import (
         JWTConfig,
         JWTError,
         JWTIssuer,
-        SecretRef,
         parse_secret_ref,
     )
-    from agent_swarm.web import create_app, WebState
 
     results: list[bool] = []
 
@@ -230,6 +229,7 @@ async def main() -> int:
     # -----------------------------------------------------------------------
     try:
         from click.testing import CliRunner
+
         from agent_swarm.cli.main import cli
 
         runner = CliRunner()
