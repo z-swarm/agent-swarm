@@ -2,6 +2,7 @@
 @module agent_swarm.channels.adapter
 @brief  ChannelAdapter——DESIGN §4.3 统一路由 + 鉴权 + 限流
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -126,9 +127,7 @@ class ChannelAdapter:
     def set_handler(self, handler: MessageHandler) -> None:
         self._handler = handler
 
-    def set_denied_handler(
-        self, fn: Callable[[ChannelMessage, str], ChannelResponse]
-    ) -> None:
+    def set_denied_handler(self, fn: Callable[[ChannelMessage, str], ChannelResponse]) -> None:
         self._denied_handler = fn
 
     def api_key_store(self) -> APIKeyStore:
@@ -161,7 +160,9 @@ class ChannelAdapter:
         return response
 
     def _make_denied_response(
-        self, msg: ChannelMessage, reason: str,
+        self,
+        msg: ChannelMessage,
+        reason: str,
     ) -> ChannelResponse:
         if self._denied_handler is not None:
             return self._denied_handler(msg, reason)
@@ -181,9 +182,7 @@ class ChannelAdapter:
             ct = target.channel if channel_type is None else channel_type
         else:
             if channel_type is None:
-                raise ValueError(
-                    "send() with string target requires channel_type argument"
-                )
+                raise ValueError("send() with string target requires channel_type argument")
             ct = channel_type
         connector = self._connectors.get(ct)
         if connector is None:

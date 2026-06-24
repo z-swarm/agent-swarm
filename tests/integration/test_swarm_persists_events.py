@@ -149,6 +149,7 @@ async def test_partial_run_can_be_inspected_via_event_stream(
             self.calls.append(list(messages))
             if len(self.calls) == 1:
                 from agent_swarm.core.types import LLMResponse
+
                 return LLMResponse(
                     content="first ok",
                     tool_calls=[],
@@ -328,11 +329,22 @@ async def test_restore_does_not_use_private_fields(
         await sink.register_session(sid, "x")
         # 写入 task.created 事件
         from agent_swarm.core.types import SessionEvent
-        await sink.consume(SessionEvent(
-            event_name="task.created", session_id=sid, timestamp=1.0, seq=0,
-            payload={"task_id": "T", "title": "x", "description": "y",
-                     "status": "pending", "depends_on": []},
-        ))
+
+        await sink.consume(
+            SessionEvent(
+                event_name="task.created",
+                session_id=sid,
+                timestamp=1.0,
+                seq=0,
+                payload={
+                    "task_id": "T",
+                    "title": "x",
+                    "description": "y",
+                    "status": "pending",
+                    "depends_on": [],
+                },
+            )
+        )
     finally:
         set_global_bus(None)
         await sink.aclose()

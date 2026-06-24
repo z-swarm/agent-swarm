@@ -53,15 +53,11 @@ def fake_g001(monkeypatch: pytest.MonkeyPatch) -> FakeLLMProvider:
     fake = FakeLLMProvider(default_model="gpt-4o-mini")
     fake.script.append(
         ScriptedResponse(
-            tool_calls=[
-                ToolCall(id="c1", name="read_file", arguments={"path": "auth.py"})
-            ],
+            tool_calls=[ToolCall(id="c1", name="read_file", arguments={"path": "auth.py"})],
             finish_reason="tool_use",
         )
     )
-    fake.script.append(
-        ScriptedResponse(content=_SECURITY_FINDINGS_OUTPUT, finish_reason="stop")
-    )
+    fake.script.append(ScriptedResponse(content=_SECURITY_FINDINGS_OUTPUT, finish_reason="stop"))
 
     def fake_get_provider(name: str, **kw):  # noqa: ARG001
         return fake
@@ -75,9 +71,7 @@ def fake_g001(monkeypatch: pytest.MonkeyPatch) -> FakeLLMProvider:
 # ---------------------------------------------------------------------------
 
 
-CASE_DIR = (
-    Path(__file__).parent.parent / "golden" / "cases" / "G-001_pr_security_review"
-)
+CASE_DIR = Path(__file__).parent.parent / "golden" / "cases" / "G-001_pr_security_review"
 
 
 async def _run_case(workspace: Path) -> tuple[float, int, str]:
@@ -181,9 +175,7 @@ def test_g001_kb_cache_hit_rate_on_second_run(
 
         second_stats = await kb.stats()
         # 命中率 = 3 / 4 = 75% ≥ 60%
-        assert second_stats["hit_rate"] >= 0.60, (
-            f"hit_rate too low: {second_stats}"
-        )
+        assert second_stats["hit_rate"] >= 0.60, f"hit_rate too low: {second_stats}"
         return second_stats
 
     stats = asyncio.run(simulate_two_runs())
@@ -221,7 +213,9 @@ def test_g001_kb_cache_hit_rate_with_real_swarm_runs(
         # 模拟：agent 在 review 前查 3 个 sub-cache
         # 第一次全 miss；第二次全 hit
         for sub_key in (
-            "lex:auth.py", "imports:auth.py", "review_security:auth.py",
+            "lex:auth.py",
+            "imports:auth.py",
+            "review_security:auth.py",
         ):
             await kb.get_cached_analysis(sub_key)
 
@@ -229,20 +223,20 @@ def test_g001_kb_cache_hit_rate_with_real_swarm_runs(
         fake = FakeLLMProvider()
         fake.script.append(
             ScriptedResponse(
-                tool_calls=[ToolCall(
-                    id=f"c{swarm_id}",
-                    name="read_file",
-                    arguments={"path": "auth.py"},
-                )],
+                tool_calls=[
+                    ToolCall(
+                        id=f"c{swarm_id}",
+                        name="read_file",
+                        arguments={"path": "auth.py"},
+                    )
+                ],
                 finish_reason="tool_use",
             )
         )
         fake.script.append(
             ScriptedResponse(content=_SECURITY_FINDINGS_OUTPUT, finish_reason="stop")
         )
-        monkeypatch.setattr(
-            "agent_swarm.core.swarm.get_provider", lambda *_a, **_k: fake
-        )
+        monkeypatch.setattr("agent_swarm.core.swarm.get_provider", lambda *_a, **_k: fake)
 
         swarm = Swarm.from_dict(cfg, base_dir=tmp_path)
         result = await swarm.run()
@@ -250,7 +244,9 @@ def test_g001_kb_cache_hit_rate_with_real_swarm_runs(
 
         # swarm 跑完后，把 review 结果写入 KB（agent 应该做的）
         for sub_key in (
-            "lex:auth.py", "imports:auth.py", "review_security:auth.py",
+            "lex:auth.py",
+            "imports:auth.py",
+            "review_security:auth.py",
         ):
             await kb.cache_analysis(sub_key, "v")
 
@@ -271,6 +267,7 @@ def test_g001_kb_cache_hit_rate_with_real_swarm_runs(
     # 第二次的局部命中率 = 3/(3+0) = 100% ≥ 60%
     second_run_hit_rate = new_hits / (new_hits + new_misses) if new_hits else 0
     assert second_run_hit_rate >= 0.60
+
 
 # ---------------------------------------------------------------------------
 # P1-8 F-3: G-001 KB API 真实调用——证明 KB cache 行为而非手写编排
@@ -325,4 +322,3 @@ def test_g001_kb_cache_real_api_behavior(tmp_path: Path) -> None:
         assert rate >= 0.6, f"hit rate {rate:.2%} < 60% (DoD)"
 
     asyncio.run(_run())
-

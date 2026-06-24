@@ -37,7 +37,9 @@ def _default_approver(decision: PolicyDecision, ctx: SecurityContext) -> bool:
     """@brief 默认 approver: deny-by-default + audit log"""
     log.warning(
         "approval.denied tenant=%s session=%s reason=%s",
-        ctx.tenant_id, ctx.session_id, decision.reason,
+        ctx.tenant_id,
+        ctx.session_id,
+        decision.reason,
     )
     return False
 
@@ -84,7 +86,9 @@ class ApprovalFlow:
                 if result:
                     log.info(
                         "approval.granted tenant=%s session=%s reason=%s",
-                        ctx.tenant_id, ctx.session_id, decision.reason,
+                        ctx.tenant_id,
+                        ctx.session_id,
+                        decision.reason,
                     )
                     return True
             except Exception as exc:  # noqa: BLE001

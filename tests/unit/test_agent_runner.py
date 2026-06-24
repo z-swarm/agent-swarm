@@ -50,15 +50,11 @@ async def test_runner_tool_then_stop(fake_llm: FakeLLMProvider, workspace: Path)
     """OTAR：第一轮调 read_file，第二轮 stop"""
     fake_llm.script.append(
         ScriptedResponse(
-            tool_calls=[
-                ToolCall(id="c1", name="read_file", arguments={"path": "README.md"})
-            ],
+            tool_calls=[ToolCall(id="c1", name="read_file", arguments={"path": "README.md"})],
             finish_reason="tool_use",
         )
     )
-    fake_llm.script.append(
-        ScriptedResponse(content="readme says hello", finish_reason="stop")
-    )
+    fake_llm.script.append(ScriptedResponse(content="readme says hello", finish_reason="stop"))
     agent = _make_agent()
     runner = AgentRunner(agent, fake_llm, {"read_file": ReadFileTool(workspace)})
     task = Task(id="t-2", title="describe readme", description="read README and summarize")
@@ -102,9 +98,7 @@ async def test_runner_unauthorized_tool(fake_llm: FakeLLMProvider, workspace: Pa
     """LLM 调用未授权工具——返回 [error] 而非崩溃"""
     fake_llm.script.append(
         ScriptedResponse(
-            tool_calls=[
-                ToolCall(id="c1", name="run_command", arguments={"cmd": "ls"})
-            ],
+            tool_calls=[ToolCall(id="c1", name="run_command", arguments={"cmd": "ls"})],
             finish_reason="tool_use",
         )
     )
@@ -309,6 +303,7 @@ async def test_runner_does_not_mutate_input_task_on_failure(
     assert res.task.status == "failed"
     assert "api down" in (res.task.error or "")
 
+
 # ---------------------------------------------------------------------------
 # P1-8: 补 run_loop / tool 异常 / KB 真调用单测
 # ---------------------------------------------------------------------------
@@ -350,8 +345,7 @@ async def test_run_loop_wakes_on_mailbox_message(
     # 编排 fake_llm: 收到消息后跑 read_file + stop
     fake_llm.script.append(
         ScriptedResponse(
-            tool_calls=[ToolCall(id="c1", name="read_file",
-                                 arguments={"path": "a.txt"})],
+            tool_calls=[ToolCall(id="c1", name="read_file", arguments={"path": "a.txt"})],
             finish_reason="tool_use",
         )
     )
@@ -366,10 +360,17 @@ async def test_run_loop_wakes_on_mailbox_message(
     async def sender() -> None:
         await asyncio.sleep(0.1)
         from agent_swarm.core.types import Message
-        await mb.send(Message(
-            id="m-wake", from_agent="b1", to_agent="a1",
-            target_type="internal", msg_type="notify", content="wake up",
-        ))
+
+        await mb.send(
+            Message(
+                id="m-wake",
+                from_agent="b1",
+                to_agent="a1",
+                target_type="internal",
+                msg_type="notify",
+                content="wake up",
+            )
+        )
 
     sender_task = asyncio.create_task(sender())
     stats = await runner.run_loop(tq, mb, idle_timeout=0.05, max_idle_polls=10)
@@ -391,15 +392,13 @@ async def test_tool_invoke_exception_returns_error_string(
     # fake_llm: 调 read_file (会抛) → 再调一次 (也抛) → stop
     fake_llm.script.append(
         ScriptedResponse(
-            tool_calls=[ToolCall(id="c1", name="read_file",
-                                 arguments={"path": "x.txt"})],
+            tool_calls=[ToolCall(id="c1", name="read_file", arguments={"path": "x.txt"})],
             finish_reason="tool_use",
         )
     )
     fake_llm.script.append(
         ScriptedResponse(
-            tool_calls=[ToolCall(id="c2", name="read_file",
-                                 arguments={"path": "y.txt"})],
+            tool_calls=[ToolCall(id="c2", name="read_file", arguments={"path": "y.txt"})],
             finish_reason="tool_use",
         )
     )
@@ -410,8 +409,10 @@ async def test_tool_invoke_exception_returns_error_string(
     class _BoomTool:
         name = "read_file"
         description = "boom"
+
         async def invoke(self, arguments: dict) -> str:
             raise RuntimeError("synthetic tool failure")
+
         parameters: dict = {"type": "object", "properties": {}}
 
     runner = AgentRunner(agent, fake_llm, {"read_file": _BoomTool()})  # type: ignore[arg-type]
@@ -434,8 +435,7 @@ async def test_tool_not_available_returns_error_string(
 
     fake_llm.script.append(
         ScriptedResponse(
-            tool_calls=[ToolCall(id="c1", name="ghost_tool",
-                                 arguments={"path": "x"})],
+            tool_calls=[ToolCall(id="c1", name="ghost_tool", arguments={"path": "x"})],
             finish_reason="tool_use",
         )
     )
@@ -448,4 +448,3 @@ async def test_tool_not_available_returns_error_string(
     assert res.task.status == "completed"
     err = [t.content for t in res.history if "not available" in (t.content or "")]
     assert err, "应记录 tool not available 错误"
-

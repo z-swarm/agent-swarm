@@ -39,7 +39,9 @@ def test_secret_metadata_no_expiry() -> None:
 
 def test_secret_metadata_expired() -> None:
     sm = SecretMetadata(
-        key="k", expires_at=time.time() - 1, rotation_due_at=time.time() - 1,
+        key="k",
+        expires_at=time.time() - 1,
+        rotation_due_at=time.time() - 1,
     )
     assert sm.is_expired is True
     assert sm.is_rotation_due is True
@@ -49,7 +51,9 @@ def test_secret_metadata_rotation_due_in_7_days() -> None:
     """7 天后即将轮换预警——rotation_due_at 设在过去 10s"""
     past = time.time() - 10
     sm = SecretMetadata(
-        key="k", rotation_due_at=past, expires_at=past + 7 * 86400,
+        key="k",
+        rotation_due_at=past,
+        expires_at=past + 7 * 86400,
     )
     assert sm.is_rotation_due is True
     secs = sm.seconds_to_rotation
@@ -146,12 +150,19 @@ class _MockKVv2:
         }
 
     def create_or_update_secret(
-        self, *, path: str, secret: dict[str, object], mount_point: str,  # noqa: ARG002
+        self,
+        *,
+        path: str,
+        secret: dict[str, object],
+        mount_point: str,  # noqa: ARG002
     ) -> None:
         self._parent._store[path] = dict(secret)
 
     def delete_metadata_and_all_versions(
-        self, *, path: str, mount_point: str,  # noqa: ARG002
+        self,
+        *,
+        path: str,
+        mount_point: str,  # noqa: ARG002
     ) -> None:
         self._parent._store.pop(path, None)
 
@@ -245,12 +256,14 @@ async def test_vault_rotation_due(mock_vault: _MockVaultClient) -> None:
     # 由于 mock 不支持 expires_at 解析, 跳过 metadata 检测
     # 改成手动注入一个 SecretMetadata 到 cache
     from agent_swarm.security.secret_manager import Secret
+
     sm = SecretMetadata(
         key="SOON",
         expires_at=time.time() - 1,
         rotation_due_at=time.time() - 1,
     )
     from agent_swarm.security.secret_manager import _CachedSecret
+
     mgr._cache["SOON"] = _CachedSecret(  # type: ignore[attr-defined]
         secret=Secret(value="x", metadata=sm),
         cached_at=time.time(),

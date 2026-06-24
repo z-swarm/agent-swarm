@@ -247,12 +247,16 @@ async def test_update_task_swarm_api_rejects_invalid_status(tmp_path) -> None:
 
     cfg = {
         "name": "enum-test",
-        "agents": [{
-            "id": "a", "role": "r", "provider": "openai",
-            "model": "gpt-4o-mini", "tools": [],
-        }],
-        "tasks": [{"id": "t-1", "title": "t", "description": "d",
-                    "assigned_to": "a"}],
+        "agents": [
+            {
+                "id": "a",
+                "role": "r",
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "tools": [],
+            }
+        ],
+        "tasks": [{"id": "t-1", "title": "t", "description": "d", "assigned_to": "a"}],
     }
     cfg_path = tmp_path / "x.yaml"
     cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
@@ -264,6 +268,7 @@ async def test_update_task_swarm_api_rejects_invalid_status(tmp_path) -> None:
 
     # 2) 非法 status → ValueError
     import pytest
+
     with pytest.raises(ValueError, match="invalid status"):
         swarm.update_task_status("t-1", "exploded")
     with pytest.raises(ValueError, match="invalid status"):

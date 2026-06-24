@@ -91,8 +91,7 @@ def decrypt_lark_body(encrypt_key: str, encrypted_b64: str) -> str:
         from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
     except ImportError as exc:
         raise RuntimeError(
-            "decrypt_lark_body 需要 cryptography 包;"
-            " 请运行: pip install cryptography>=42.0.0"
+            "decrypt_lark_body 需要 cryptography 包; 请运行: pip install cryptography>=42.0.0"
         ) from exc
     # 1) 计算 key
     key_bytes = hashlib.sha256(encrypt_key.encode("utf-8")).digest()[:32]
@@ -176,13 +175,13 @@ class LarkConnector(ChannelConnector):
     def __init__(
         self,
         app_id: str,
-        app_secret: str,           # 明文，仅在 SecretManager 未接入时临时用
-        verification_token: str,   # 明文，development only
+        app_secret: str,  # 明文，仅在 SecretManager 未接入时临时用
+        verification_token: str,  # 明文，development only
         encrypt_key: str | None = None,
         user_whitelist: list[str] | None = None,
         api_base: str = LARK_API_BASE,
         webhook_host: str = "127.0.0.1",
-        webhook_port: int = 0,     # 0 = 自动选端口
+        webhook_port: int = 0,  # 0 = 自动选端口
     ) -> None:
         """
         @param app_id              飞书应用 ID（cli_xxxx 形式）
@@ -221,8 +220,12 @@ class LarkConnector(ChannelConnector):
         self._started = True
         try:
             await self._start_webhook_server()
-            log.info("lark.connector.started app=%s host=%s port=%s",
-                     self._app_id, self._webhook_host, self._effective_port())
+            log.info(
+                "lark.connector.started app=%s host=%s port=%s",
+                self._app_id,
+                self._webhook_host,
+                self._effective_port(),
+            )
         except ImportError:
             log.warning("lark.aiohttp_not_available; running in offline mode")
 
@@ -250,8 +253,7 @@ class LarkConnector(ChannelConnector):
             from aiohttp import web
         except ImportError as exc:
             raise ImportError(
-                "aiohttp is required for LarkConnector webhook server; "
-                "pip install aiohttp"
+                "aiohttp is required for LarkConnector webhook server; pip install aiohttp"
             ) from exc
 
         app = web.Application()
@@ -294,6 +296,7 @@ class LarkConnector(ChannelConnector):
     async def _on_event(self, request: Any) -> Any:
         """Lark event callback 入口（HTTP POST /lark/event）"""
         from aiohttp import web
+
         body = await request.text()
         ts = request.headers.get("X-Lark-Request-Timestamp", "")
         nonce = request.headers.get("X-Lark-Request-Nonce", "")
@@ -312,6 +315,7 @@ class LarkConnector(ChannelConnector):
     async def _on_card_action(self, request: Any) -> Any:
         """Lark card action callback 入口（HTTP POST /lark/card_action）"""
         from aiohttp import web
+
         body = await request.text()
         ts = request.headers.get("X-Lark-Request-Timestamp", "")
         nonce = request.headers.get("X-Lark-Request-Nonce", "")
@@ -329,7 +333,11 @@ class LarkConnector(ChannelConnector):
         return web.json_response({"code": 0, "msg": "ok"})
 
     def _verify_request_signature(
-        self, ts: str, nonce: str, body: str, header_sig: str,
+        self,
+        ts: str,
+        nonce: str,
+        body: str,
+        header_sig: str,
     ) -> bool:
         """校验请求签名（带时间戳容差）"""
         # 重放窗口：5 分钟
@@ -339,7 +347,11 @@ class LarkConnector(ChannelConnector):
         except (ValueError, TypeError):
             return False
         expected = verify_lark_signature(
-            ts, nonce, body, self._verification_token, self._encrypt_key,
+            ts,
+            nonce,
+            body,
+            self._verification_token,
+            self._encrypt_key,
         )
         if not header_sig:
             return False
@@ -382,7 +394,8 @@ class LarkConnector(ChannelConnector):
         return None
 
     def _parse_card_action_payload(
-        self, payload: dict[str, Any],
+        self,
+        payload: dict[str, Any],
     ) -> ChannelMessage | None:
         """Lark card action callback → ChannelMessage(EVENT)"""
         action = payload.get("action", {})
@@ -445,15 +458,21 @@ class LarkConnector(ChannelConnector):
             }
         # 离线模式：记录
         self._sent_messages.append({"target": target_id, "payload": payload})
-        log.info("lark.send target=%s type=%s offline=%s",
-                 target_id, response.msg_type.value, self._server is None)
+        log.info(
+            "lark.send target=%s type=%s offline=%s",
+            target_id,
+            response.msg_type.value,
+            self._server is None,
+        )
         return True
 
     def _build_card_payload(self, response: ChannelResponse) -> dict[str, Any]:
         """组装飞书卡片 payload（5 个内置模板，W10-4 由 card_templates 模块渲染）"""
         template = response.card_template or "confirm_dialog"
         if template not in CARD_TEMPLATES:
-            log.warning("lark.unknown_card_template template=%s; fallback to confirm_dialog", template)
+            log.warning(
+                "lark.unknown_card_template template=%s; fallback to confirm_dialog", template
+            )
             template = "confirm_dialog"
         # 合并：response.content 作为 message 主体；response.card_data 传给模板
         card_data = dict(response.card_data or {})
@@ -518,8 +537,7 @@ def resolve_lark_secret(env_value: str, env_source: Callable[[str], str | None])
         resolved = env_source(var_name)
         if resolved is None:
             raise RuntimeError(
-                f"Secret reference {env_value!r} could not be resolved: "
-                f"env var {var_name} not set"
+                f"Secret reference {env_value!r} could not be resolved: env var {var_name} not set"
             )
         return resolved
     # 明文——dev/test only

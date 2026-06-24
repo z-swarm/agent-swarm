@@ -73,9 +73,7 @@ def test_turn_to_oai_plain_assistant() -> None:
 def test_turn_to_oai_assistant_with_tool_calls() -> None:
     """assistant + tool_calls 必须包成 OpenAI function calling 格式"""
     tc = ToolCall(id="c1", name="read_file", arguments={"path": "README.md"})
-    out = OpenAIProvider._turn_to_oai(
-        Turn(role="assistant", content="", tool_calls=[tc])
-    )
+    out = OpenAIProvider._turn_to_oai(Turn(role="assistant", content="", tool_calls=[tc]))
     assert out["role"] == "assistant"
     assert out["content"] is None  # 空 content 转 None（OpenAI 要求）
     assert len(out["tool_calls"]) == 1
@@ -99,9 +97,7 @@ def test_turn_to_oai_assistant_with_content_and_tool_calls() -> None:
 
 def test_turn_to_oai_tool() -> None:
     """tool role 必须含 tool_call_id"""
-    out = OpenAIProvider._turn_to_oai(
-        Turn(role="tool", content="file content", tool_call_id="c1")
-    )
+    out = OpenAIProvider._turn_to_oai(Turn(role="tool", content="file content", tool_call_id="c1"))
     assert out == {"role": "tool", "content": "file content", "tool_call_id": "c1"}
 
 
@@ -114,9 +110,7 @@ def test_turn_to_oai_tool_missing_id() -> None:
 def test_turn_to_oai_unicode_arguments() -> None:
     """非 ASCII 参数序列化时不应被 \\uXXXX 转义"""
     tc = ToolCall(id="c1", name="x", arguments={"path": "中文.md"})
-    out = OpenAIProvider._turn_to_oai(
-        Turn(role="assistant", content="", tool_calls=[tc])
-    )
+    out = OpenAIProvider._turn_to_oai(Turn(role="assistant", content="", tool_calls=[tc]))
     args_str = out["tool_calls"][0]["function"]["arguments"]
     assert "中文" in args_str  # ensure_ascii=False 生效
 
@@ -163,9 +157,7 @@ async def test_chat_simple_text_response(provider: OpenAIProvider) -> None:
     fake_resp = _make_mock_response(content="hello world", finish_reason="stop")
     provider._client.chat.completions.create = AsyncMock(return_value=fake_resp)
 
-    result = await provider.chat(
-        messages=[Turn(role="user", content="say hi")]
-    )
+    result = await provider.chat(messages=[Turn(role="user", content="say hi")])
     assert result.content == "hello world"
     assert result.tool_calls == []
     assert result.finish_reason == "stop"
@@ -246,9 +238,7 @@ async def test_chat_handles_invalid_json_arguments(provider: OpenAIProvider) -> 
 async def test_chat_handles_empty_arguments(provider: OpenAIProvider) -> None:
     """arguments 为空字符串时也应得到合法 dict"""
     oai_tc = _make_oai_tool_call(call_id="c1", name="x", arguments="")
-    fake_resp = _make_mock_response(
-        tool_calls=[oai_tc], finish_reason="tool_calls"
-    )
+    fake_resp = _make_mock_response(tool_calls=[oai_tc], finish_reason="tool_calls")
     provider._client.chat.completions.create = AsyncMock(return_value=fake_resp)
     result = await provider.chat(messages=[Turn(role="user", content="x")])
     assert result.tool_calls[0].arguments == {}
@@ -318,9 +308,7 @@ async def test_chat_round_trip_with_tool_history(provider: OpenAIProvider) -> No
         Turn(
             role="assistant",
             content="",
-            tool_calls=[
-                ToolCall(id="c1", name="read_file", arguments={"path": "README.md"})
-            ],
+            tool_calls=[ToolCall(id="c1", name="read_file", arguments={"path": "README.md"})],
         ),
         Turn(role="tool", content="# project", tool_call_id="c1"),
     ]

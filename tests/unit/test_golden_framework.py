@@ -21,9 +21,7 @@ def _seed_case(case_dir: Path, expected: dict, swarm_cfg: dict | None = None) ->
     if swarm_cfg is None:
         swarm_cfg = {
             "name": expected.get("id", "x"),
-            "agents": [
-                {"id": "a", "role": "r", "provider": "openai", "model": "gpt-4o-mini"}
-            ],
+            "agents": [{"id": "a", "role": "r", "provider": "openai", "model": "gpt-4o-mini"}],
             "tasks": [{"title": "t"}],
         }
     (case_dir / "input.yaml").write_text(yaml.safe_dump(swarm_cfg), encoding="utf-8")
@@ -48,16 +46,19 @@ def test_load_expectation_minimal(tmp_path: Path) -> None:
 
 def test_load_expectation_with_must_find(tmp_path: Path) -> None:
     case = tmp_path / "G"
-    _seed_case(case, {
-        "id": "G",
-        "expected": {
-            "must_find": [
-                {"keyword": "SQL", "location": "auth.py:42"},
-                {"keyword": "XSS"},
-            ],
-            "must_not_claim": [{"keyword": "false_positive"}],
+    _seed_case(
+        case,
+        {
+            "id": "G",
+            "expected": {
+                "must_find": [
+                    {"keyword": "SQL", "location": "auth.py:42"},
+                    {"keyword": "XSS"},
+                ],
+                "must_not_claim": [{"keyword": "false_positive"}],
+            },
         },
-    })
+    )
     exp = load_expectation(case)
     assert len(exp.must_find) == 2
     assert exp.must_find[0]["keyword"] == "SQL"
@@ -117,10 +118,12 @@ def _make_exp(**kwargs) -> GoldenExpectation:
 
 
 def test_evaluate_all_must_find_hit() -> None:
-    exp = _make_exp(must_find=[
-        {"keyword": "SQL injection"},
-        {"keyword": "auth"},
-    ])
+    exp = _make_exp(
+        must_find=[
+            {"keyword": "SQL injection"},
+            {"keyword": "auth"},
+        ]
+    )
     v = evaluate(exp, "Found SQL injection in auth module", 1.0, 100)
     assert v.passed
     assert len(v.must_find_hits) == 2
@@ -150,9 +153,11 @@ def test_evaluate_partial_hit_above_threshold() -> None:
 
 def test_evaluate_must_find_with_location() -> None:
     """同时给 keyword + location，二者都需在输出中"""
-    exp = _make_exp(must_find=[
-        {"keyword": "SQL", "location": "auth.py:42"},
-    ])
+    exp = _make_exp(
+        must_find=[
+            {"keyword": "SQL", "location": "auth.py:42"},
+        ]
+    )
     # keyword OK 但 location 缺
     v_partial = evaluate(exp, "Found SQL but somewhere", 1.0, 100)
     assert not v_partial.passed

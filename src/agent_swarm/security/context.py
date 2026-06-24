@@ -39,7 +39,7 @@ class TenantMode(StrEnum):
     """多租户模式——DESIGN §8.4 + P3-PLAN-v2 W16 ②"""
 
     SINGLE = "single"  # 单租户（默认）：tenant_id 任意（默认 "local"）
-    MULTI = "multi"    # 多租户：tenant_id 必填且不能为 "local"
+    MULTI = "multi"  # 多租户：tenant_id 必填且不能为 "local"
 
 
 @dataclass(frozen=True)
@@ -65,9 +65,7 @@ class SecurityContext:
         """W16 ② 校验：multi 模式下 tenant_id 必填且非默认值"""
         if self.mode == TenantMode.MULTI:
             if not self.tenant_id or not self.tenant_id.strip():
-                raise ValueError(
-                    "SecurityContext.mode=MULTI requires non-empty tenant_id"
-                )
+                raise ValueError("SecurityContext.mode=MULTI requires non-empty tenant_id")
             if self.tenant_id == "local":
                 raise ValueError(
                     "SecurityContext.mode=MULTI rejects reserved tenant_id='local'; "
@@ -125,9 +123,7 @@ class SecurityContextManager:
         except LookupError:
             ctx = None
         if ctx is None:
-            return SecurityContext(
-                tenant_id=tenant_id, session_id=session_id, user=None
-            )
+            return SecurityContext(tenant_id=tenant_id, session_id=session_id, user=None)
         return ctx
 
     @staticmethod

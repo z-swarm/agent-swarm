@@ -108,7 +108,10 @@ def test_construct_bearer_requires_token() -> None:
     """bearer auth 但缺 token 时 MCPServerConfig.__post_init__ 已拒"""
     with pytest.raises(ValueError, match="auth=bearer requires 'token'"):
         MCPServerConfig(
-            name="x", transport="sse", url="http://x", auth="bearer",
+            name="x",
+            transport="sse",
+            url="http://x",
+            auth="bearer",
         )
 
 
@@ -156,9 +159,11 @@ async def test_sse_parse_message_event_returns_dict() -> None:
     cfg = _make_config()
     client = SseMCPClient(cfg)
 
-    resp = _make_sse_response([
-        _sse_event('{"jsonrpc": "2.0", "id": 1, "result": {"tools": []}}'),
-    ])
+    resp = _make_sse_response(
+        [
+            _sse_event('{"jsonrpc": "2.0", "id": 1, "result": {"tools": []}}'),
+        ]
+    )
 
     parsed = await client._parse_sse_response(resp)
     assert parsed["id"] == 1
@@ -171,10 +176,12 @@ async def test_sse_parse_ignores_non_message_events() -> None:
     cfg = _make_config()
     client = SseMCPClient(cfg)
 
-    resp = _make_sse_response([
-        _sse_event("http://localhost:8765/sse", event_type="endpoint"),
-        _sse_event('{"jsonrpc": "2.0", "id": 1, "result": {"ok": true}}'),
-    ])
+    resp = _make_sse_response(
+        [
+            _sse_event("http://localhost:8765/sse", event_type="endpoint"),
+            _sse_event('{"jsonrpc": "2.0", "id": 1, "result": {"ok": true}}'),
+        ]
+    )
 
     parsed = await client._parse_sse_response(resp)
     assert parsed["id"] == 1
@@ -188,7 +195,7 @@ async def test_sse_parse_multiline_data() -> None:
     client = SseMCPClient(cfg)
 
     # 单个 event 内多行 data；按 SSE 规范空行结束
-    single_event = "event: message\ndata: {\"jsonrpc\": \"2.0\",\ndata: \"id\": 1,\ndata: \"result\": {}}"
+    single_event = 'event: message\ndata: {"jsonrpc": "2.0",\ndata: "id": 1,\ndata: "result": {}}'
     resp = _make_sse_response([single_event])
 
     parsed = await client._parse_sse_response(resp)
@@ -202,9 +209,11 @@ async def test_sse_parse_invalid_json_raises() -> None:
     cfg = _make_config()
     client = SseMCPClient(cfg)
 
-    resp = _make_sse_response([
-        _sse_event("not json {{"),
-    ])
+    resp = _make_sse_response(
+        [
+            _sse_event("not json {{"),
+        ]
+    )
 
     with pytest.raises(MCPRPCError, match="SSE invalid JSON"):
         await client._parse_sse_response(resp)
@@ -216,9 +225,11 @@ async def test_sse_parse_empty_stream_raises() -> None:
     cfg = _make_config()
     client = SseMCPClient(cfg)
 
-    resp = _make_sse_response([
-        _sse_event("http://x", event_type="endpoint"),
-    ])
+    resp = _make_sse_response(
+        [
+            _sse_event("http://x", event_type="endpoint"),
+        ]
+    )
 
     with pytest.raises(MCPConnectionError, match="without JSON-RPC response"):
         await client._parse_sse_response(resp)
@@ -230,10 +241,12 @@ async def test_sse_parse_handles_comment_lines() -> None:
     cfg = _make_config()
     client = SseMCPClient(cfg)
 
-    resp = _make_sse_response([
-        ": this is a comment",
-        _sse_event('{"jsonrpc": "2.0", "id": 5, "result": "x"}'),
-    ])
+    resp = _make_sse_response(
+        [
+            ": this is a comment",
+            _sse_event('{"jsonrpc": "2.0", "id": 5, "result": "x"}'),
+        ]
+    )
 
     parsed = await client._parse_sse_response(resp)
     assert parsed["id"] == 5
@@ -259,12 +272,16 @@ async def test_list_tools_returns_tools_list() -> None:
     cfg = _make_config()
     client = SseMCPClient(cfg)
 
-    init_resp = _make_sse_response([
-        _sse_event('{"jsonrpc": "2.0", "id": 1, "result": {"protocolVersion": "2024-11-05"}}'),
-    ])
-    list_resp = _make_sse_response([
-        _sse_event('{"jsonrpc": "2.0", "id": 2, "result": {"tools": [{"name": "echo"}]}}'),
-    ])
+    init_resp = _make_sse_response(
+        [
+            _sse_event('{"jsonrpc": "2.0", "id": 1, "result": {"protocolVersion": "2024-11-05"}}'),
+        ]
+    )
+    list_resp = _make_sse_response(
+        [
+            _sse_event('{"jsonrpc": "2.0", "id": 2, "result": {"tools": [{"name": "echo"}]}}'),
+        ]
+    )
 
     with patch.object(client, "_session", _make_mock_session([init_resp, list_resp])):
         await client.connect()
@@ -279,12 +296,18 @@ async def test_call_tool_returns_content() -> None:
     cfg = _make_config()
     client = SseMCPClient(cfg)
 
-    init_resp = _make_sse_response([
-        _sse_event('{"jsonrpc": "2.0", "id": 1, "result": {}}'),
-    ])
-    call_resp = _make_sse_response([
-        _sse_event('{"jsonrpc": "2.0", "id": 2, "result": {"content": [{"type": "text", "text": "hi"}]}}'),
-    ])
+    init_resp = _make_sse_response(
+        [
+            _sse_event('{"jsonrpc": "2.0", "id": 1, "result": {}}'),
+        ]
+    )
+    call_resp = _make_sse_response(
+        [
+            _sse_event(
+                '{"jsonrpc": "2.0", "id": 2, "result": {"content": [{"type": "text", "text": "hi"}]}}'
+            ),
+        ]
+    )
 
     with patch.object(client, "_session", _make_mock_session([init_resp, call_resp])):
         await client.connect()
@@ -299,12 +322,18 @@ async def test_call_tool_rpc_error_raises() -> None:
     cfg = _make_config()
     client = SseMCPClient(cfg)
 
-    init_resp = _make_sse_response([
-        _sse_event('{"jsonrpc": "2.0", "id": 1, "result": {}}'),
-    ])
-    call_resp = _make_sse_response([
-        _sse_event('{"jsonrpc": "2.0", "id": 2, "error": {"code": -32601, "message": "Method not found"}}'),
-    ])
+    init_resp = _make_sse_response(
+        [
+            _sse_event('{"jsonrpc": "2.0", "id": 1, "result": {}}'),
+        ]
+    )
+    call_resp = _make_sse_response(
+        [
+            _sse_event(
+                '{"jsonrpc": "2.0", "id": 2, "error": {"code": -32601, "message": "Method not found"}}'
+            ),
+        ]
+    )
 
     with patch.object(client, "_session", _make_mock_session([init_resp, call_resp])):
         await client.connect()

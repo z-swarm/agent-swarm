@@ -15,6 +15,7 @@ try:
         RedisBackend,
         RedisConfig,
     )
+
     __all__ += ["RedisBackend", "RedisConfig"]
 except ImportError:  # pragma: no cover
     pass
@@ -25,6 +26,7 @@ try:
         PostgresBackend,
         PostgresConfig,
     )
+
     __all__ += ["PostgresBackend", "PostgresConfig"]
 except ImportError:  # pragma: no cover
     pass

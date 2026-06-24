@@ -13,7 +13,8 @@ from agent_swarm.security.sandbox import SandboxManager, SandboxMode
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="P3-WIN: hardcoded /tmp path, not Windows-compatible",
+    sys.platform == "win32",
+    reason="P3-WIN: hardcoded /tmp path, not Windows-compatible",
 )
 def test_sandbox_mode_workspace_only_is_default() -> None:
     sb = SandboxManager(workspace=Path("/tmp"))
@@ -27,7 +28,8 @@ async def test_sandbox_workspace_must_exist(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="P3-WIN: subprocess echo shell semantics differ on Windows",
+    sys.platform == "win32",
+    reason="P3-WIN: subprocess echo shell semantics differ on Windows",
 )
 async def test_sandbox_execute_simple(tmp_path: Path) -> None:
     sb = SandboxManager(workspace=tmp_path)
@@ -37,7 +39,8 @@ async def test_sandbox_execute_simple(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="P3-WIN: subprocess cwd handling differs on Windows",
+    sys.platform == "win32",
+    reason="P3-WIN: subprocess cwd handling differs on Windows",
 )
 async def test_sandbox_workspace_is_cwd(tmp_path: Path) -> None:
     """pwd 应返回 workspace——证明 cwd 被强制改写"""
@@ -87,7 +90,8 @@ async def test_sandbox_output_truncated(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="P3-WIN: subprocess timeout semantics differ on Windows",
+    sys.platform == "win32",
+    reason="P3-WIN: subprocess timeout semantics differ on Windows",
 )
 async def test_sandbox_timeout(tmp_path: Path) -> None:
     """sleep 超过 timeout——应被 kill 并标记 timed_out"""
@@ -100,7 +104,8 @@ async def test_sandbox_timeout(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="P3-WIN: HOME env differs on Windows",
+    sys.platform == "win32",
+    reason="P3-WIN: HOME env differs on Windows",
 )
 async def test_sandbox_home_is_workspace(tmp_path: Path) -> None:
     """HOME 应被设为 workspace——隔离家目录访问
@@ -222,7 +227,8 @@ async def test_sandbox_workspace_strict_resolve(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="P3-WIN: subprocess pipe double-communicate differs on Windows",
+    sys.platform == "win32",
+    reason="P3-WIN: subprocess pipe double-communicate differs on Windows",
 )
 async def test_sandbox_timeout_does_not_double_communicate(tmp_path: Path) -> None:
     """P1-9: 修 EBADF 确定性 bug——kill 后只 wait() 不 communicate"""
@@ -237,13 +243,20 @@ async def test_sandbox_timeout_does_not_double_communicate(tmp_path: Path) -> No
 # P0-1: 环境变量脱敏——defense-in-depth 防 `cat`/`grep` 读出 OPENAI_API_KEY 等
 # ---------------------------------------------------------------------------
 
+
 def test_p01_secret_env_name_regex_matches_secret_keywords() -> None:
     """PASS/PASSWD/SECRET/TOKEN/CREDENTIAL/PRIVATE/API_KEY/_KEY 全部命中"""
     re = sb_mod._SECRET_ENV_NAME_RE
     for name in [
-        "OPENAI_API_KEY", "LARK_APP_SECRET", "PGPASSWORD",
-        "GITHUB_TOKEN", "DB_CREDENTIAL", "RSA_PRIVATE_KEY",
-        "aws_secret_access_key", "my_pass_var", "auth_token_2",
+        "OPENAI_API_KEY",
+        "LARK_APP_SECRET",
+        "PGPASSWORD",
+        "GITHUB_TOKEN",
+        "DB_CREDENTIAL",
+        "RSA_PRIVATE_KEY",
+        "aws_secret_access_key",
+        "my_pass_var",
+        "auth_token_2",
     ]:
         assert re.search(name), f"应命中: {name}"
 
@@ -251,14 +264,14 @@ def test_p01_secret_env_name_regex_matches_secret_keywords() -> None:
 def test_p01_secret_env_name_regex_skips_normal_vars() -> None:
     """PATH/HOME/USER/TERM/SHELL 等常规变量不被误伤"""
     re = sb_mod._SECRET_ENV_NAME_RE
-    for name in ["PATH", "HOME", "USER", "TERM", "SHELL",
-                 "LANG", "PWD", "EDITOR", "PYTHONPATH"]:
+    for name in ["PATH", "HOME", "USER", "TERM", "SHELL", "LANG", "PWD", "EDITOR", "PYTHONPATH"]:
         assert not re.search(name), f"误伤: {name}"
 
 
 def test_p01_sandbox_execute_strips_secret_env(monkeypatch, tmp_path: Path) -> None:
     """execute() 透传 env 时不携带密钥类变量——`printenv` 也拿不到"""
     import asyncio as _asyncio
+
     sb = SandboxManager(workspace=tmp_path)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-fake-12345")
     monkeypatch.setenv("LARK_APP_SECRET", "lark-fake")
@@ -276,10 +289,8 @@ def test_p01_sandbox_execute_strips_secret_env(monkeypatch, tmp_path: Path) -> N
 def test_p01_sandbox_env_overrides_not_redacted(monkeypatch, tmp_path: Path) -> None:
     """env_overrides 显式注入的变量不被脱敏(用户明确知情)"""
     import asyncio as _asyncio
+
     sb = SandboxManager(workspace=tmp_path)
     monkeypatch.delenv("MY_KEY", raising=False)
-    result = _asyncio.run(
-        sb.execute("printenv MY_KEY", env_overrides={"MY_KEY": "explicit"})
-    )
+    result = _asyncio.run(sb.execute("printenv MY_KEY", env_overrides={"MY_KEY": "explicit"}))
     assert result.stdout.strip() == "explicit"
-

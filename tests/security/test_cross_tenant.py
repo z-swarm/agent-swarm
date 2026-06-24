@@ -31,13 +31,16 @@ from agent_swarm.security.context import SecurityContext, TenantMode
 
 def _ctx(tenant_id: str) -> SecurityContext:
     return SecurityContext(
-        tenant_id=tenant_id, session_id=f"s-{tenant_id}", mode=TenantMode.MULTI,
+        tenant_id=tenant_id,
+        session_id=f"s-{tenant_id}",
+        mode=TenantMode.MULTI,
     )
 
 
 def _ctx_scope(ctx: SecurityContext):
     """helper：同步 scope 上下文"""
     from agent_swarm.security.context import SecurityContextManager
+
     return SecurityContextManager.scope(ctx)
 
 
@@ -55,9 +58,7 @@ async def test_kb_tenant_isolation() -> None:
         await kb_a.cache_analysis("secret_key", {"data": "A's secret"})
     with _ctx_scope(_ctx("tenant-B")):
         result = await kb_b.get_cached_analysis("secret_key")
-        assert result is None, (
-            f"tenant B read tenant A's KB cache! got: {result!r}"
-        )
+        assert result is None, f"tenant B read tenant A's KB cache! got: {result!r}"
 
 
 @pytest.mark.asyncio
@@ -97,6 +98,7 @@ async def test_task_queue_tenant_isolation() -> None:
     q_b = TaskQueue(session_id="s-b")
     # 在不同 SecurityContext 下 add
     from agent_swarm.security.context import SecurityContextManager
+
     with SecurityContextManager.scope(_ctx("tenant-A")):
         await q_a.add(_task("t-A-1", title="A's task"))
     with SecurityContextManager.scope(_ctx("tenant-B")):
@@ -118,6 +120,7 @@ async def test_task_queue_cross_tenant_claim_rejected() -> None:
     """B.2 攻击: tenant B agent 抢 tenant A 的 task → 应被拒绝"""
     q_a = TaskQueue(session_id="s-a")
     from agent_swarm.security.context import SecurityContextManager
+
     with SecurityContextManager.scope(_ctx("tenant-A")):
         await q_a.add(_task("t-A-1", title="A's task"))
         a_task = await q_a.get("t-A-1")
@@ -143,6 +146,7 @@ async def test_mailbox_tenant_isolation() -> None:
     mb_a = Mailbox(session_id="s-a")
     mb_b = Mailbox(session_id="s-b")
     from agent_swarm.security.context import SecurityContextManager
+
     with SecurityContextManager.scope(_ctx("tenant-A")):
         await mb_a.send(_message("A-agent", "A-agent", "A's secret"))
     with SecurityContextManager.scope(_ctx("tenant-B")):
@@ -171,7 +175,9 @@ def test_cannot_inject_fake_multi_context() -> None:
     with pytest.raises(ValueError):
         # tenant_id=local 在 multi 模式下被拒
         SecurityContext(
-            tenant_id="local", session_id="s1", mode=TenantMode.MULTI,
+            tenant_id="local",
+            session_id="s1",
+            mode=TenantMode.MULTI,
         )
 
 
@@ -179,14 +185,18 @@ def test_cannot_inject_empty_tenant_in_multi() -> None:
     """D.2 攻击: 试图构造空 tenant_id 在 multi 模式下"""
     with pytest.raises(ValueError, match="non-empty tenant_id"):
         SecurityContext(
-            tenant_id="", session_id="s1", mode=TenantMode.MULTI,
+            tenant_id="",
+            session_id="s1",
+            mode=TenantMode.MULTI,
         )
 
 
 def test_tenant_id_case_sensitive() -> None:
     """D.3 攻击: 'LOCAL' != 'local'——大小写敏感"""
     ctx = SecurityContext(
-        tenant_id="LOCAL", session_id="s1", mode=TenantMode.MULTI,
+        tenant_id="LOCAL",
+        session_id="s1",
+        mode=TenantMode.MULTI,
     )
     assert ctx.tenant_id == "LOCAL"
     # 注意：这里只校验不等于 'local'（小写）；'LOCAL' 仍合法
@@ -209,10 +219,16 @@ def test_session_id_collision_risk_with_tenant() -> None:
 def test_request_id_uniqueness() -> None:
     """E.2 攻击: request_id 在不同 tenant 中允许相同（不构成越权）"""
     ctx_a = SecurityContext(
-        tenant_id="A", session_id="s", mode=TenantMode.MULTI, request_id="r-1",
+        tenant_id="A",
+        session_id="s",
+        mode=TenantMode.MULTI,
+        request_id="r-1",
     )
     ctx_b = SecurityContext(
-        tenant_id="B", session_id="s", mode=TenantMode.MULTI, request_id="r-1",
+        tenant_id="B",
+        session_id="s",
+        mode=TenantMode.MULTI,
+        request_id="r-1",
     )
     # request_id 允许重复（审计粒度）——只要 tenant_id 不同
     assert ctx_a.request_id == ctx_b.request_id
@@ -248,7 +264,10 @@ def _task(task_id: str, title: str = "test task"):
 
 
 def _message(
-    from_agent: str, to_agent: str, content: str, tenant: str = "default",
+    from_agent: str,
+    to_agent: str,
+    content: str,
+    tenant: str = "default",
 ) -> Message:
     """helper: 构造 Message"""
     return Message(

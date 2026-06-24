@@ -19,8 +19,12 @@ from agent_swarm.core.types import (
 
 def _plan_only(id: str) -> Agent:
     return Agent(
-        id=id, role="judge", persona="", model="gpt-4o-mini",
-        provider="openai", capabilities=AgentCapabilities.plan_only(),
+        id=id,
+        role="judge",
+        persona="",
+        model="gpt-4o-mini",
+        provider="openai",
+        capabilities=AgentCapabilities.plan_only(),
     )
 
 
@@ -30,12 +34,17 @@ def _make_judge_fn(per_hyp_stance: dict[str, Stance], confidence: float = 1.0):
 
     @param per_hyp_stance  hypothesis_id -> Stance
     """
+
     async def judge_fn(agent, hyp_id, round_no):
         return Judgement(
-            agent_id=agent.id, hypothesis_id=hyp_id, round_no=round_no,
-            stance=per_hyp_stance[hyp_id], confidence=confidence,
+            agent_id=agent.id,
+            hypothesis_id=hyp_id,
+            round_no=round_no,
+            stance=per_hyp_stance[hyp_id],
+            confidence=confidence,
             reasoning=f"scripted: {per_hyp_stance[hyp_id].value}",
         )
+
     return judge_fn
 
 
@@ -66,9 +75,13 @@ async def test_consensus_stable_after_two_rounds() -> None:
     verdict = await v.verify(
         hypotheses=["hypothesis A", "hypothesis B", "hypothesis C"],
         agents=[_plan_only("a1")],
-        judge_fn=_make_judge_fn({
-            "h0": Stance.SUPPORT, "h1": Stance.SUPPORT, "h2": Stance.SUPPORT,
-        }),
+        judge_fn=_make_judge_fn(
+            {
+                "h0": Stance.SUPPORT,
+                "h1": Stance.SUPPORT,
+                "h2": Stance.SUPPORT,
+            }
+        ),
     )
     assert verdict.convergence_reason == "consensus_stable"
     assert len(verdict.survivors) == 3
@@ -81,11 +94,13 @@ async def test_max_rounds_exhausted_with_two_survivors() -> None:
     # round 1: SUPPORT both; round 2: REFUTE both → support_score <0 → 连续 2 轮负数
     # 会触发 cond_b 淘汰，所以换种方式
     call = {"n": 0}
+
     async def judge_fn(agent, hyp_id, round_no):
         call["n"] += 1
         # 立场随 round 变化（防 consensus_stable），但不淘汰
         stance = Stance.SUPPORT if round_no == 1 else Stance.UNCERTAIN  # score=0, 不淘汰
         return Judgement(agent.id, hyp_id, round_no, stance, 0.8)
+
     verdict = await v.verify(
         hypotheses=["A", "B"],
         agents=[_plan_only("a1")],
@@ -123,12 +138,14 @@ async def test_round_all_failed_is_rolled_back() -> None:
     v = AdversarialVerifier(min_survivors=1, max_rounds=5)
 
     call = {"n": 0}
+
     async def judge_fn(agent, hyp_id, round_no):
         call["n"] += 1
         if round_no == 1:
             return Judgement(agent.id, hyp_id, 1, Stance.UNCERTAIN, 0.0)
         # round 2：恢复
         return Judgement(agent.id, hyp_id, 2, Stance.SUPPORT, 1.0)
+
     verdict = await v.verify(
         hypotheses=["A"],
         agents=[_plan_only("a1")],
@@ -147,6 +164,7 @@ async def test_two_consecutive_all_failed_rounds_raise_stall() -> None:
 
     async def judge_fn(agent, hyp_id, round_no):
         return Judgement(agent.id, hyp_id, round_no, Stance.UNCERTAIN, 0.0)
+
     with pytest.raises(VerifierStallError, match="stalled"):
         await v.verify(
             hypotheses=["A"],
@@ -199,6 +217,7 @@ async def test_one_agent_exception_does_not_stall_verifier() -> None:
         if agent.id == "bad":
             raise RuntimeError("simulated")
         return Judgement(agent.id, hyp_id, round_no, Stance.SUPPORT, 1.0)
+
     verdict = await v.verify(
         hypotheses=["A"],
         agents=[_plan_only("bad"), _plan_only("good")],

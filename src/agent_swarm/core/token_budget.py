@@ -140,7 +140,8 @@ class TokenBudgetManager:
         if dropped > 0:
             log.warning(
                 "token_budget.truncated dropped=%d kept=%d (no summary in W5)",
-                dropped, len(truncated),
+                dropped,
+                len(truncated),
             )
         return truncated
 

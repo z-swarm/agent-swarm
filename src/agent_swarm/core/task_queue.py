@@ -65,8 +65,7 @@ class TaskQueue:
                 if not deps_done:
                     task.status = "blocked"
             self._tasks[task.id] = task
-            log.debug("task.created id=%s title=%s status=%s",
-                      task.id, task.title, task.status)
+            log.debug("task.created id=%s title=%s status=%s", task.id, task.title, task.status)
             payload = {
                 "task_id": task.id,
                 "title": task.title,
@@ -115,29 +114,23 @@ class TaskQueue:
         """
         async with self._lock:
             return [
-                t for t in self._tasks.values()
+                t
+                for t in self._tasks.values()
                 if t.status == "pending"
                 and self._deps_satisfied(t)
-                and (
-                    agent_id is None
-                    or t.assigned_to is None
-                    or t.assigned_to == agent_id
-                )
+                and (agent_id is None or t.assigned_to is None or t.assigned_to == agent_id)
             ]
 
     def _deps_satisfied(self, task: Task) -> bool:
         """所有依赖任务都 completed？（持锁状态下调用）"""
         return all(
-            self._tasks.get(d) and self._tasks[d].status == "completed"
-            for d in task.depends_on
+            self._tasks.get(d) and self._tasks[d].status == "completed" for d in task.depends_on
         )
 
     # ------------------------------------------------------------------
     # CAS 状态变更
     # ------------------------------------------------------------------
-    async def claim(
-        self, task_id: str, agent_id: str, expected_version: int
-    ) -> ClaimResult:
+    async def claim(self, task_id: str, agent_id: str, expected_version: int) -> ClaimResult:
         """
         认领任务——CAS 更新 status=pending → in_progress, assigned_to=agent_id
 
@@ -155,8 +148,13 @@ class TaskQueue:
                 result = ClaimResult(success=False, reason="task_not_found")
             elif t.version != expected_version:
                 # CAS 冲突——其他 agent 抢先了
-                log.info("task.cas_conflict id=%s expected=%d actual=%d agent=%s",
-                         task_id, expected_version, t.version, agent_id)
+                log.info(
+                    "task.cas_conflict id=%s expected=%d actual=%d agent=%s",
+                    task_id,
+                    expected_version,
+                    t.version,
+                    agent_id,
+                )
                 event_name = "task.cas_conflict"
                 event_payload = {
                     "task_id": task_id,
@@ -201,9 +199,7 @@ class TaskQueue:
             await emit(event_name, self.session_id, event_payload)
         return result
 
-    async def complete(
-        self, task_id: str, result: Any, expected_version: int
-    ) -> ClaimResult:
+    async def complete(self, task_id: str, result: Any, expected_version: int) -> ClaimResult:
         """CAS 更新 status=in_progress → completed；冲突返回 version_mismatch"""
         event_name: str | None = None
         event_payload: dict[str, Any] = {}
@@ -216,8 +212,12 @@ class TaskQueue:
             if t is None:
                 ret = ClaimResult(success=False, reason="task_not_found")
             elif t.version != expected_version:
-                log.info("task.cas_conflict on complete id=%s expected=%d actual=%d",
-                         task_id, expected_version, t.version)
+                log.info(
+                    "task.cas_conflict on complete id=%s expected=%d actual=%d",
+                    task_id,
+                    expected_version,
+                    t.version,
+                )
                 event_name = "task.cas_conflict"
                 event_payload = {
                     "task_id": task_id,
@@ -250,9 +250,7 @@ class TaskQueue:
             await emit(name, self.session_id, payload)
         return ret
 
-    async def fail(
-        self, task_id: str, error: str, expected_version: int
-    ) -> ClaimResult:
+    async def fail(self, task_id: str, error: str, expected_version: int) -> ClaimResult:
         """CAS 更新 status → failed"""
         event_name: str | None = None
         event_payload: dict[str, Any] = {}
@@ -292,9 +290,7 @@ class TaskQueue:
     # ------------------------------------------------------------------
     # 内部：依赖解阻塞
     # ------------------------------------------------------------------
-    def _unblock_dependents(
-        self, completed_task_id: str
-    ) -> list[tuple[str, dict[str, Any]]]:
+    def _unblock_dependents(self, completed_task_id: str) -> list[tuple[str, dict[str, Any]]]:
         """
         task X 完成后，把所有依赖 X 的 blocked 任务转回 pending
 

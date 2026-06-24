@@ -27,7 +27,8 @@ from agent_swarm.core.types import ToolCall
 from tests.conftest import FakeLLMProvider, ScriptedResponse
 
 pytestmark = pytest.mark.skipif(
-    sys.platform == "win32", reason="P3-WIN: e2e CLI run has Windows shell differences",
+    sys.platform == "win32",
+    reason="P3-WIN: e2e CLI run has Windows shell differences",
 )
 
 
@@ -92,9 +93,7 @@ def fake_w2(monkeypatch: pytest.MonkeyPatch) -> FakeLLMProvider:
     # reader 阶段
     fake.script.append(
         ScriptedResponse(
-            tool_calls=[
-                ToolCall(id="c1", name="read_file", arguments={"path": "data.txt"})
-            ],
+            tool_calls=[ToolCall(id="c1", name="read_file", arguments={"path": "data.txt"})],
             finish_reason="tool_use",
         )
     )
@@ -114,14 +113,10 @@ def fake_w2(monkeypatch: pytest.MonkeyPatch) -> FakeLLMProvider:
             finish_reason="tool_use",
         )
     )
-    fake.script.append(
-        ScriptedResponse(content="forwarded data", finish_reason="stop")
-    )
+    fake.script.append(ScriptedResponse(content="forwarded data", finish_reason="stop"))
     # writer 阶段
     fake.script.append(
-        ScriptedResponse(
-            content="Summary: data is payload-w2", finish_reason="stop"
-        )
+        ScriptedResponse(content="Summary: data is payload-w2", finish_reason="stop")
     )
     # 兜底
     for _ in range(10):
@@ -197,9 +192,15 @@ def test_w2_cas_conflict_with_concurrent_agents(
     cfg = {
         "name": "race",
         "agents": [
-            {"id": f"a{i}", "role": "r", "persona": "p",
-             "provider": "openai", "model": "gpt-4o-mini",
-             "tools": ["read_file"], "max_iterations": 2}
+            {
+                "id": f"a{i}",
+                "role": "r",
+                "persona": "p",
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "tools": ["read_file"],
+                "max_iterations": 2,
+            }
             for i in range(5)
         ],
         # 1 个 unassigned task → 5 个 agent 抢

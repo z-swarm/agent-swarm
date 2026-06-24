@@ -32,7 +32,8 @@ from agent_swarm.cli.doctor import (
 )
 
 pytestmark = pytest.mark.skipif(
-    sys.platform == "win32", reason="P3-WIN: doctor CLI invocation differs on Windows",
+    sys.platform == "win32",
+    reason="P3-WIN: doctor CLI invocation differs on Windows",
 )
 
 # ---------------------------------------------------------------------------
@@ -180,6 +181,7 @@ async def test_llm_provider_missing_key() -> None:
 
     with patch.dict("os.environ", {}, clear=False):
         import os as _os
+
         _os.environ.pop("OPENAI_API_KEY", None)
         r = await check_llm_provider("openai", "OPENAI_API_KEY")
     assert r.status == CheckStatus.WARN
@@ -257,7 +259,8 @@ def test_doctor_cli_skip_all_warns_secrets(tmp_path: Path) -> None:
     result = runner.invoke(
         doctor,
         [
-            "--db", str(tmp_path / "sessions.db"),
+            "--db",
+            str(tmp_path / "sessions.db"),
             "--skip-llm",
             "--skip-mcp",
         ],
@@ -274,7 +277,8 @@ def test_doctor_cli_all_skipped_via_fake_llm(tmp_path: Path) -> None:
     result = runner.invoke(
         doctor,
         [
-            "--db", str(tmp_path / "sessions.db"),
+            "--db",
+            str(tmp_path / "sessions.db"),
             "--skip-llm",
             "--skip-mcp",
             "--skip-sandbox",

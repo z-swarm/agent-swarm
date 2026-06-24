@@ -37,8 +37,12 @@ def test_rule_b_consensus_stable() -> None:
     h2 = _hs("h2")
     stances = {("a1", "h1"): Stance.SUPPORT, ("a1", "h2"): Stance.REFUTE}
     c = check_convergence(
-        [h1, h2], round_no=2, min_survivors=1, max_rounds=5,
-        prev_round_stances=stances, curr_round_stances=stances,
+        [h1, h2],
+        round_no=2,
+        min_survivors=1,
+        max_rounds=5,
+        prev_round_stances=stances,
+        curr_round_stances=stances,
     )
     assert c.converged is True
     assert c.reason == "consensus_stable"
@@ -51,8 +55,12 @@ def test_rule_b_not_triggered_when_stance_changed() -> None:
     prev = {("a1", "h1"): Stance.SUPPORT}
     curr = {("a1", "h1"): Stance.REFUTE}
     c = check_convergence(
-        [h1], round_no=2, min_survivors=1, max_rounds=5,
-        prev_round_stances=prev, curr_round_stances=curr,
+        [h1],
+        round_no=2,
+        min_survivors=1,
+        max_rounds=5,
+        prev_round_stances=prev,
+        curr_round_stances=curr,
     )
     assert c.rule_b_hit is False
 

@@ -105,21 +105,35 @@ async def test_restore_task_lifecycle(manager) -> None:
     sid = await mgr.create_session("x")
 
     await _seed_events(
-        sink, sid,
+        sink,
+        sid,
         [
             SessionEvent(
-                event_name="task.created", session_id=sid, timestamp=1.0, seq=0,
+                event_name="task.created",
+                session_id=sid,
+                timestamp=1.0,
+                seq=0,
                 payload={
-                    "task_id": "T1", "title": "build", "description": "do it",
-                    "status": "pending", "assigned_to": None, "depends_on": [],
+                    "task_id": "T1",
+                    "title": "build",
+                    "description": "do it",
+                    "status": "pending",
+                    "assigned_to": None,
+                    "depends_on": [],
                 },
             ),
             SessionEvent(
-                event_name="task.claimed", session_id=sid, timestamp=2.0, seq=1,
+                event_name="task.claimed",
+                session_id=sid,
+                timestamp=2.0,
+                seq=1,
                 payload={"task_id": "T1", "agent_id": "agent-1", "version": 1},
             ),
             SessionEvent(
-                event_name="task.completed", session_id=sid, timestamp=3.0, seq=2,
+                event_name="task.completed",
+                session_id=sid,
+                timestamp=3.0,
+                seq=2,
                 payload={"task_id": "T1", "version": 2, "result": "DONE"},
             ),
         ],
@@ -142,15 +156,36 @@ async def test_restore_task_failure(manager) -> None:
     mgr, sink = manager
     sid = await mgr.create_session("x")
     await _seed_events(
-        sink, sid,
+        sink,
+        sid,
         [
-            SessionEvent(event_name="task.created", session_id=sid, timestamp=1.0, seq=0,
-                         payload={"task_id": "T", "title": "x", "description": "y",
-                                  "status": "pending", "depends_on": []}),
-            SessionEvent(event_name="task.claimed", session_id=sid, timestamp=2.0, seq=1,
-                         payload={"task_id": "T", "agent_id": "a", "version": 1}),
-            SessionEvent(event_name="task.failed", session_id=sid, timestamp=3.0, seq=2,
-                         payload={"task_id": "T", "version": 2, "error": "boom"}),
+            SessionEvent(
+                event_name="task.created",
+                session_id=sid,
+                timestamp=1.0,
+                seq=0,
+                payload={
+                    "task_id": "T",
+                    "title": "x",
+                    "description": "y",
+                    "status": "pending",
+                    "depends_on": [],
+                },
+            ),
+            SessionEvent(
+                event_name="task.claimed",
+                session_id=sid,
+                timestamp=2.0,
+                seq=1,
+                payload={"task_id": "T", "agent_id": "a", "version": 1},
+            ),
+            SessionEvent(
+                event_name="task.failed",
+                session_id=sid,
+                timestamp=3.0,
+                seq=2,
+                payload={"task_id": "T", "version": 2, "error": "boom"},
+            ),
         ],
     )
     state = await mgr.restore_session(sid)
@@ -163,20 +198,56 @@ async def test_restore_dependency_unblock(manager) -> None:
     mgr, sink = manager
     sid = await mgr.create_session("x")
     await _seed_events(
-        sink, sid,
+        sink,
+        sid,
         [
-            SessionEvent(event_name="task.created", session_id=sid, timestamp=1.0, seq=0,
-                         payload={"task_id": "T1", "title": "a", "description": "",
-                                  "status": "pending", "depends_on": []}),
-            SessionEvent(event_name="task.created", session_id=sid, timestamp=1.0, seq=1,
-                         payload={"task_id": "T2", "title": "b", "description": "",
-                                  "status": "blocked", "depends_on": ["T1"]}),
-            SessionEvent(event_name="task.claimed", session_id=sid, timestamp=2.0, seq=2,
-                         payload={"task_id": "T1", "agent_id": "a", "version": 1}),
-            SessionEvent(event_name="task.completed", session_id=sid, timestamp=3.0, seq=3,
-                         payload={"task_id": "T1", "version": 2, "result": "ok"}),
-            SessionEvent(event_name="task.unblocked", session_id=sid, timestamp=3.0, seq=4,
-                         payload={"task_id": "T2", "version": 1, "trigger": "T1"}),
+            SessionEvent(
+                event_name="task.created",
+                session_id=sid,
+                timestamp=1.0,
+                seq=0,
+                payload={
+                    "task_id": "T1",
+                    "title": "a",
+                    "description": "",
+                    "status": "pending",
+                    "depends_on": [],
+                },
+            ),
+            SessionEvent(
+                event_name="task.created",
+                session_id=sid,
+                timestamp=1.0,
+                seq=1,
+                payload={
+                    "task_id": "T2",
+                    "title": "b",
+                    "description": "",
+                    "status": "blocked",
+                    "depends_on": ["T1"],
+                },
+            ),
+            SessionEvent(
+                event_name="task.claimed",
+                session_id=sid,
+                timestamp=2.0,
+                seq=2,
+                payload={"task_id": "T1", "agent_id": "a", "version": 1},
+            ),
+            SessionEvent(
+                event_name="task.completed",
+                session_id=sid,
+                timestamp=3.0,
+                seq=3,
+                payload={"task_id": "T1", "version": 2, "result": "ok"},
+            ),
+            SessionEvent(
+                event_name="task.unblocked",
+                session_id=sid,
+                timestamp=3.0,
+                seq=4,
+                payload={"task_id": "T2", "version": 1, "trigger": "T1"},
+            ),
         ],
     )
     state = await mgr.restore_session(sid)
@@ -191,26 +262,46 @@ async def test_restore_messages(manager) -> None:
     mgr, sink = manager
     sid = await mgr.create_session("x")
     await _seed_events(
-        sink, sid,
+        sink,
+        sid,
         [
             SessionEvent(
-                event_name="message.sent", session_id=sid, timestamp=1.0, seq=0,
+                event_name="message.sent",
+                session_id=sid,
+                timestamp=1.0,
+                seq=0,
                 payload={
-                    "msg_id": "m-1", "from": "a", "to": "b",
-                    "msg_type": "notify", "content": "hi",
-                    "target_type": "internal", "refs": [], "reply_to": None,
+                    "msg_id": "m-1",
+                    "from": "a",
+                    "to": "b",
+                    "msg_type": "notify",
+                    "content": "hi",
+                    "target_type": "internal",
+                    "refs": [],
+                    "reply_to": None,
                 },
             ),
             SessionEvent(
-                event_name="message.sent", session_id=sid, timestamp=2.0, seq=1,
+                event_name="message.sent",
+                session_id=sid,
+                timestamp=2.0,
+                seq=1,
                 payload={
-                    "msg_id": "m-2", "from": "a", "to": "b",
-                    "msg_type": "notify", "content": "second",
-                    "target_type": "internal", "refs": [], "reply_to": None,
+                    "msg_id": "m-2",
+                    "from": "a",
+                    "to": "b",
+                    "msg_type": "notify",
+                    "content": "second",
+                    "target_type": "internal",
+                    "refs": [],
+                    "reply_to": None,
                 },
             ),
             SessionEvent(
-                event_name="message.received", session_id=sid, timestamp=3.0, seq=2,
+                event_name="message.received",
+                session_id=sid,
+                timestamp=3.0,
+                seq=2,
                 payload={"agent_id": "b", "msg_ids": ["m-1"], "count": 1},
             ),
         ],
@@ -220,7 +311,7 @@ async def test_restore_messages(manager) -> None:
     msgs = await state.mailbox.all_messages()
     assert len(msgs) == 2
     by_id = {m.id: m for m in msgs}
-    assert by_id["m-1"].read is True   # 已 mark_read
+    assert by_id["m-1"].read is True  # 已 mark_read
     assert by_id["m-2"].read is False
     # b 的未读箱
     unread = await state.mailbox.receive("b", unread_only=True)
@@ -232,15 +323,36 @@ async def test_restore_skips_swarm_lifecycle_events(manager) -> None:
     mgr, sink = manager
     sid = await mgr.create_session("x")
     await _seed_events(
-        sink, sid,
+        sink,
+        sid,
         [
-            SessionEvent(event_name="swarm.started", session_id=sid, timestamp=1.0, seq=0,
-                         payload={"name": "x"}),
-            SessionEvent(event_name="task.created", session_id=sid, timestamp=2.0, seq=1,
-                         payload={"task_id": "T", "title": "t", "description": "",
-                                  "status": "pending", "depends_on": []}),
-            SessionEvent(event_name="swarm.completed", session_id=sid, timestamp=3.0, seq=2,
-                         payload={"duration_seconds": 1.0}),
+            SessionEvent(
+                event_name="swarm.started",
+                session_id=sid,
+                timestamp=1.0,
+                seq=0,
+                payload={"name": "x"},
+            ),
+            SessionEvent(
+                event_name="task.created",
+                session_id=sid,
+                timestamp=2.0,
+                seq=1,
+                payload={
+                    "task_id": "T",
+                    "title": "t",
+                    "description": "",
+                    "status": "pending",
+                    "depends_on": [],
+                },
+            ),
+            SessionEvent(
+                event_name="swarm.completed",
+                session_id=sid,
+                timestamp=3.0,
+                seq=2,
+                payload={"duration_seconds": 1.0},
+            ),
         ],
     )
     state = await mgr.restore_session(sid)
@@ -254,13 +366,25 @@ async def test_restore_unknown_event_name_does_not_crash(manager) -> None:
     mgr, sink = manager
     sid = await mgr.create_session("x")
     await _seed_events(
-        sink, sid,
+        sink,
+        sid,
         [
-            SessionEvent(event_name="custom.weird.event", session_id=sid,
-                         timestamp=1.0, seq=0, payload={}),
-            SessionEvent(event_name="task.created", session_id=sid, timestamp=2.0, seq=1,
-                         payload={"task_id": "T", "title": "t", "description": "",
-                                  "status": "pending", "depends_on": []}),
+            SessionEvent(
+                event_name="custom.weird.event", session_id=sid, timestamp=1.0, seq=0, payload={}
+            ),
+            SessionEvent(
+                event_name="task.created",
+                session_id=sid,
+                timestamp=2.0,
+                seq=1,
+                payload={
+                    "task_id": "T",
+                    "title": "t",
+                    "description": "",
+                    "status": "pending",
+                    "depends_on": [],
+                },
+            ),
         ],
     )
     state = await mgr.restore_session(sid)
@@ -273,11 +397,22 @@ async def test_restore_does_not_re_emit_events(manager) -> None:
     mgr, sink = manager
     sid = await mgr.create_session("x")
     await _seed_events(
-        sink, sid,
+        sink,
+        sid,
         [
-            SessionEvent(event_name="task.created", session_id=sid, timestamp=1.0, seq=0,
-                         payload={"task_id": "T", "title": "t", "description": "",
-                                  "status": "pending", "depends_on": []}),
+            SessionEvent(
+                event_name="task.created",
+                session_id=sid,
+                timestamp=1.0,
+                seq=0,
+                payload={
+                    "task_id": "T",
+                    "title": "t",
+                    "description": "",
+                    "status": "pending",
+                    "depends_on": [],
+                },
+            ),
         ],
     )
     before = await sink.get_events(sid)

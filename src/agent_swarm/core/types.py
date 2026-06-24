@@ -63,10 +63,10 @@ class AgentCapabilities:
     """
 
     allowed_tools: set[str] = field(default_factory=set)
-    can_spawn_agents: bool = False       # 编排能力：等价于旧 mode=delegate
-    can_shutdown_agents: bool = False    # W7 新增：lead 关闭临时 worker 用
-    can_assign_tasks: bool = False       # 编排能力：派发任务给 worker
-    can_execute_actions: bool = True     # False 等价于旧 mode=plan_only
+    can_spawn_agents: bool = False  # 编排能力：等价于旧 mode=delegate
+    can_shutdown_agents: bool = False  # W7 新增：lead 关闭临时 worker 用
+    can_assign_tasks: bool = False  # 编排能力：派发任务给 worker
+    can_execute_actions: bool = True  # False 等价于旧 mode=plan_only
     max_tokens_per_task: int = 100_000
     # max_tool_risk: 工具风险等级上限（DESIGN §7.1）——运行时类型是 ToolRisk
     # 此处仅声明为对象引用，实际类型检查在 SecurityPolicy.evaluate() 内
@@ -77,6 +77,7 @@ class AgentCapabilities:
         """M4 fix：max_tool_risk=None 时默认为 ToolRisk.MEDIUM（防 SecurityPolicy NPE）"""
         if self.max_tool_risk is None:
             from agent_swarm.security.policy import ToolRisk
+
             self.max_tool_risk = ToolRisk.MEDIUM
 
     @classmethod
@@ -106,7 +107,14 @@ class AgentCapabilities:
         from agent_swarm.security.policy import ToolRisk
 
         return cls(
-            allowed_tools={"send_message", "review_plan", "update_task", "spawn_agent", "shutdown_agent", "assign_task"},
+            allowed_tools={
+                "send_message",
+                "review_plan",
+                "update_task",
+                "spawn_agent",
+                "shutdown_agent",
+                "assign_task",
+            },
             can_spawn_agents=True,
             can_shutdown_agents=True,
             can_assign_tasks=True,
@@ -285,7 +293,6 @@ class SessionEvent:
     request_id: str | None = None  # 关联 SecurityContext.request_id（W5 启用）
 
 
-
 # ---------------------------------------------------------------------------
 # Adversarial Verify 数据结构——DESIGN §6.2.2 / W8-1
 # ---------------------------------------------------------------------------
@@ -350,9 +357,7 @@ class HypothesisState:
             return 0.0
         score = sum(
             j.confidence
-            * (1 if j.stance == Stance.SUPPORT
-               else -1 if j.stance == Stance.REFUTE
-               else 0)
+            * (1 if j.stance == Stance.SUPPORT else -1 if j.stance == Stance.REFUTE else 0)
             for j in js
         )
         return score / len(js)

@@ -49,7 +49,10 @@ def _is_git_repo(path: Path) -> bool:
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--is-inside-work-tree"],
-            cwd=str(path), capture_output=True, text=True, timeout=5,
+            cwd=str(path),
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
     except FileNotFoundError:
         return False
@@ -255,7 +258,8 @@ def cleanup_expired_tasks() -> int:
     """
     now = time.time()
     expired = [
-        tid for tid, t in _TASK_STORE.items()
+        tid
+        for tid, t in _TASK_STORE.items()
         if t.status in ("done", "error") and (now - t.created_at) > _TASK_TTL_SECONDS
     ]
     for tid in expired:
@@ -281,15 +285,13 @@ def llm_judge_factory(provider: str) -> Any:
         return _deterministic_judge
     if provider == "openai":
         if not os.environ.get("OPENAI_API_KEY"):
-            raise RuntimeError(
-                "OPENAI_API_KEY not set; please set it or use --web-review-llm fake"
-            )
+            raise RuntimeError("OPENAI_API_KEY not set; please set it or use --web-review-llm fake")
+
         # 真实 LLM judge: 占位 (W36f 范围收口, 留 W37+ 接入 OpenAI SDK)
         # 模式: 返回一个 stub, fail-fast 提示用户
         async def _openai_stub(agent: Any, hypothesis_id: str, round_no: int) -> Any:
             raise RuntimeError(
-                "openai LLM judge not yet implemented; "
-                "W36f 范围收口, 留 W37+ 接入 openai SDK"
+                "openai LLM judge not yet implemented; W36f 范围收口, 留 W37+ 接入 openai SDK"
             )
 
         return _openai_stub
@@ -301,14 +303,11 @@ def llm_judge_factory(provider: str) -> Any:
 
         async def _anthropic_stub(agent: Any, hypothesis_id: str, round_no: int) -> Any:
             raise RuntimeError(
-                "anthropic LLM judge not yet implemented; "
-                "W36f 范围收口, 留 W37+ 接入 anthropic SDK"
+                "anthropic LLM judge not yet implemented; W36f 范围收口, 留 W37+ 接入 anthropic SDK"
             )
 
         return _anthropic_stub
-    raise ValueError(
-        f"unknown LLM provider {provider!r}; choose from openai / anthropic / fake"
-    )
+    raise ValueError(f"unknown LLM provider {provider!r}; choose from openai / anthropic / fake")
 
 
 async def run_full_review_async(
@@ -332,7 +331,9 @@ async def run_full_review_async(
     task = _TASK_STORE.get(task_id)
     if task is None:
         return  # task 已被清理, 静默丢
-    _update_task(task_id, status="running", progress=5, log=[f"start full review, llm={llm_provider}"])
+    _update_task(
+        task_id, status="running", progress=5, log=[f"start full review, llm={llm_provider}"]
+    )
     try:
         # 前置检查: cwd 必须是 git repo
         cwd: str | None = None

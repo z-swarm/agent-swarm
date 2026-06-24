@@ -153,8 +153,7 @@ class EnvSecretManager(SecretManager):
     async def put(self, key: str, value: str, ttl_seconds: int | None = None) -> None:
         # Env 是 read-only——报 clear error
         raise NotImplementedError(
-            "EnvSecretManager is read-only. "
-            "Use VaultSecretManager for write/rotate.",
+            "EnvSecretManager is read-only. Use VaultSecretManager for write/rotate.",
         )
 
     async def delete(self, key: str) -> None:
@@ -227,6 +226,7 @@ class VaultSecretManager(SecretManager):
         if self.config.vault_client is None:
             try:
                 import hvac
+
                 self._vault = hvac.Client(
                     url=self.config.url,
                     timeout=self.config.timeout_seconds,
@@ -239,8 +239,7 @@ class VaultSecretManager(SecretManager):
                     )
             except ImportError as e:
                 raise SecretError(
-                    "hvac library not installed. "
-                    "Install with: pip install hvac>=2.0.0",
+                    "hvac library not installed. Install with: pip install hvac>=2.0.0",
                 ) from e
         else:
             self._vault = self.config.vault_client
@@ -251,7 +250,8 @@ class VaultSecretManager(SecretManager):
         await self._ensure_vault()
         # KV v2 路径: mount_point/data/{key}
         resp = self._vault.secrets.kv.v2.read_secret(
-            path=key, mount_point=self.config.mount_point,
+            path=key,
+            mount_point=self.config.mount_point,
         )
         if not resp or "data" not in resp:
             raise SecretNotFoundError(f"vault secret {key!r} not found")
@@ -284,14 +284,19 @@ class VaultSecretManager(SecretManager):
         return secret
 
     async def put(
-        self, key: str, value: str, ttl_seconds: int | None = None,
+        self,
+        key: str,
+        value: str,
+        ttl_seconds: int | None = None,
     ) -> None:
         await self._ensure_vault()
         data: dict[str, Any] = {"value": value}
         if ttl_seconds is not None:
             data["__metadata__"] = {"ttl_seconds": ttl_seconds}
         self._vault.secrets.kv.v2.create_or_update_secret(
-            path=key, secret=data, mount_point=self.config.mount_point,
+            path=key,
+            secret=data,
+            mount_point=self.config.mount_point,
         )
         # 失效缓存
         self._cache.pop(key, None)
@@ -299,7 +304,8 @@ class VaultSecretManager(SecretManager):
     async def delete(self, key: str) -> None:
         await self._ensure_vault()
         self._vault.secrets.kv.v2.delete_metadata_and_all_versions(
-            path=key, mount_point=self.config.mount_point,
+            path=key,
+            mount_point=self.config.mount_point,
         )
         self._cache.pop(key, None)
 
@@ -337,6 +343,7 @@ class VaultSecretManager(SecretManager):
     async def close(self) -> None:
         if self._vault is not None and self.config.vault_client is None:
             import contextlib
+
             with contextlib.suppress(Exception):
                 self._vault.adapter.close()
         self._initialized = False
@@ -378,10 +385,7 @@ class DBCredentials:
 
     def as_dsn(self, host: str, port: int, database: str) -> str:
         """组装 PostgreSQL DSN"""
-        return (
-            f"postgresql://{self.username}:{self.password}"
-            f"@{host}:{port}/{database}"
-        )
+        return f"postgresql://{self.username}:{self.password}@{host}:{port}/{database}"
 
 
 class VaultDynamicSecretManager:
@@ -421,9 +425,7 @@ class VaultDynamicSecretManager:
                 f"vault database generate_credentials({role!r}) failed: {exc}"
             ) from exc
         if not resp or "data" not in resp:
-            raise SecretError(
-                f"vault database generate_credentials({role!r}) returned empty"
-            )
+            raise SecretError(f"vault database generate_credentials({role!r}) returned empty")
         data = resp["data"]
         creds = DBCredentials(
             username=data["username"],
@@ -436,7 +438,9 @@ class VaultDynamicSecretManager:
         self._active_leases[creds.lease_id] = creds
         log.info(
             "vault.dynamic.creds role=%s lease=%s ttl=%ds",
-            role, creds.lease_id[:12], creds.lease_duration_seconds,
+            role,
+            creds.lease_id[:12],
+            creds.lease_duration_seconds,
         )
         return creds
 
@@ -451,12 +455,11 @@ class VaultDynamicSecretManager:
         vault = await self._ensure_vault()
         try:
             resp = vault.sys.leases.renew(
-                lease_id=lease_id, increment=increment,
+                lease_id=lease_id,
+                increment=increment,
             )
         except Exception as exc:
-            raise SecretError(
-                f"vault lease renew failed: {exc}"
-            ) from exc
+            raise SecretError(f"vault lease renew failed: {exc}") from exc
         creds = self._active_leases.get(lease_id)
         if creds is None:
             raise SecretError(f"unknown lease_id: {lease_id}")
@@ -464,7 +467,8 @@ class VaultDynamicSecretManager:
         creds.issued_at = time.time()
         log.info(
             "vault.dynamic.renew lease=%s ttl=%ds",
-            lease_id[:12], creds.lease_duration_seconds,
+            lease_id[:12],
+            creds.lease_duration_seconds,
         )
         return creds
 

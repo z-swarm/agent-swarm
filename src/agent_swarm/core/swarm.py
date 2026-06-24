@@ -46,9 +46,15 @@ from agent_swarm.tools import build_per_agent_tools, build_shared_tools
 # P3-3.8a (REVIEW-2026-06-19 §3.8)：Task.status 合法值集合
 # 改用 frozenset 显式校验，删 type: ignore[assignment]
 # 与 Task.status Literal["pending", "blocked", "in_progress", "completed", "failed"] 保持一致
-_VALID_TASK_STATUSES: frozenset[str] = frozenset({
-    "pending", "blocked", "in_progress", "completed", "failed",
-})
+_VALID_TASK_STATUSES: frozenset[str] = frozenset(
+    {
+        "pending",
+        "blocked",
+        "in_progress",
+        "completed",
+        "failed",
+    }
+)
 
 log = logging.getLogger(__name__)
 
@@ -91,9 +97,7 @@ class Swarm:
         self.name = name
         self.agents = agents
         self.tasks = tasks
-        self.workspace = (
-            Path(workspace).resolve() if workspace else Path.cwd().resolve()
-        )
+        self.workspace = Path(workspace).resolve() if workspace else Path.cwd().resolve()
         self.provider_overrides = provider_overrides or {}
         # W3: 自动分配 session_id 用于事件流标记 / SessionManager 恢复
         self.session_id = session_id or f"s-{uuid4().hex[:12]}"
@@ -208,9 +212,7 @@ class Swarm:
         with open(p, encoding="utf-8") as f:
             cfg = yaml.safe_load(f)
         if not isinstance(cfg, dict):
-            raise ValueError(
-                f"YAML root must be a mapping, got {type(cfg).__name__}"
-            )
+            raise ValueError(f"YAML root must be a mapping, got {type(cfg).__name__}")
         return cls.from_dict(cfg, base_dir=p.parent.resolve())
 
     @classmethod
@@ -285,7 +287,10 @@ class Swarm:
         t0 = time.monotonic()
         log.info(
             "swarm=%s session=%s start (%d agent(s), %d task(s))",
-            self.name, self.session_id, len(self.agents), len(self.tasks),
+            self.name,
+            self.session_id,
+            len(self.agents),
+            len(self.tasks),
         )
         await emit(
             "swarm.started",
@@ -294,10 +299,7 @@ class Swarm:
                 "name": self.name,
                 "agent_ids": [a.id for a in self.agents],
                 # P-3 修复:TUI 之前只显示 (?),因为 payload 里没 model
-                "agents": [
-                    {"id": a.id, "model": a.model, "role": a.role}
-                    for a in self.agents
-                ],
+                "agents": [{"id": a.id, "model": a.model, "role": a.role} for a in self.agents],
                 "task_count": len(self.tasks),
             },
         )
@@ -320,6 +322,7 @@ class Swarm:
             # W7: lead 工具按角色注入——spawn/shutdown/assign 三个能力位
             if agent.capabilities.can_spawn_agents or agent.capabilities.can_assign_tasks:
                 from agent_swarm.tools.builtin.lead import build_lead_tools
+
                 for lt in build_lead_tools(agent.id, self):
                     tools[lt.name] = lt
             provider = self._build_provider(agent)
@@ -332,12 +335,9 @@ class Swarm:
             while True:
                 await asyncio.sleep(poll_interval)
                 tasks_now = await self.task_queue.list_all()
-                terminal = all(
-                    t.status in ("completed", "failed") for t in tasks_now
-                )
+                terminal = all(t.status in ("completed", "failed") for t in tasks_now)
                 if terminal:
-                    log.info("swarm=%s all tasks terminal; canceling agent loops",
-                             self.name)
+                    log.info("swarm=%s all tasks terminal; canceling agent loops", self.name)
                     for lp in loops:
                         if not lp.done():
                             lp.cancel()
@@ -406,8 +406,7 @@ class Swarm:
         failed = sum(1 for t in all_tasks_final if t.status == "failed")
         # blocked / pending 视为未完成——若 swarm 退出但仍有这些状态算 failed
         unfinished = sum(
-            1 for t in all_tasks_final
-            if t.status in ("blocked", "pending", "in_progress")
+            1 for t in all_tasks_final if t.status in ("blocked", "pending", "in_progress")
         )
 
         first_error: str | None = None
@@ -423,7 +422,11 @@ class Swarm:
         duration = time.monotonic() - t0
         log.info(
             "swarm=%s done in %.1fs: %d completed, %d failed, %d unfinished",
-            self.name, duration, completed, failed, unfinished,
+            self.name,
+            duration,
+            completed,
+            failed,
+            unfinished,
         )
         await emit(
             "swarm.completed" if state == "completed" else "swarm.failed",
@@ -442,7 +445,7 @@ class Swarm:
             state=state,
             duration_seconds=duration,
             tasks_completed=completed,
-            tasks_failed=failed,                # W2-B6: 不再混入 unfinished
+            tasks_failed=failed,  # W2-B6: 不再混入 unfinished
             tasks_unfinished=unfinished,
             agent_results=all_run_results,
             agent_stats=list(stats_list),
@@ -495,31 +498,31 @@ def _parse_agent(cfg: dict[str, Any]) -> Agent:
         # lead 工具集（spawn_agent/shutdown_agent/assign_task/update_task/
         # review_plan）由 _run_impl 在构造 Runner 时按 capabilities 注入；
         # 这里把 lead 工具 id 并入 auto_tools，让 AgentRunner 不剔除
-        auto_tools.update({
-            "spawn_agent", "shutdown_agent",
-            "assign_task", "update_task", "review_plan",
-        })
+        auto_tools.update(
+            {
+                "spawn_agent",
+                "shutdown_agent",
+                "assign_task",
+                "update_task",
+                "review_plan",
+            }
+        )
     elif role_type == "plan_only":
         capabilities = AgentCapabilities.plan_only()
     elif role_type == "worker":
         capabilities = AgentCapabilities.worker(auto_tools)
     else:
         raise ValueError(
-            f"agent {agent_id}: role_type must be one of lead/worker/plan_only, "
-            f"got {role_type!r}"
+            f"agent {agent_id}: role_type must be one of lead/worker/plan_only, got {role_type!r}"
         )
 
     raw_iter = cfg.get("max_iterations", 10)
     try:
         max_iter = int(raw_iter)
     except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"agent {agent_id}: max_iterations must be int, got {raw_iter!r}"
-        ) from exc
+        raise ValueError(f"agent {agent_id}: max_iterations must be int, got {raw_iter!r}") from exc
     if max_iter <= 0:
-        raise ValueError(
-            f"agent {agent_id}: max_iterations must be >= 1, got {max_iter}"
-        )
+        raise ValueError(f"agent {agent_id}: max_iterations must be >= 1, got {max_iter}")
 
     return Agent(
         id=agent_id,
@@ -534,9 +537,7 @@ def _parse_agent(cfg: dict[str, Any]) -> Agent:
     )
 
 
-def _parse_task(
-    cfg: dict[str, Any], idx: int, agent_ids: set[str]
-) -> Task:
+def _parse_task(cfg: dict[str, Any], idx: int, agent_ids: set[str]) -> Task:
     if not isinstance(cfg, dict):
         raise ValueError(f"task[{idx}] must be a mapping")
     title = cfg.get("title")
@@ -546,9 +547,7 @@ def _parse_task(
     task_id = cfg.get("id") or f"t-{idx}"
     assigned_to = cfg.get("assigned_to")
     if assigned_to is not None and assigned_to not in agent_ids:
-        raise ValueError(
-            f"task[{idx}] assigned_to={assigned_to!r} is not a known agent id"
-        )
+        raise ValueError(f"task[{idx}] assigned_to={assigned_to!r} is not a known agent id")
     depends_on = cfg.get("depends_on") or []
     if not isinstance(depends_on, list):
         raise ValueError(f"task[{idx}] 'depends_on' must be a list")
@@ -592,8 +591,7 @@ def _resolve_task_dependencies(tasks: list[Task]) -> None:
                 new_deps.append(ids[0])
                 continue
             raise ValueError(
-                f"task {t.id!r} depends_on={d!r} not found "
-                f"(neither task id nor title)"
+                f"task {t.id!r} depends_on={d!r} not found (neither task id nor title)"
             )
         t.depends_on = new_deps
 
@@ -621,6 +619,4 @@ def _resolve_task_dependencies(tasks: list[Task]) -> None:
 
     if visited != len(tasks):
         cyclic = [tid for tid, deg in in_degree.items() if deg > 0]
-        raise ValueError(
-            f"task dependency cycle detected involving: {sorted(cyclic)}"
-        )
+        raise ValueError(f"task dependency cycle detected involving: {sorted(cyclic)}")

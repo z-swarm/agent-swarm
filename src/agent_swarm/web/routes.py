@@ -15,7 +15,6 @@
 P5-W36b: + /review 页面 + POST /api/review (调 run_simple_review)
 """
 
-
 from __future__ import annotations
 
 import asyncio
@@ -90,7 +89,9 @@ async def dashboard(request: Request) -> Response:
 async def agents_page(request: Request) -> Response:
     tpl = _templates(request)
     return tpl.TemplateResponse(
-        request, "agents.html", {"page": "agents"},
+        request,
+        "agents.html",
+        {"page": "agents"},
     )
 
 
@@ -98,7 +99,9 @@ async def agents_page(request: Request) -> Response:
 async def worktrees_page(request: Request) -> Response:
     tpl = _templates(request)
     return tpl.TemplateResponse(
-        request, "worktrees.html", {"page": "worktrees"},
+        request,
+        "worktrees.html",
+        {"page": "worktrees"},
     )
 
 
@@ -106,7 +109,9 @@ async def worktrees_page(request: Request) -> Response:
 async def tasks_page(request: Request) -> Response:
     tpl = _templates(request)
     return tpl.TemplateResponse(
-        request, "tasks.html", {"page": "tasks"},
+        request,
+        "tasks.html",
+        {"page": "tasks"},
     )
 
 
@@ -149,13 +154,12 @@ async def partial_agents(request: Request) -> Response:
     """Agent 列表 fragment"""
     state = _state(request)
     # 简化: session 视为 agent
-    agents = [
-        {"id": sid, **data}
-        for sid, data in state.active_sessions.items()
-    ]
+    agents = [{"id": sid, **data} for sid, data in state.active_sessions.items()]
     tpl = _templates(request)
     return tpl.TemplateResponse(
-        request, "partials/agents.html", {"agents": agents},
+        request,
+        "partials/agents.html",
+        {"agents": agents},
     )
 
 
@@ -168,16 +172,20 @@ async def partial_worktrees(request: Request) -> Response:
     wm = getattr(request.app.state, "worktree_manager", None)
     if wm is not None:
         for h in wm.list_active():
-            worktrees.append({
-                "key": h.key,
-                "path": str(h.path),
-                "branch": h.branch,
-                "agent_id": h.agent_id,
-                "tenant_id": h.tenant_id,
-                "session_id": h.session_id,
-            })
+            worktrees.append(
+                {
+                    "key": h.key,
+                    "path": str(h.path),
+                    "branch": h.branch,
+                    "agent_id": h.agent_id,
+                    "tenant_id": h.tenant_id,
+                    "session_id": h.session_id,
+                }
+            )
     return tpl.TemplateResponse(
-        request, "partials/worktrees.html", {"worktrees": worktrees},
+        request,
+        "partials/worktrees.html",
+        {"worktrees": worktrees},
     )
 
 
@@ -189,15 +197,19 @@ async def partial_tasks(request: Request) -> Response:
     tasks: list[dict] = []
     for rec in state.recent_events(20):
         if "task" in rec.event_name.lower():
-            tasks.append({
-                "event": rec.event_name,
-                "session_id": rec.session_id[:12],
-                "ts": rec.timestamp,
-                "payload": rec.payload,
-            })
+            tasks.append(
+                {
+                    "event": rec.event_name,
+                    "session_id": rec.session_id[:12],
+                    "ts": rec.timestamp,
+                    "payload": rec.payload,
+                }
+            )
     tpl = _templates(request)
     return tpl.TemplateResponse(
-        request, "partials/tasks.html", {"tasks": tasks},
+        request,
+        "partials/tasks.html",
+        {"tasks": tasks},
     )
 
 
@@ -210,31 +222,35 @@ async def partial_tasks(request: Request) -> Response:
 async def api_state(request: Request) -> JSONResponse:
     """完整状态 JSON (调试 + 第三方集成)"""
     state = _state(request)
-    return JSONResponse({
-        "uptime_seconds": state.uptime_seconds(),
-        "session_count": state.session_count(),
-        "total_events": len(state.events),
-        "events_by_type": state.events_by_type(),
-        "active_sessions": state.active_sessions,
-    })
+    return JSONResponse(
+        {
+            "uptime_seconds": state.uptime_seconds(),
+            "session_count": state.session_count(),
+            "total_events": len(state.events),
+            "events_by_type": state.events_by_type(),
+            "active_sessions": state.active_sessions,
+        }
+    )
 
 
 @router.get("/api/events")
 async def api_events(request: Request, limit: int = 50) -> JSONResponse:
     """最近事件 JSON"""
     state = _state(request)
-    return JSONResponse({
-        "events": [
-            {
-                "event_name": e.event_name,
-                "session_id": e.session_id,
-                "timestamp": e.timestamp,
-                "seq": e.seq,
-                "payload": e.payload,
-            }
-            for e in state.recent_events(limit)
-        ],
-    })
+    return JSONResponse(
+        {
+            "events": [
+                {
+                    "event_name": e.event_name,
+                    "session_id": e.session_id,
+                    "timestamp": e.timestamp,
+                    "seq": e.seq,
+                    "payload": e.payload,
+                }
+                for e in state.recent_events(limit)
+            ],
+        }
+    )
 
 
 @router.post("/api/events")
@@ -317,7 +333,11 @@ async def api_review(request: Request, background_tasks: BackgroundTasks) -> JSO
     """
     # 解析 body
     try:
-        body: dict[str, Any] = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body: dict[str, Any] = (
+            await request.json()
+            if request.headers.get("content-type", "").startswith("application/json")
+            else {}
+        )
     except Exception:
         body = {}
     pr_ref = body.get("pr_ref", "main..HEAD")
@@ -332,7 +352,9 @@ async def api_review(request: Request, background_tasks: BackgroundTasks) -> JSO
             from agent_swarm.web import review_runner
 
             report_dict: dict[str, Any] = await asyncio.to_thread(
-                review_runner.run_review_sync, pr_ref, web_repo_root,
+                review_runner.run_review_sync,
+                pr_ref,
+                web_repo_root,
             )
         except FileNotFoundError as exc:
             return JSONResponse({"detail": f"git not available: {exc}"}, status_code=500)
@@ -344,17 +366,19 @@ async def api_review(request: Request, background_tasks: BackgroundTasks) -> JSO
                     status_code=500,
                 )
             if "no diff" in msg.lower() or "empty" in msg.lower():
-                return JSONResponse({
-                    "ok": True,
-                    "report": {
-                        "pr_ref": pr_ref,
-                        "verdict": "approve",
-                        "findings": [],
-                        "root_causes": [],
-                        "summary": f"无变更 (pr_ref={pr_ref!r})",
-                        "confidence": 1.0,
-                    },
-                })
+                return JSONResponse(
+                    {
+                        "ok": True,
+                        "report": {
+                            "pr_ref": pr_ref,
+                            "verdict": "approve",
+                            "findings": [],
+                            "root_causes": [],
+                            "summary": f"无变更 (pr_ref={pr_ref!r})",
+                            "confidence": 1.0,
+                        },
+                    }
+                )
             return JSONResponse({"detail": f"review failed: {exc}"}, status_code=500)
         except Exception as exc:  # noqa: BLE001
             log.exception("simple review failed")
@@ -365,6 +389,7 @@ async def api_review(request: Request, background_tasks: BackgroundTasks) -> JSO
         return JSONResponse({"ok": True, "report": report_dict})
     # mode == "full": W36f 异步路径
     from agent_swarm.web import review_runner as _rr
+
     check_path = web_repo_root if web_repo_root else Path.cwd()
     if not _rr._is_git_repo(check_path):
         return JSONResponse(
@@ -377,7 +402,11 @@ async def api_review(request: Request, background_tasks: BackgroundTasks) -> JSO
     review_timeout: float = float(getattr(request.app.state, "web_review_timeout", 60.0))
     background_tasks.add_task(
         _rr.run_full_review_async,
-        task.task_id, pr_ref, web_repo_root, llm, review_timeout,
+        task.task_id,
+        pr_ref,
+        web_repo_root,
+        llm,
+        review_timeout,
     )
     return JSONResponse(
         {
@@ -445,7 +474,11 @@ async def api_review_v2(request: Request, background_tasks: BackgroundTasks) -> 
     """
     # 解析 body
     try:
-        body: dict[str, Any] = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+        body: dict[str, Any] = (
+            await request.json()
+            if request.headers.get("content-type", "").startswith("application/json")
+            else {}
+        )
     except Exception:
         body = {}
     pr_ref = body.get("pr_ref", "main..HEAD")
@@ -460,7 +493,9 @@ async def api_review_v2(request: Request, background_tasks: BackgroundTasks) -> 
             from agent_swarm.web import review_runner
 
             report_dict: dict[str, Any] = await asyncio.to_thread(
-                review_runner.run_review_sync, pr_ref, web_repo_root,
+                review_runner.run_review_sync,
+                pr_ref,
+                web_repo_root,
             )
         except FileNotFoundError as exc:
             return JSONResponse({"detail": f"git not available: {exc}"}, status_code=500)
@@ -472,17 +507,19 @@ async def api_review_v2(request: Request, background_tasks: BackgroundTasks) -> 
                     status_code=500,
                 )
             if "no diff" in msg.lower() or "empty" in msg.lower():
-                return JSONResponse({
-                    "ok": True,
-                    "report": {
-                        "pr_ref": pr_ref,
-                        "verdict": "approve",
-                        "findings": [],
-                        "root_causes": [],
-                        "summary": f"无变更 (pr_ref={pr_ref!r})",
-                        "confidence": 1.0,
-                    },
-                })
+                return JSONResponse(
+                    {
+                        "ok": True,
+                        "report": {
+                            "pr_ref": pr_ref,
+                            "verdict": "approve",
+                            "findings": [],
+                            "root_causes": [],
+                            "summary": f"无变更 (pr_ref={pr_ref!r})",
+                            "confidence": 1.0,
+                        },
+                    }
+                )
             return JSONResponse({"detail": f"review failed: {exc}"}, status_code=500)
         except Exception as exc:  # noqa: BLE001
             log.exception("simple review failed")
@@ -494,6 +531,7 @@ async def api_review_v2(request: Request, background_tasks: BackgroundTasks) -> 
     # mode == "full": W36f 异步路径
     # 前置: git repo check (fail-fast, 不浪费 task_id)
     from agent_swarm.web import review_runner as _rr
+
     check_path = web_repo_root if web_repo_root else Path.cwd()
     if not _rr._is_git_repo(check_path):
         return JSONResponse(
@@ -505,7 +543,10 @@ async def api_review_v2(request: Request, background_tasks: BackgroundTasks) -> 
     # 调度后台任务
     background_tasks.add_task(
         _rr.run_full_review_async,
-        task.task_id, pr_ref, web_repo_root, llm,
+        task.task_id,
+        pr_ref,
+        web_repo_root,
+        llm,
     )
     return JSONResponse(
         {
@@ -528,6 +569,7 @@ async def api_review_status(request: Request, task_id: str) -> JSONResponse:
     @return 200 = 状态 JSON, 404 = 不存在
     """
     from agent_swarm.web import review_runner as _rr
+
     task = _rr.get_task(task_id)
     if task is None:
         return JSONResponse({"detail": "task not found"}, status_code=404)
@@ -559,11 +601,13 @@ async def api_review_events(request: Request, task_id: str):
            事件类型: update (进度更新) / done (完成) / error
     """
     from agent_swarm.web import review_runner as _rr
+
     task = _rr.get_task(task_id)
     if task is None:
         return JSONResponse({"detail": "task not found"}, status_code=404)
     # 已完成: 立即发完所有状态, 然后关流
     if task.status in ("done", "error"):
+
         async def _immediate() -> Any:
             payload: dict[str, Any] = {
                 "type": "update",
@@ -576,6 +620,7 @@ async def api_review_events(request: Request, task_id: str):
             if task.error is not None:
                 payload["error"] = task.error
             yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
         return StreamingResponse(_immediate(), media_type="text/event-stream")
     # 未完成: 订阅 + 推送
     queue = _rr.subscribe_task(task_id)
@@ -608,4 +653,5 @@ async def api_review_events(request: Request, task_id: str):
             queues = _rr._TASK_QUEUES.get(task_id, [])
             if queue in queues:
                 queues.remove(queue)
+
     return StreamingResponse(_event_stream(), media_type="text/event-stream")

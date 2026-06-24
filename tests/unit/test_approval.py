@@ -15,7 +15,8 @@ from agent_swarm.security import (
 )
 
 pytestmark = pytest.mark.skipif(
-    sys.platform == "win32", reason="P3-WIN: subprocess run_command differs on Windows",
+    sys.platform == "win32",
+    reason="P3-WIN: subprocess run_command differs on Windows",
 )
 
 

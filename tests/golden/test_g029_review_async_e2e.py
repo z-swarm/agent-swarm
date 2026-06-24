@@ -49,12 +49,15 @@ def _bearer() -> str:
 
 def _run(cmd: list[str], cwd: Path) -> str:
     result = subprocess.run(
-        cmd, cwd=str(cwd), capture_output=True, text=True, timeout=15,
+        cmd,
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        timeout=15,
     )
     if result.returncode != 0:
         raise RuntimeError(
-            f"git command failed: {' '.join(cmd)}\n"
-            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+            f"git command failed: {' '.join(cmd)}\nstdout: {result.stdout}\nstderr: {result.stderr}"
         )
     return result.stdout
 
@@ -107,7 +110,8 @@ async def test_g029_clean_pr_async_done(tmp_path: Path) -> None:
     _run(["git", "add", "README.md"], repo)
     _run(["git", "commit", "-m", "init"], repo)
     (repo / "DESIGN.md").write_text(
-        "# Design\n\nAll secrets are in env vars.\n", encoding="utf-8",
+        "# Design\n\nAll secrets are in env vars.\n",
+        encoding="utf-8",
     )
     _run(["git", "add", "DESIGN.md"], repo)
     _run(["git", "commit", "-m", "add design doc"], repo)
@@ -149,7 +153,8 @@ async def test_g029_sse_event_stream(tmp_path: Path) -> None:
     )
     task_id = r.json()["task_id"]
     with client.stream(
-        "GET", f"/api/review/{task_id}/events",
+        "GET",
+        f"/api/review/{task_id}/events",
         headers={"Authorization": _bearer()},
     ) as response:
         events: list[dict] = []

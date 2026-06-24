@@ -42,9 +42,7 @@ class AnthropicProvider(LLMProvider):
     ) -> None:
         key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         if not key:
-            raise RuntimeError(
-                "ANTHROPIC_API_KEY not set—either pass api_key= or export it"
-            )
+            raise RuntimeError("ANTHROPIC_API_KEY not set—either pass api_key= or export it")
         kwargs: dict[str, Any] = {"api_key": key}
         if base_url:
             kwargs["base_url"] = base_url

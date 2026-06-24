@@ -59,7 +59,10 @@ class Mailbox:
             self._all[msg.id] = msg
             log.info(
                 "message.sent id=%s from=%s to=%s type=%s",
-                msg.id, msg.from_agent, msg.to_agent, msg.msg_type,
+                msg.id,
+                msg.from_agent,
+                msg.to_agent,
+                msg.msg_type,
             )
             # 唤醒等待该 agent 的协程
             ev = self._events.get(msg.to_agent)
@@ -86,9 +89,7 @@ class Mailbox:
         from_agent: str,
         to_agent: str,
         content: str,
-        msg_type: Literal[
-            "question", "challenge", "reply", "notify", "delegate"
-        ] = "notify",
+        msg_type: Literal["question", "challenge", "reply", "notify", "delegate"] = "notify",
         refs: list[str] | None = None,
         reply_to: str | None = None,
         target_type: Literal["internal", "external"] = "internal",
@@ -124,14 +125,12 @@ class Mailbox:
         async with self._lock:
             box = self._inbox.get(agent_id, [])
             return [
-                m for m in box
-                if (not unread_only or not m.read)
-                and (msg_type is None or m.msg_type == msg_type)
+                m
+                for m in box
+                if (not unread_only or not m.read) and (msg_type is None or m.msg_type == msg_type)
             ]
 
-    async def wait_for_message(
-        self, agent_id: str, timeout: float | None = None
-    ) -> bool:
+    async def wait_for_message(self, agent_id: str, timeout: float | None = None) -> bool:
         """
         阻塞直到该 agent 收到新消息（或超时）
 

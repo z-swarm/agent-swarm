@@ -19,7 +19,9 @@ from tests.conftest import FakeLLMProvider, ScriptedResponse
 
 @pytest.fixture
 def workspace(tmp_path: Path) -> Path:
-    (tmp_path / "code.py").write_text("query = f'SELECT * FROM x WHERE id = {uid}'", encoding="utf-8")
+    (tmp_path / "code.py").write_text(
+        "query = f'SELECT * FROM x WHERE id = {uid}'", encoding="utf-8"
+    )
     return tmp_path
 
 
@@ -54,9 +56,7 @@ async def test_security_skill_extends_system_prompt(
     assert "security expert" in sys_turn.content
 
 
-async def test_no_skill_basic_prompt_only(
-    fake_llm: FakeLLMProvider, workspace: Path
-) -> None:
+async def test_no_skill_basic_prompt_only(fake_llm: FakeLLMProvider, workspace: Path) -> None:
     """不启用 skill 时——system prompt 仅含 base persona，不含 Skills 段落"""
     fake_llm.script.append(ScriptedResponse(content="ok", finish_reason="stop"))
 
@@ -79,6 +79,7 @@ async def test_unknown_skill_warned_but_not_raised(
     runner = AgentRunner(agent, fake_llm, {"read_file": ReadFileTool(workspace)})
 
     import logging
+
     with caplog.at_level(logging.WARNING):
         res = await runner.run(Task(id="t", title="x", description="y"))
 
@@ -87,16 +88,16 @@ async def test_unknown_skill_warned_but_not_raised(
     assert any("bogus:nonexistent" in r.message for r in caplog.records)
 
 
-async def test_multiple_skills_compose(
-    fake_llm: FakeLLMProvider, workspace: Path
-) -> None:
+async def test_multiple_skills_compose(fake_llm: FakeLLMProvider, workspace: Path) -> None:
     """多个 skill 都应被注入"""
     fake_llm.script.append(ScriptedResponse(content="ok", finish_reason="stop"))
 
-    agent = _agent_with_skills([
-        "code-review:security",
-        "code-review:performance",
-    ])
+    agent = _agent_with_skills(
+        [
+            "code-review:security",
+            "code-review:performance",
+        ]
+    )
     runner = AgentRunner(agent, fake_llm, {"read_file": ReadFileTool(workspace)})
     await runner.run(Task(id="t", title="x", description="y"))
 

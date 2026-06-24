@@ -114,9 +114,7 @@ class ReadFileTool:
             normalized = path.replace("\\", "/").lower()
             for frag in _FALLBACK_SENSITIVE_FRAGMENTS:
                 if frag in normalized:
-                    raise ReadFileError(
-                        f"sensitive path blocked: {frag!r} matches {path!r}"
-                    )
+                    raise ReadFileError(f"sensitive path blocked: {frag!r} matches {path!r}")
 
         # 2) 解析为绝对路径（resolve 处理符号链接 + ../）
         target = Path(path).expanduser()

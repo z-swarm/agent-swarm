@@ -27,7 +27,8 @@ from agent_swarm.core.types import ToolCall
 from tests.conftest import FakeLLMProvider, ScriptedResponse
 
 pytestmark = pytest.mark.skipif(
-    sys.platform == "win32", reason="P3-WIN: e2e CLI run has Windows shell differences",
+    sys.platform == "win32",
+    reason="P3-WIN: e2e CLI run has Windows shell differences",
 )
 
 
@@ -66,9 +67,7 @@ def fake_w1(monkeypatch: pytest.MonkeyPatch) -> FakeLLMProvider:
     fake = FakeLLMProvider(default_model="gpt-4o-mini")
     fake.script.append(
         ScriptedResponse(
-            tool_calls=[
-                ToolCall(id="c1", name="read_file", arguments={"path": "README.md"})
-            ],
+            tool_calls=[ToolCall(id="c1", name="read_file", arguments={"path": "README.md"})],
             finish_reason="tool_use",
         )
     )

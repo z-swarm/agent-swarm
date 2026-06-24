@@ -35,9 +35,7 @@ from agent_swarm.security.sandbox_docker import (
 
 def test_cis_checks_minimum_10() -> None:
     """W19-3: 至少 10 条 CIS 关键项"""
-    assert len(CIS_DOCKER_CHECKS) >= 10, (
-        f"expected >=10 CIS checks, got {len(CIS_DOCKER_CHECKS)}"
-    )
+    assert len(CIS_DOCKER_CHECKS) >= 10, f"expected >=10 CIS checks, got {len(CIS_DOCKER_CHECKS)}"
 
 
 def test_cis_checks_required_ids() -> None:
@@ -182,7 +180,9 @@ async def test_docker_sandbox_executes_via_mock_runner(
         return {"exit_code": 0, "stdout": "hello\n", "stderr": ""}
 
     cfg = DockerConfig(
-        docker_runner=fake_runner, image="alpine:latest", long_lived=False,
+        docker_runner=fake_runner,
+        image="alpine:latest",
+        long_lived=False,
     )
     mgr = DockerSandboxManager(workspace, config=cfg)
     result = await mgr.execute("ls /workspace", timeout=5.0)
@@ -205,10 +205,7 @@ async def test_docker_sandbox_executes_via_mock_runner(
     assert "--network" in argv
     assert "none" in argv
     # workspace bind mount
-    assert any(
-        str(workspace.resolve()) in tok and ":rw" in tok
-        for tok in argv
-    )
+    assert any(str(workspace.resolve()) in tok and ":rw" in tok for tok in argv)
     # 容器 image + cmd 都在 argv 中
     assert "alpine:latest" in argv
     assert "ls" in argv
@@ -285,6 +282,7 @@ def test_default_sandbox_mode_still_workspace_only(
 ) -> None:
     """W19-4: SandboxManager 默认 mode = WORKSPACE_ONLY (向后兼容)"""
     from agent_swarm.security.sandbox import SandboxManager
+
     mgr = SandboxManager(workspace)
     assert mgr.mode == SandboxMode.WORKSPACE_ONLY
 

@@ -197,9 +197,12 @@ async def test_mcp_tool_high_risk_approval_e2e() -> None:
     """
     stub = _StubMCPClient()
     adapter = MCPToolAdapter(
-        server_name="github", mcp_tool_name="create_issue",
-        description="x", parameters={"type": "object"},
-        client=stub, risk="high",
+        server_name="github",
+        mcp_tool_name="create_issue",
+        description="x",
+        parameters={"type": "object"},
+        client=stub,
+        risk="high",
     )
     out = await adapter.invoke({"title": "test"})
     assert "requires approval" in out
@@ -213,9 +216,13 @@ async def test_mcp_tool_critical_risk_always_blocks() -> None:
     stub = _StubMCPClient()
     policy = _stub_policy(PolicyDecision("ALLOW", "ok"))
     adapter = MCPToolAdapter(
-        server_name="github", mcp_tool_name="delete_repo",
-        description="x", parameters={"type": "object"},
-        client=stub, risk="critical", policy=policy,
+        server_name="github",
+        mcp_tool_name="delete_repo",
+        description="x",
+        parameters={"type": "object"},
+        client=stub,
+        risk="critical",
+        policy=policy,
     )
     out = await adapter.invoke({})
     assert "requires approval" in out

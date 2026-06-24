@@ -136,46 +136,33 @@ class EscapeAttempt:
 
 # 20 条逃逸尝试 (来源: CIS Docker Benchmark + OWASP Docker Top 10)
 CONTAINER_ESCAPE_ATTEMPTS: tuple[EscapeAttempt, ...] = (
-    EscapeAttempt("ESC-01", "Mount /",
-                  "/:/host", "尝试 bind mount 根目录"),
-    EscapeAttempt("ESC-02", "Mount /etc",
-                  "/etc:/host", "尝试 bind mount /etc"),
-    EscapeAttempt("ESC-03", "Mount /proc",
-                  "/proc:/host", "尝试 bind mount /proc"),
-    EscapeAttempt("ESC-04", "Mount /sys",
-                  "/sys:/host", "尝试 bind mount /sys"),
-    EscapeAttempt("ESC-05", "Mount /dev",
-                  "/dev:/host", "尝试 bind mount /dev"),
-    EscapeAttempt("ESC-06", "Privileged flag",
-                  "--privileged", "尝试 --privileged"),
-    EscapeAttempt("ESC-07", "All capabilities",
-                  "--cap-add=ALL", "尝试添加全部 capabilities"),
-    EscapeAttempt("ESC-08", "SYS_ADMIN capability",
-                  "--cap-add=SYS_ADMIN", "尝试添加 SYS_ADMIN"),
-    EscapeAttempt("ESC-09", "NET_ADMIN capability",
-                  "--cap-add=NET_ADMIN", "尝试添加 NET_ADMIN"),
-    EscapeAttempt("ESC-10", "DAC override",
-                  "--cap-add=DAC_", "尝试 DAC override (DAC_OVERRIDE/DAC_READ_SEARCH)"),
-    EscapeAttempt("ESC-11", "Host network",
-                  "--network=host", "尝试使用 host 网络"),
-    EscapeAttempt("ESC-12", "Host PID namespace",
-                  "--pid=host", "尝试共享 host PID namespace"),
-    EscapeAttempt("ESC-13", "Host IPC namespace",
-                  "--ipc=host", "尝试共享 host IPC namespace"),
-    EscapeAttempt("ESC-14", "Docker socket mount",
-                  "/var/run/docker.sock", "尝试 mount docker socket"),
-    EscapeAttempt("ESC-15", "Root user override",
-                  "user=root", "尝试 user=root"),
-    EscapeAttempt("ESC-16", "Sudo in container",
-                  " sudo ", "尝试 sudo"),
-    EscapeAttempt("ESC-17", "nsenter host",
-                  "nsenter", "尝试 nsenter 进 host namespace"),
-    EscapeAttempt("ESC-18", "chroot to host",
-                  "chroot ", "尝试 chroot 到 host"),
-    EscapeAttempt("ESC-19", "Mount cgroup",
-                  "/sys/fs/cgroup", "尝试读写 cgroup"),
-    EscapeAttempt("ESC-20", "kubectl/ctr exec",
-                  "ctr ", "尝试 ctr/kubectl exec"),
+    EscapeAttempt("ESC-01", "Mount /", "/:/host", "尝试 bind mount 根目录"),
+    EscapeAttempt("ESC-02", "Mount /etc", "/etc:/host", "尝试 bind mount /etc"),
+    EscapeAttempt("ESC-03", "Mount /proc", "/proc:/host", "尝试 bind mount /proc"),
+    EscapeAttempt("ESC-04", "Mount /sys", "/sys:/host", "尝试 bind mount /sys"),
+    EscapeAttempt("ESC-05", "Mount /dev", "/dev:/host", "尝试 bind mount /dev"),
+    EscapeAttempt("ESC-06", "Privileged flag", "--privileged", "尝试 --privileged"),
+    EscapeAttempt("ESC-07", "All capabilities", "--cap-add=ALL", "尝试添加全部 capabilities"),
+    EscapeAttempt("ESC-08", "SYS_ADMIN capability", "--cap-add=SYS_ADMIN", "尝试添加 SYS_ADMIN"),
+    EscapeAttempt("ESC-09", "NET_ADMIN capability", "--cap-add=NET_ADMIN", "尝试添加 NET_ADMIN"),
+    EscapeAttempt(
+        "ESC-10",
+        "DAC override",
+        "--cap-add=DAC_",
+        "尝试 DAC override (DAC_OVERRIDE/DAC_READ_SEARCH)",
+    ),
+    EscapeAttempt("ESC-11", "Host network", "--network=host", "尝试使用 host 网络"),
+    EscapeAttempt("ESC-12", "Host PID namespace", "--pid=host", "尝试共享 host PID namespace"),
+    EscapeAttempt("ESC-13", "Host IPC namespace", "--ipc=host", "尝试共享 host IPC namespace"),
+    EscapeAttempt(
+        "ESC-14", "Docker socket mount", "/var/run/docker.sock", "尝试 mount docker socket"
+    ),
+    EscapeAttempt("ESC-15", "Root user override", "user=root", "尝试 user=root"),
+    EscapeAttempt("ESC-16", "Sudo in container", " sudo ", "尝试 sudo"),
+    EscapeAttempt("ESC-17", "nsenter host", "nsenter", "尝试 nsenter 进 host namespace"),
+    EscapeAttempt("ESC-18", "chroot to host", "chroot ", "尝试 chroot 到 host"),
+    EscapeAttempt("ESC-19", "Mount cgroup", "/sys/fs/cgroup", "尝试读写 cgroup"),
+    EscapeAttempt("ESC-20", "kubectl/ctr exec", "ctr ", "尝试 ctr/kubectl exec"),
 )
 
 
@@ -244,9 +231,7 @@ class DockerSandboxManager(SandboxManager):
         self.docker_mode = SandboxMode.DOCKER
         self.config = config or DockerConfig()
         # 共享 WORKSPACE_ONLY 默认白名单
-        self.allowed_command_prefixes: tuple[str, ...] = (
-            self.DEFAULT_ALLOWED_PREFIXES
-        )
+        self.allowed_command_prefixes: tuple[str, ...] = self.DEFAULT_ALLOWED_PREFIXES
         self._container_id: str | None = None
         self._started_at: float | None = None
         self._doctor_warnings: list[str] = []
@@ -254,8 +239,6 @@ class DockerSandboxManager(SandboxManager):
         self._container_name: str | None = None
         self._container_started: bool = False
         self._stop_lock = asyncio.Lock()
-
-
 
     # ------------------------------------------------------------------
     # SandboxManager ABC 重写——DOCKER 模式特殊路径
@@ -290,6 +273,7 @@ class DockerSandboxManager(SandboxManager):
                 )
         try:
             import shlex
+
             argv = shlex.split(command)
         except ValueError as exc:
             raise PermissionError(f"command parse failed: {exc}") from exc
@@ -313,10 +297,16 @@ class DockerSandboxManager(SandboxManager):
         # 4) 容器内执行 (P4-W24: 长生命周期 or W19 一次性)
         if self.config.long_lived:
             return await self._run_in_long_lived_container(
-                argv, timeout, max_output_bytes, env_overrides or {},
+                argv,
+                timeout,
+                max_output_bytes,
+                env_overrides or {},
             )
         return await self._run_in_container(
-            argv, timeout, max_output_bytes, env_overrides or {},
+            argv,
+            timeout,
+            max_output_bytes,
+            env_overrides or {},
         )
 
     # ------------------------------------------------------------------
@@ -356,27 +346,32 @@ class DockerSandboxManager(SandboxManager):
             if cfg.no_new_privileges:
                 docker_argv += ["--security-opt", "no-new-privileges:true"]
             docker_argv += [
-                "--pids-limit", str(cfg.pids_limit),
-                "--memory", cfg.memory,
-                "--cpus", str(cfg.cpus),
-                "--network", cfg.network,
-                "-v", f"{self.workspace}:{cfg.workspace_mount}:rw",
+                "--pids-limit",
+                str(cfg.pids_limit),
+                "--memory",
+                cfg.memory,
+                "--cpus",
+                str(cfg.cpus),
+                "--network",
+                cfg.network,
+                "-v",
+                f"{self.workspace}:{cfg.workspace_mount}:rw",
                 cfg.image,
-                "sleep", "infinity",  # 长跑: 容器内永远 sleep
+                "sleep",
+                "infinity",  # 长跑: 容器内永远 sleep
             ]
             log.info("docker long-lived: starting container %s", self._container_name)
             result = await runner(docker_argv)
             if result.get("exit_code") != 0:
-                raise RuntimeError(
-                    f"failed to start long-lived container: {result.get('stderr')}"
-                )
+                raise RuntimeError(f"failed to start long-lived container: {result.get('stderr')}")
             # stdout 是 container id
             self._container_id = (result.get("stdout") or "").strip()
             self._started_at = time.monotonic()
             self._container_started = True
             log.info(
                 "docker long-lived: container %s started (id=%s)",
-                self._container_name, self._container_id,
+                self._container_name,
+                self._container_id,
             )
 
     async def _stop_container(self) -> None:
@@ -389,13 +384,18 @@ class DockerSandboxManager(SandboxManager):
             runner = self.config.docker_runner or self._default_docker_runner
             try:
                 # docker stop 给容器发 SIGTERM, 超时后 SIGKILL
-                await runner([
-                    "docker", "stop",
-                    "-t", str(int(self.config.container_stop_timeout)),
-                    self._container_name,
-                ])
+                await runner(
+                    [
+                        "docker",
+                        "stop",
+                        "-t",
+                        str(int(self.config.container_stop_timeout)),
+                        self._container_name,
+                    ]
+                )
                 log.info(
-                    "docker long-lived: container %s stopped", self._container_name,
+                    "docker long-lived: container %s stopped",
+                    self._container_name,
                 )
             except Exception as exc:  # noqa: BLE001
                 log.warning("docker long-lived: stop failed: %s", exc)
@@ -426,16 +426,21 @@ class DockerSandboxManager(SandboxManager):
             except Exception as exc:  # noqa: BLE001
                 log.error("docker long-lived: start failed: %s", exc)
                 return SandboxResult(
-                    exit_code=-1, stdout="", stderr=f"start failed: {exc}",
-                    truncated=False, duration_seconds=0.0,
+                    exit_code=-1,
+                    stdout="",
+                    stderr=f"start failed: {exc}",
+                    truncated=False,
+                    duration_seconds=0.0,
                 )
 
         # 2) docker exec
         runner = self.config.docker_runner or self._default_docker_runner
         cfg = self.config
         docker_argv = [
-            "docker", "exec",
-            "-w", cfg.workspace_mount,
+            "docker",
+            "exec",
+            "-w",
+            cfg.workspace_mount,
         ]
         for k, v in env_overrides.items():
             docker_argv += ["-e", f"{k}={v}"]
@@ -445,7 +450,8 @@ class DockerSandboxManager(SandboxManager):
             result = await asyncio.wait_for(runner(docker_argv), timeout=timeout)
         except TimeoutError:
             return SandboxResult(
-                exit_code=-1, stdout="",
+                exit_code=-1,
+                stdout="",
                 stderr=f"docker exec timeout after {timeout}s",
                 truncated=False,
                 duration_seconds=time.monotonic() - start,
@@ -454,8 +460,11 @@ class DockerSandboxManager(SandboxManager):
         except Exception as exc:  # noqa: BLE001
             log.exception("docker exec failed: %s", exc)
             return SandboxResult(
-                exit_code=-1, stdout="", stderr=f"docker error: {exc}",
-                truncated=False, duration_seconds=time.monotonic() - start,
+                exit_code=-1,
+                stdout="",
+                stderr=f"docker error: {exc}",
+                truncated=False,
+                duration_seconds=time.monotonic() - start,
             )
         duration = time.monotonic() - start
         stdout = result.get("stdout", "")
@@ -470,7 +479,9 @@ class DockerSandboxManager(SandboxManager):
             truncated = True
         return SandboxResult(
             exit_code=exit_code,
-            stdout=stdout, stderr=stderr, truncated=truncated,
+            stdout=stdout,
+            stderr=stderr,
+            truncated=truncated,
             duration_seconds=duration,
         )
 
@@ -507,8 +518,7 @@ class DockerSandboxManager(SandboxManager):
             candidate.relative_to(self.workspace)
         except ValueError as e:
             raise PermissionError(
-                f"path escape workspace: {token!r} -> {candidate} "
-                f"not under {self.workspace}",
+                f"path escape workspace: {token!r} -> {candidate} not under {self.workspace}",
             ) from e
 
     def _assert_no_escape(self, argv: list[str]) -> None:
@@ -520,8 +530,7 @@ class DockerSandboxManager(SandboxManager):
         for esc in CONTAINER_ESCAPE_ATTEMPTS:
             if esc.pattern in cmd:
                 raise PermissionError(
-                    f"container escape blocked [{esc.id}]: "
-                    f"{esc.title} — pattern {esc.pattern!r}",
+                    f"container escape blocked [{esc.id}]: {esc.title} — pattern {esc.pattern!r}",
                 )
 
     # ------------------------------------------------------------------
@@ -582,7 +591,9 @@ class DockerSandboxManager(SandboxManager):
         )
 
     def _build_docker_run_argv(
-        self, cmd_argv: list[str], env_overrides: dict[str, str],
+        self,
+        cmd_argv: list[str],
+        env_overrides: dict[str, str],
     ) -> list[str]:
         """
         构造 docker run 命令——所有 CIS 关键项默认开启
@@ -628,8 +639,7 @@ class DockerSandboxManager(SandboxManager):
         """
         if shutil.which("docker") is None and self.config.docker_runner is None:
             raise RuntimeError(
-                "docker CLI not found in PATH. "
-                "Install Docker or use SandboxMode.WORKSPACE_ONLY.",
+                "docker CLI not found in PATH. Install Docker or use SandboxMode.WORKSPACE_ONLY.",
             )
         proc = await asyncio.create_subprocess_exec(
             *argv,
@@ -657,8 +667,7 @@ class DockerSandboxManager(SandboxManager):
             "docker_available": False,
             "docker_version": None,
             "cis_checks": [
-                {"id": c.id, "title": c.title, "enabled": c.enabled}
-                for c in CIS_DOCKER_CHECKS
+                {"id": c.id, "title": c.title, "enabled": c.enabled} for c in CIS_DOCKER_CHECKS
             ],
             "escape_attempts_count": len(CONTAINER_ESCAPE_ATTEMPTS),
             "recommendation": "",

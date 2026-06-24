@@ -19,6 +19,7 @@ W12 范围：
     "data": {...SessionEvent fields...}
   }
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -134,8 +135,12 @@ class WebSocketSink(ObservabilitySink):
         await site.start()
         self._server = runner
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
-        log.info("websocket_sink.started host=%s port=%s path=%s",
-                 self._host, self.bound_port, self._path)
+        log.info(
+            "websocket_sink.started host=%s port=%s path=%s",
+            self._host,
+            self.bound_port,
+            self._path,
+        )
 
     async def stop(self) -> None:
         """关闭所有客户端 + 停止 server"""
@@ -213,15 +218,17 @@ class WebSocketSink(ObservabilitySink):
             self.total_clients_seen += 1
         log.info("websocket_sink.client_connected id=%s", client_id)
         # 推一条 welcome 消息
-        await ws.send_json({
-            "type": "hello",
-            "seq": 0,
-            "data": {
-                "client_id": client_id,
-                "server_time": time.time(),
-                "max_queue": self._max_queue,
-            },
-        })
+        await ws.send_json(
+            {
+                "type": "hello",
+                "seq": 0,
+                "data": {
+                    "client_id": client_id,
+                    "server_time": time.time(),
+                    "max_queue": self._max_queue,
+                },
+            }
+        )
         try:
             # 启动发送协程 + 接收协程
             sender = asyncio.create_task(self._send_loop(client))
@@ -242,8 +249,9 @@ class WebSocketSink(ObservabilitySink):
                     elif msg.type == WSMsgType.PING or msg.type == WSMsgType.PONG:
                         client.last_pong_at = time.time()
                     elif msg.type == WSMsgType.ERROR:
-                        log.warning("websocket_sink.ws_error id=%s err=%s",
-                                    client_id, ws.exception())
+                        log.warning(
+                            "websocket_sink.ws_error id=%s err=%s", client_id, ws.exception()
+                        )
                         break
             finally:
                 sender.cancel()
@@ -270,8 +278,7 @@ class WebSocketSink(ObservabilitySink):
             except asyncio.CancelledError:
                 break
             except Exception as exc:  # noqa: BLE001
-                log.warning("websocket_sink.send_error id=%s err=%s",
-                            client.client_id, exc)
+                log.warning("websocket_sink.send_error id=%s err=%s", client.client_id, exc)
                 break
 
     # ------------------------------------------------------------------
@@ -284,10 +291,7 @@ class WebSocketSink(ObservabilitySink):
                 await asyncio.sleep(self._heartbeat_interval)
                 cutoff = time.time() - (self._heartbeat_interval * 2)
                 async with self._clients_lock:
-                    stale = [
-                        c for c in self._clients.values()
-                        if c.last_pong_at < cutoff
-                    ]
+                    stale = [c for c in self._clients.values() if c.last_pong_at < cutoff]
                 for c in stale:
                     log.info("websocket_sink.heartbeat_timeout id=%s", c.client_id)
                     with contextlib.suppress(Exception):

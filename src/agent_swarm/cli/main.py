@@ -447,8 +447,7 @@ def run(
         # P5-W36a/W36c: 构造 SecretManager (secret:// + vault:// 模式)
         cli_secret_manager: Any = None
         if web_jwt_secret_ref and (
-            web_jwt_secret_ref.startswith("secret://")
-            or web_jwt_secret_ref.startswith("vault://")
+            web_jwt_secret_ref.startswith("secret://") or web_jwt_secret_ref.startswith("vault://")
         ):
             if web_secret_manager.lower() == "vault":
                 try:
@@ -462,14 +461,14 @@ def run(
                         f"运行: pip install hvac[/]"
                     )
                     sys.exit(2)
-                cli_secret_manager = VaultSecretManager(VaultConfig(
-                    url=vault_url,
-                    role_id=vault_role_id or "",
-                    secret_id=vault_secret_id or "",
-                ))
-                console.print(
-                    f"[bold magenta]web secret manager[/] → vault url={vault_url}"
+                cli_secret_manager = VaultSecretManager(
+                    VaultConfig(
+                        url=vault_url,
+                        role_id=vault_role_id or "",
+                        secret_id=vault_secret_id or "",
+                    )
                 )
+                console.print(f"[bold magenta]web secret manager[/] → vault url={vault_url}")
             else:
                 # env 模式: create_app 内部自动实例化, 此处不传
                 cli_secret_manager = None

@@ -133,9 +133,7 @@ class SessionManager:
             raise ValueError(f"session {session_id!r} not found")
 
         events = await self._sink.get_events(session_id)
-        log.info(
-            "session.restoring id=%s events=%d", session_id, len(events)
-        )
+        log.info("session.restoring id=%s events=%d", session_id, len(events))
 
         # 重建——使用同 session_id 的新 TaskQueue/Mailbox 实例
         # 注意：重放时不应再 emit（避免事件流双倍）；通过 _silent 上下文
@@ -151,7 +149,10 @@ class SessionManager:
         all_msgs = await mailbox.all_messages()
         log.info(
             "session.restored id=%s last_seq=%d tasks=%d msgs=%d",
-            session_id, last_seq, len(all_tasks), len(all_msgs),
+            session_id,
+            last_seq,
+            len(all_tasks),
+            len(all_msgs),
         )
 
         return RestoredState(

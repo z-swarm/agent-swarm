@@ -16,14 +16,19 @@ from agent_swarm.core.types import (
 
 def _plan_only(id: str) -> Agent:
     return Agent(
-        id=id, role="judge", persona="", model="gpt-4o-mini",
-        provider="openai", capabilities=AgentCapabilities.plan_only(),
+        id=id,
+        role="judge",
+        persona="",
+        model="gpt-4o-mini",
+        provider="openai",
+        capabilities=AgentCapabilities.plan_only(),
     )
 
 
 def test_yaml_w8_adversarial_parses() -> None:
     """W8 example YAML 解析：3 plan_only judge + 3 假设任务"""
     from pathlib import Path
+
     cfg_path = Path("examples/w8_adversarial.yaml")
     swarm = Swarm.from_yaml(cfg_path)
     assert len(swarm.agents) == 3
@@ -35,6 +40,7 @@ def test_yaml_w8_adversarial_parses() -> None:
 def test_yaml_w8_role_type_plan_only() -> None:
     """role_type=plan_only → can_execute_actions=False + can_spawn_agents=False"""
     from pathlib import Path
+
     cfg_path = Path("examples/w8_adversarial.yaml")
     swarm = Swarm.from_yaml(cfg_path)
     for a in swarm.agents:
@@ -47,6 +53,7 @@ def test_yaml_w8_role_type_plan_only() -> None:
 async def test_adversarial_verifier_via_swarm_protocol() -> None:
     """通过 Swarm.set_protocol(AdversarialVerifier) + run_with_protocol 走通"""
     from pathlib import Path
+
     cfg_path = Path("examples/w8_adversarial.yaml")
     swarm = Swarm.from_yaml(cfg_path)
 
@@ -70,13 +77,19 @@ def test_protocol_result_includes_adversarial_fields() -> None:
     """AdversarialVerifier.execute() 返回的 ProtocolResult.artifacts 字段完整"""
     # 这里不跑 verify，只检查 ProtocolResult 字段
     expected = {
-        "protocol", "survivors", "eliminated", "rounds_used",
-        "convergence_reason", "root_cause", "confidence",
+        "protocol",
+        "survivors",
+        "eliminated",
+        "rounds_used",
+        "convergence_reason",
+        "root_cause",
+        "confidence",
     }
     # AdversarialVerifier.execute 内部会构造这些字段（看代码确认）
     import inspect
 
     from agent_swarm.core.adversarial import AdversarialVerifier
+
     src = inspect.getsource(AdversarialVerifier.execute)
     for field in expected:
         assert field in src, f"ProtocolResult.artifacts 缺字段: {field}"

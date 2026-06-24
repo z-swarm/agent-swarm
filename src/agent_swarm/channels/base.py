@@ -45,8 +45,8 @@ class MessageType(Enum):
     TEXT = "text"
     IMAGE = "image"
     FILE = "file"
-    CARD = "card"     # 飞书卡片 / Slack block 等结构化消息
-    EVENT = "event"   # 卡片按钮点击 / webhook 触发等
+    CARD = "card"  # 飞书卡片 / Slack block 等结构化消息
+    EVENT = "event"  # 卡片按钮点击 / webhook 触发等
     COMMAND = "command"
 
 

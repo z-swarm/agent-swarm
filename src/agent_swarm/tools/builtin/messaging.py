@@ -93,16 +93,10 @@ class SendMessageTool:
             return "[error] cannot send message to yourself"
 
         if self.known_agents is not None and to_agent not in self.known_agents:
-            return (
-                f"[error] unknown agent {to_agent!r}. "
-                f"Known agents: {sorted(self.known_agents)}"
-            )
+            return f"[error] unknown agent {to_agent!r}. Known agents: {sorted(self.known_agents)}"
 
         if msg_type_raw not in _MSG_TYPES:
-            return (
-                f"[error] invalid msg_type {msg_type_raw!r}; "
-                f"allowed: {list(_MSG_TYPES)}"
-            )
+            return f"[error] invalid msg_type {msg_type_raw!r}; allowed: {list(_MSG_TYPES)}"
         msg_type = cast(_MsgType, msg_type_raw)
 
         msg = Mailbox.make_message(

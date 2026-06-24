@@ -20,7 +20,8 @@ from click.testing import CliRunner
 from agent_swarm.cli.main import cli
 
 pytestmark = pytest.mark.skipif(
-    sys.platform == "win32", reason="P3-WIN: CLI subprocess tests have Windows shell differences",
+    sys.platform == "win32",
+    reason="P3-WIN: CLI subprocess tests have Windows shell differences",
 )
 
 
@@ -57,9 +58,7 @@ def test_cli_run_missing_required_field(tmp_path: Path) -> None:
     assert res.exit_code == 2
 
 
-def test_cli_run_swarm_crash_exit_code_1(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cli_run_swarm_crash_exit_code_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Swarm.run 内部异常——CLI 应 exit 1 并打印错误"""
     cfg_yaml = """
 name: crash
@@ -117,9 +116,7 @@ tasks:
     assert "interrupted" in res.stdout
 
 
-def test_cli_run_failed_state_exits_1(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cli_run_failed_state_exits_1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Swarm 返回 state=failed → CLI exit 1"""
     cfg_yaml = """
 name: fail
@@ -157,9 +154,7 @@ tasks:
     assert "something broke" in res.stdout
 
 
-def test_cli_run_verbose_flag(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cli_run_verbose_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """--verbose 启用 DEBUG 日志，但不影响退出码"""
     cfg_yaml = """
 name: v
@@ -218,9 +213,7 @@ def test_cli_session_help() -> None:
 def test_cli_session_list_no_db(tmp_path: Path) -> None:
     """db 文件不存在 → 友好提示 + exit 0"""
     runner = CliRunner()
-    res = runner.invoke(
-        cli, ["session", "list", "--db", str(tmp_path / "nope.db")]
-    )
+    res = runner.invoke(cli, ["session", "list", "--db", str(tmp_path / "nope.db")])
     assert res.exit_code == 0
     assert "No session database" in res.stdout
 
@@ -307,8 +300,13 @@ def test_cli_session_show_with_events(tmp_path: Path) -> None:
         mgr = SessionManager(sink)
         await mgr.create_session("test", session_id="S1")
         await sink.consume(
-            SessionEvent(event_name="task.created", session_id="S1",
-                         timestamp=1.0, seq=0, payload={"task_id": "T"})
+            SessionEvent(
+                event_name="task.created",
+                session_id="S1",
+                timestamp=1.0,
+                seq=0,
+                payload={"task_id": "T"},
+            )
         )
         await sink.aclose()
 
@@ -337,17 +335,20 @@ def test_cli_session_show_no_events_flag(tmp_path: Path) -> None:
         mgr = SessionManager(sink)
         await mgr.create_session("x", session_id="S2")
         await sink.consume(
-            SessionEvent(event_name="task.created", session_id="S2",
-                         timestamp=1.0, seq=0, payload={"task_id": "T"})
+            SessionEvent(
+                event_name="task.created",
+                session_id="S2",
+                timestamp=1.0,
+                seq=0,
+                payload={"task_id": "T"},
+            )
         )
         await sink.aclose()
 
     asyncio.run(_seed())
 
     runner = CliRunner()
-    res = runner.invoke(
-        cli, ["session", "show", "S2", "--no-events", "--db", str(db)]
-    )
+    res = runner.invoke(cli, ["session", "show", "S2", "--no-events", "--db", str(db)])
     assert res.exit_code == 0
     assert "S2" in res.stdout
     # 事件不应被打印
@@ -378,9 +379,7 @@ def test_cli_session_resume_unknown(tmp_path: Path) -> None:
 def test_cli_session_resume_no_db(tmp_path: Path) -> None:
     """db 文件不存在 → exit 2 + 错误提示"""
     runner = CliRunner()
-    res = runner.invoke(
-        cli, ["session", "resume", "x", "--db", str(tmp_path / "nope.db")]
-    )
+    res = runner.invoke(cli, ["session", "resume", "x", "--db", str(tmp_path / "nope.db")])
     assert res.exit_code == 2
     assert "not found" in res.stdout.lower()
 
@@ -400,18 +399,33 @@ def test_cli_session_resume_full_state(tmp_path: Path) -> None:
         mgr = SessionManager(sink)
         await mgr.create_session("recovery", session_id="R1")
         events = [
-            ("task.created", {"task_id": "T1", "title": "build", "description": "do",
-                              "status": "pending", "depends_on": []}),
+            (
+                "task.created",
+                {
+                    "task_id": "T1",
+                    "title": "build",
+                    "description": "do",
+                    "status": "pending",
+                    "depends_on": [],
+                },
+            ),
             ("task.claimed", {"task_id": "T1", "agent_id": "a", "version": 1}),
             ("task.completed", {"task_id": "T1", "version": 2, "result": "OK"}),
-            ("message.sent", {"msg_id": "m1", "from": "a", "to": "b",
-                              "msg_type": "notify", "content": "ping"}),
+            (
+                "message.sent",
+                {"msg_id": "m1", "from": "a", "to": "b", "msg_type": "notify", "content": "ping"},
+            ),
         ]
         for i, (name, payload) in enumerate(events):
-            await sink.consume(SessionEvent(
-                event_name=name, session_id="R1",
-                timestamp=float(i + 1), seq=i, payload=payload,
-            ))
+            await sink.consume(
+                SessionEvent(
+                    event_name=name,
+                    session_id="R1",
+                    timestamp=float(i + 1),
+                    seq=i,
+                    payload=payload,
+                )
+            )
         await sink.aclose()
 
     asyncio.run(_seed())
@@ -454,9 +468,7 @@ def test_cli_session_show_with_config_flag(tmp_path: Path) -> None:
     assert "Config YAML" not in res_default.stdout
 
     # --config 时显示
-    res_with = runner.invoke(
-        cli, ["session", "show", "C1", "--config", "--db", str(db)]
-    )
+    res_with = runner.invoke(cli, ["session", "show", "C1", "--config", "--db", str(db)])
     assert res_with.exit_code == 0
     assert "Config YAML" in res_with.stdout
     assert "with-config" in res_with.stdout
@@ -511,17 +523,19 @@ def test_cli_run_injects_api_key_to_openai_env(
         seen["openai"] = os.environ.get("OPENAI_API_KEY", "")
         seen["anthropic"] = os.environ.get("ANTHROPIC_API_KEY", "")
         return SwarmResult(
-            name="x", state="completed", duration_seconds=0.1,
-            tasks_completed=1, tasks_failed=0, tasks_unfinished=0,
+            name="x",
+            state="completed",
+            duration_seconds=0.1,
+            tasks_completed=1,
+            tasks_failed=0,
+            tasks_unfinished=0,
         )
 
     monkeypatch.setattr("agent_swarm.core.swarm.Swarm.run", fake_run)
     import os
 
     runner = CliRunner()
-    res = runner.invoke(
-        cli, ["run", "--provider", "openai", "--api-key", "sk-test-openai", str(p)]
-    )
+    res = runner.invoke(cli, ["run", "--provider", "openai", "--api-key", "sk-test-openai", str(p)])
     assert res.exit_code == 0
     assert seen["openai"] == "sk-test-openai"
     assert seen["anthropic"] == ""  # 不污染 anthropic env
@@ -541,27 +555,28 @@ def test_cli_run_injects_api_key_to_anthropic_env(
 
     async def fake_run(self):  # type: ignore[no-untyped-def]
         import os as _os
+
         seen["openai"] = _os.environ.get("OPENAI_API_KEY", "")
         seen["anthropic"] = _os.environ.get("ANTHROPIC_API_KEY", "")
         return SwarmResult(
-            name="x", state="completed", duration_seconds=0.1,
-            tasks_completed=1, tasks_failed=0, tasks_unfinished=0,
+            name="x",
+            state="completed",
+            duration_seconds=0.1,
+            tasks_completed=1,
+            tasks_failed=0,
+            tasks_unfinished=0,
         )
 
     monkeypatch.setattr("agent_swarm.core.swarm.Swarm.run", fake_run)
 
     runner = CliRunner()
-    res = runner.invoke(
-        cli, ["run", "--provider", "anthropic", "--api-key", "sk-ant-test", str(p)]
-    )
+    res = runner.invoke(cli, ["run", "--provider", "anthropic", "--api-key", "sk-ant-test", str(p)])
     assert res.exit_code == 0
     assert seen["anthropic"] == "sk-ant-test"
     assert seen["openai"] == ""  # 不污染 openai env
 
 
-def test_cli_run_api_key_without_provider_is_rejected(
-    tmp_path: Path
-) -> None:
+def test_cli_run_api_key_without_provider_is_rejected(tmp_path: Path) -> None:
     """--api-key 但没 --provider → Click UsageError exit 2（避免误注入）"""
     p = _minimal_cfg(tmp_path)
     runner = CliRunner()
@@ -571,9 +586,7 @@ def test_cli_run_api_key_without_provider_is_rejected(
     assert "--provider" in (res.stdout + (res.stderr or ""))
 
 
-def test_cli_run_invalid_provider_value_rejected(
-    tmp_path: Path
-) -> None:
+def test_cli_run_invalid_provider_value_rejected(tmp_path: Path) -> None:
     """--provider 取值非法（不在 Choice 内）→ Click error exit 2"""
     p = _minimal_cfg(tmp_path)
     runner = CliRunner()
@@ -595,11 +608,16 @@ def test_cli_run_no_api_key_keeps_existing_env(
 
     async def fake_run(self):  # type: ignore[no-untyped-def]
         import os as _os
+
         seen["openai"] = _os.environ.get("OPENAI_API_KEY", "")
         seen["anthropic"] = _os.environ.get("ANTHROPIC_API_KEY", "")
         return SwarmResult(
-            name="x", state="completed", duration_seconds=0.1,
-            tasks_completed=1, tasks_failed=0, tasks_unfinished=0,
+            name="x",
+            state="completed",
+            duration_seconds=0.1,
+            tasks_completed=1,
+            tasks_failed=0,
+            tasks_unfinished=0,
         )
 
     monkeypatch.setattr("agent_swarm.core.swarm.Swarm.run", fake_run)
@@ -702,6 +720,7 @@ tasks:
 
     # 模拟不可写：os.access 永远 False
     import os as _os
+
     orig_access = _os.access
 
     def fake_access(path, mode, *args, **kwargs):
@@ -723,6 +742,7 @@ def test_cli_session_list_fails_fast_on_unwritable_db(
 ) -> None:
     """session list 子命令也应 fail-fast on unwritable db"""
     import os as _os
+
     orig_access = _os.access
 
     db = tmp_path / "ro.db"
@@ -746,6 +766,7 @@ def test_cli_session_show_fails_fast_on_unwritable_db(
 ) -> None:
     """session show 子命令也应 fail-fast"""
     import os as _os
+
     orig_access = _os.access
 
     db = tmp_path / "ro.db"
@@ -786,9 +807,14 @@ tasks:
 
     async def fake_run(self):  # type: ignore[no-untyped-def]
         return SwarmResult(
-            name="writable", state="completed", duration_seconds=0.1,
-            tasks_completed=1, tasks_failed=0, tasks_unfinished=0,
+            name="writable",
+            state="completed",
+            duration_seconds=0.1,
+            tasks_completed=1,
+            tasks_failed=0,
+            tasks_unfinished=0,
         )
+
     monkeypatch.setattr("agent_swarm.core.swarm.Swarm.run", fake_run)
 
     runner = CliRunner()
@@ -835,4 +861,3 @@ def test_cli_run_with_web_jwt_secret_ref_literal() -> None:
     # --help 会让 click 早退, 不会真启动 server
     # 这里只验 CLI 能解析该参数
     assert "--help" not in res.stdout or res.exit_code == 0
-

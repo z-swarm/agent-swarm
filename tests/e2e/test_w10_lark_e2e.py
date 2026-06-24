@@ -11,6 +11,7 @@ W10 DoD（DESIGN §17.2 ①）：
 
 @note mock Lark server 跑通（不连真 Lark）— 真接入需 app_id + app_secret + 飞书后台配置
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -40,17 +41,24 @@ from agent_swarm.channels.lark import (
 
 class _StubConnector(ChannelConnector):
     """测试用 connector——记录 _started 状态"""
+
     def __init__(self, ct: ChannelType) -> None:
         self._ct = ct
         self._started = False
+
     @property
     def channel_type(self) -> ChannelType:
         return self._ct
+
     async def start(self) -> None:
         self._started = True
+
     async def stop(self) -> None:
         self._started = False
-    async def send(self, response, target) -> bool: return True
+
+    async def send(self, response, target) -> bool:
+        return True
+
     def subscribe(self, handler) -> None: ...
     def unsubscribe(self, handler) -> None: ...
 
@@ -89,8 +97,12 @@ def _build_card_action_payload(action_value: str, operator: str = "ou_user1") ->
 
 
 async def _post_event(
-    session: aiohttp.ClientSession, url: str, body: str,
-    timestamp: str, nonce: str, signature: str,
+    session: aiohttp.ClientSession,
+    url: str,
+    body: str,
+    timestamp: str,
+    nonce: str,
+    signature: str,
 ) -> aiohttp.ClientResponse:
     headers = {
         "Content-Type": "application/json",
@@ -146,8 +158,9 @@ async def test_e2e_lark_event_to_handler_dispatch() -> None:
         # 验证 handler 被调用 + 离线模式记录发送
         await asyncio.sleep(0.1)  # 给 _dispatch 时间跑完
         sent = c._sent_for_test()
-        assert any("echo: hello from mock" in str(s.get("payload", "")) for s in sent), \
+        assert any("echo: hello from mock" in str(s.get("payload", "")) for s in sent), (
             f"handler response should be sent back: {sent}"
+        )
     finally:
         await c.stop()
 
@@ -156,8 +169,11 @@ async def test_e2e_lark_event_to_handler_dispatch() -> None:
 async def test_e2e_lark_rejects_invalid_signature() -> None:
     """端到端：签名错误 → 401"""
     c = LarkConnector(
-        app_id="cli", app_secret="s", verification_token="tok",
-        webhook_host="127.0.0.1", webhook_port=0,
+        app_id="cli",
+        app_secret="s",
+        verification_token="tok",
+        webhook_host="127.0.0.1",
+        webhook_port=0,
     )
     await c.start()
     try:
@@ -179,8 +195,11 @@ async def test_e2e_lark_rejects_invalid_signature() -> None:
 async def test_e2e_lark_card_action_to_event() -> None:
     """端到端：卡片按钮 action → ChannelMessage(EVENT)"""
     c = LarkConnector(
-        app_id="cli", app_secret="s", verification_token="tok",
-        webhook_host="127.0.0.1", webhook_port=0,
+        app_id="cli",
+        app_secret="s",
+        verification_token="tok",
+        webhook_host="127.0.0.1",
+        webhook_port=0,
     )
     received: list[ChannelMessage] = []
 
@@ -214,9 +233,12 @@ async def test_e2e_lark_card_action_to_event() -> None:
 async def test_e2e_lark_event_whitelist_via_http() -> None:
     """端到端：白名单用户被拦，handler 收不到"""
     c = LarkConnector(
-        app_id="cli", app_secret="s", verification_token="tok",
+        app_id="cli",
+        app_secret="s",
+        verification_token="tok",
         user_whitelist=["ou_allowed"],
-        webhook_host="127.0.0.1", webhook_port=0,
+        webhook_host="127.0.0.1",
+        webhook_port=0,
     )
     received: list[ChannelMessage] = []
 
@@ -253,11 +275,16 @@ async def test_e2e_lark_event_whitelist_via_http() -> None:
 async def test_e2e_channel_adapter_full_path() -> None:
     """ChannelAdapter 完整路径：connector event → 限流 → 鉴权 → handler → 发送回 connector"""
     c = LarkConnector(
-        app_id="cli", app_secret="s", verification_token="tok",
-        user_whitelist=["ou_usr"], webhook_host="127.0.0.1", webhook_port=0,
+        app_id="cli",
+        app_secret="s",
+        verification_token="tok",
+        user_whitelist=["ou_usr"],
+        webhook_host="127.0.0.1",
+        webhook_port=0,
     )
     adapter = ChannelAdapter(
-        messages_per_minute=100, sessions_per_hour=10,
+        messages_per_minute=100,
+        sessions_per_hour=10,
         user_whitelist={"ou_usr"},
     )
     adapter.register_connector(c)
@@ -300,11 +327,16 @@ async def test_e2e_channel_adapter_full_path() -> None:
 async def test_e2e_channel_adapter_rate_limit_via_http() -> None:
     """ChannelAdapter 限流：超出 messages_per_minute → denied"""
     c = LarkConnector(
-        app_id="cli", app_secret="s", verification_token="tok",
-        user_whitelist=["ou_usr"], webhook_host="127.0.0.1", webhook_port=0,
+        app_id="cli",
+        app_secret="s",
+        verification_token="tok",
+        user_whitelist=["ou_usr"],
+        webhook_host="127.0.0.1",
+        webhook_port=0,
     )
     adapter = ChannelAdapter(
-        messages_per_minute=2, sessions_per_hour=10,
+        messages_per_minute=2,
+        sessions_per_hour=10,
         user_whitelist={"ou_usr"},
     )
     adapter.register_connector(c)
@@ -338,8 +370,9 @@ async def test_e2e_channel_adapter_rate_limit_via_http() -> None:
             await asyncio.sleep(0.1)
             sent = c._sent_for_test()
         # 找 rate_limited 响应
-        assert any("rate_limited" in str(s.get("payload", "")) for s in sent), \
+        assert any("rate_limited" in str(s.get("payload", "")) for s in sent), (
             f"应有 rate_limited 响应: {sent}"
+        )
     finally:
         await c.stop()
 
@@ -370,9 +403,15 @@ def test_secret_manager_missing_raises() -> None:
 def test_all_five_templates_render_with_valid_lark_structure() -> None:
     """5 个模板 → 渲染后 payload 是合法 Lark 卡片结构"""
     cases = [
-        ("task_progress", {"title": "P", "tasks": [
-            {"id": "T1", "title": "x", "status": "completed"},
-        ]}),
+        (
+            "task_progress",
+            {
+                "title": "P",
+                "tasks": [
+                    {"id": "T1", "title": "x", "status": "completed"},
+                ],
+            },
+        ),
         ("code_review_result", {"findings": [], "verdict": "approve"}),
         ("adversarial_debug", {"round_no": 1, "max_rounds": 3, "survivors": ["h0"]}),
         ("swarm_status", {"state": "running", "agents": []}),
@@ -418,8 +457,13 @@ def test_example_yaml_lark_config_loads() -> None:
 @pytest.mark.asyncio
 async def test_channel_adapter_start_all_starts_all_connectors() -> None:
     """start_all() 启动所有注册的 connector（不同 channel_type）"""
-    c_lark = LarkConnector(app_id="c1", app_secret="s", verification_token="t",
-                           webhook_host="127.0.0.1", webhook_port=0)
+    c_lark = LarkConnector(
+        app_id="c1",
+        app_secret="s",
+        verification_token="t",
+        webhook_host="127.0.0.1",
+        webhook_port=0,
+    )
     c_sdk = _StubConnector(ChannelType.SDK)
     a = ChannelAdapter()
     a.register_connector(c_lark)

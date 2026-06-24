@@ -104,11 +104,14 @@ def create_app(
     # W33: DSN 给出时挂 Postgres store
     if postgres_dsn and state.store is None:
         from agent_swarm.web.store import PostgresWebStateStore, WebStateConfig
-        state.store = PostgresWebStateStore(WebStateConfig(
-            dsn=postgres_dsn,
-            table=postgres_table,
-            tenant_id=postgres_tenant_id,
-        ))
+
+        state.store = PostgresWebStateStore(
+            WebStateConfig(
+                dsn=postgres_dsn,
+                table=postgres_table,
+                tenant_id=postgres_tenant_id,
+            )
+        )
         log.info("WebState Postgres store attached: table=%s", postgres_table)
     # W34/W36a: 挂 JWT issuer
     jwt_issuer_obj: Any = None
@@ -119,15 +122,18 @@ def create_app(
             parse_secret_ref,
             resolve_secret_ref,
         )
+
         if jwt_secret is not None:
             # W34 模式: 字面值 / ${VAR} 一次性 resolve
             resolved = resolve_secret_ref(jwt_secret)
-            jwt_issuer_obj = JWTIssuer(JWTConfig(
-                secret=resolved,
-                algorithm=jwt_algorithm,
-                expires_seconds=jwt_expires_seconds,
-                issuer=jwt_issuer_name,
-            ))
+            jwt_issuer_obj = JWTIssuer(
+                JWTConfig(
+                    secret=resolved,
+                    algorithm=jwt_algorithm,
+                    expires_seconds=jwt_expires_seconds,
+                    issuer=jwt_issuer_name,
+                )
+            )
             log.info("WebState JWT auth enabled (W34 mode): issuer=%s", jwt_issuer_name)
         else:
             # W36a 模式: SecretRef 协议 + SecretManager
@@ -138,20 +144,24 @@ def create_app(
                 if secret_manager is None:
                     # 缺省: EnvSecretManager (W20 风格, 与 W34 ${VAR} 兼容路径同源)
                     from agent_swarm.security.secret_manager import EnvSecretManager
+
                     secret_manager = EnvSecretManager()
                     log.info("WebState JWT auth: default EnvSecretManager attached")
-                jwt_issuer_obj = JWTIssuer(JWTConfig(
-                    secret_ref=jwt_secret_ref,
-                    secret_manager=secret_manager,
-                    algorithm=jwt_algorithm,
-                    expires_seconds=jwt_expires_seconds,
-                    issuer=jwt_issuer_name,
-                ))
+                jwt_issuer_obj = JWTIssuer(
+                    JWTConfig(
+                        secret_ref=jwt_secret_ref,
+                        secret_manager=secret_manager,
+                        algorithm=jwt_algorithm,
+                        expires_seconds=jwt_expires_seconds,
+                        issuer=jwt_issuer_name,
+                    )
+                )
                 # W36a 模式: lifespan 启动时 await resolve_secret() 初始化 cache
                 # 失败仅 log, 不破 (降级路径: cache miss 时 middleware 仍跑)
                 log.info(
                     "WebState JWT auth enabled (W36a mode): ref=%s issuer=%s",
-                    jwt_secret_ref, jwt_issuer_name,
+                    jwt_secret_ref,
+                    jwt_issuer_name,
                 )
             elif ref.kind == "vault":
                 # W36c: vault://path#field 模式
@@ -161,56 +171,69 @@ def create_app(
                         VaultConfig,
                         VaultSecretManager,
                     )
-                    secret_manager = VaultSecretManager(VaultConfig(
-                        url=vault_url,
-                        role_id=vault_role_id or "",
-                        secret_id=vault_secret_id or "",
-                    ))
+
+                    secret_manager = VaultSecretManager(
+                        VaultConfig(
+                            url=vault_url,
+                            role_id=vault_role_id or "",
+                            secret_id=vault_secret_id or "",
+                        )
+                    )
                     log.info(
                         "WebState JWT auth: default VaultSecretManager attached url=%s",
                         vault_url,
                     )
-                jwt_issuer_obj = JWTIssuer(JWTConfig(
-                    secret_ref=jwt_secret_ref,
-                    secret_manager=secret_manager,
-                    algorithm=jwt_algorithm,
-                    expires_seconds=jwt_expires_seconds,
-                    issuer=jwt_issuer_name,
-                ))
+                jwt_issuer_obj = JWTIssuer(
+                    JWTConfig(
+                        secret_ref=jwt_secret_ref,
+                        secret_manager=secret_manager,
+                        algorithm=jwt_algorithm,
+                        expires_seconds=jwt_expires_seconds,
+                        issuer=jwt_issuer_name,
+                    )
+                )
                 log.info(
                     "WebState JWT auth enabled (W36c vault mode): ref=%s issuer=%s",
-                    jwt_secret_ref, jwt_issuer_name,
+                    jwt_secret_ref,
+                    jwt_issuer_name,
                 )
             elif ref.kind == "env":
                 # ${VAR} 通过 secret_ref 字段: 一次性 resolve 进 secret
                 import os
+
                 env_val = os.environ.get(ref.value)
                 if env_val is None:
                     raise ValueError(
                         f"env var {ref.value!r} not set (referenced by {jwt_secret_ref!r})"
                     )
-                jwt_issuer_obj = JWTIssuer(JWTConfig(
-                    secret=env_val,
-                    algorithm=jwt_algorithm,
-                    expires_seconds=jwt_expires_seconds,
-                    issuer=jwt_issuer_name,
-                ))
+                jwt_issuer_obj = JWTIssuer(
+                    JWTConfig(
+                        secret=env_val,
+                        algorithm=jwt_algorithm,
+                        expires_seconds=jwt_expires_seconds,
+                        issuer=jwt_issuer_name,
+                    )
+                )
                 log.info(
                     "WebState JWT auth enabled (env ref %s): issuer=%s",
-                    ref.value, jwt_issuer_name,
+                    ref.value,
+                    jwt_issuer_name,
                 )
             else:  # literal
-                jwt_issuer_obj = JWTIssuer(JWTConfig(
-                    secret=ref.value,
-                    algorithm=jwt_algorithm,
-                    expires_seconds=jwt_expires_seconds,
-                    issuer=jwt_issuer_name,
-                ))
+                jwt_issuer_obj = JWTIssuer(
+                    JWTConfig(
+                        secret=ref.value,
+                        algorithm=jwt_algorithm,
+                        expires_seconds=jwt_expires_seconds,
+                        issuer=jwt_issuer_name,
+                    )
+                )
                 log.info("WebState JWT auth enabled (literal ref): issuer=%s", jwt_issuer_name)
     # W35: 跨进程 fan-out — 需要 DSN 才有 Postgres store
     notifier: Any = None
     if enable_cross_process and postgres_dsn:
         from agent_swarm.web.store import PostgresNotifier
+
         notifier = PostgresNotifier(dsn=postgres_dsn)
         log.info("WebState cross-process fan-out enabled: origin=%s", notifier.origin_id[:8])
 

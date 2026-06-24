@@ -27,8 +27,10 @@ from agent_swarm.core.session_binding import (
 def test_register_and_get_identity() -> None:
     mgr = SessionBindingManager()
     mgr.register_identity(
-        tenant_id="acme", identity_key="ou_abc",
-        channel="lark", user_id="alice@example.com",
+        tenant_id="acme",
+        identity_key="ou_abc",
+        channel="lark",
+        user_id="alice@example.com",
     )
     identity = mgr.get_identity("acme", "ou_abc")
     assert identity is not None
@@ -44,8 +46,10 @@ def test_get_identity_unregistered() -> None:
 def test_resolve_user() -> None:
     mgr = SessionBindingManager()
     mgr.register_identity(
-        tenant_id="acme", identity_key="ou_abc",
-        channel="lark", user_id="alice@example.com",
+        tenant_id="acme",
+        identity_key="ou_abc",
+        channel="lark",
+        user_id="alice@example.com",
     )
     user = mgr.resolve_user("acme", "ou_abc")
     assert user == "alice@example.com"
@@ -59,7 +63,8 @@ def test_resolve_user_unregistered_returns_none() -> None:
 def test_register_identity_without_user_id() -> None:
     mgr = SessionBindingManager()
     mgr.register_identity(
-        tenant_id="acme", identity_key="cli-session-1",
+        tenant_id="acme",
+        identity_key="cli-session-1",
         channel="cli",
     )
     identity = mgr.get_identity("acme", "cli-session-1")
@@ -147,8 +152,10 @@ def test_bind_or_get_shares_session_via_user_id() -> None:
 
     # 飞书 @bot: open_id 触发, 注册为 alice
     mgr.register_identity(
-        tenant_id="acme", identity_key="ou_abc123",
-        channel="lark", user_id="alice@example.com",
+        tenant_id="acme",
+        identity_key="ou_abc123",
+        channel="lark",
+        user_id="alice@example.com",
     )
     # 1) Lark 触发: 创建 session sess-1
     sid_lark = mgr.bind_or_get_session("acme", "ou_abc123", "lark", factory)
@@ -173,8 +180,10 @@ def test_bind_or_get_tenant_isolation() -> None:
         return f"sess-{counter[0]}"
 
     mgr.register_identity(
-        tenant_id="acme", identity_key="ou_x",
-        channel="lark", user_id="alice@example.com",
+        tenant_id="acme",
+        identity_key="ou_x",
+        channel="lark",
+        user_id="alice@example.com",
     )
     sid1 = mgr.bind_or_get_session("acme", "ou_x", "lark", factory)
     # 另一 tenant 同样 user_id
@@ -192,8 +201,10 @@ def test_sqlite_persistence(tmp_path: Path) -> None:
     db = tmp_path / "bindings.db"
     mgr1 = SessionBindingManager(db_path=db)
     mgr1.register_identity(
-        tenant_id="acme", identity_key="ou_abc",
-        channel="lark", user_id="alice@example.com",
+        tenant_id="acme",
+        identity_key="ou_abc",
+        channel="lark",
+        user_id="alice@example.com",
     )
     mgr1.bind_session("acme", "ou_abc", "sess-1", "lark")
     del mgr1

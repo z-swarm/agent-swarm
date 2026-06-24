@@ -41,7 +41,11 @@ def test_sink_constructs() -> None:
 
 def test_task_status_labels_complete() -> None:
     assert set(TASK_STATUS_LABELS) == {
-        "pending", "blocked", "in_progress", "completed", "failed",
+        "pending",
+        "blocked",
+        "in_progress",
+        "completed",
+        "failed",
     }
 
 
@@ -82,82 +86,135 @@ def test_5_core_metrics_registered() -> None:
 @pytest.mark.asyncio
 async def test_task_created_increments_pending() -> None:
     sink = PrometheusSink()
-    await sink.consume(SessionEvent(
-        event_name="task.created", session_id="s1", timestamp=0.0,
-        payload={"task_id": "t1"},
-    ))
+    await sink.consume(
+        SessionEvent(
+            event_name="task.created",
+            session_id="s1",
+            timestamp=0.0,
+            payload={"task_id": "t1"},
+        )
+    )
     assert _get_counter(sink, TASKS_TOTAL, {"task_status": "pending"}) == 1.0
 
 
 @pytest.mark.asyncio
 async def test_task_completed_increments_completed() -> None:
     sink = PrometheusSink()
-    await sink.consume(SessionEvent(
-        event_name="task.completed", session_id="s1", timestamp=0.0,
-        payload={"task_id": "t1"},
-    ))
+    await sink.consume(
+        SessionEvent(
+            event_name="task.completed",
+            session_id="s1",
+            timestamp=0.0,
+            payload={"task_id": "t1"},
+        )
+    )
     assert _get_counter(sink, TASKS_TOTAL, {"task_status": "completed"}) == 1.0
 
 
 @pytest.mark.asyncio
 async def test_task_failed_increments_failed() -> None:
     sink = PrometheusSink()
-    await sink.consume(SessionEvent(
-        event_name="task.failed", session_id="s1", timestamp=0.0,
-        payload={"task_id": "t1", "error": "boom"},
-    ))
+    await sink.consume(
+        SessionEvent(
+            event_name="task.failed",
+            session_id="s1",
+            timestamp=0.0,
+            payload={"task_id": "t1", "error": "boom"},
+        )
+    )
     assert _get_counter(sink, TASKS_TOTAL, {"task_status": "failed"}) == 1.0
 
 
 @pytest.mark.asyncio
 async def test_task_blocked_increments_blocked() -> None:
     sink = PrometheusSink()
-    await sink.consume(SessionEvent(
-        event_name="task.blocked", session_id="s1", timestamp=0.0,
-        payload={"task_id": "t1"},
-    ))
+    await sink.consume(
+        SessionEvent(
+            event_name="task.blocked",
+            session_id="s1",
+            timestamp=0.0,
+            payload={"task_id": "t1"},
+        )
+    )
     assert _get_counter(sink, TASKS_TOTAL, {"task_status": "blocked"}) == 1.0
 
 
 @pytest.mark.asyncio
 async def test_task_claimed_increments_in_progress() -> None:
     sink = PrometheusSink()
-    await sink.consume(SessionEvent(
-        event_name="task.claimed", session_id="s1", timestamp=0.0,
-        payload={"task_id": "t1", "agent_id": "a1"},
-    ))
+    await sink.consume(
+        SessionEvent(
+            event_name="task.claimed",
+            session_id="s1",
+            timestamp=0.0,
+            payload={"task_id": "t1", "agent_id": "a1"},
+        )
+    )
     assert _get_counter(sink, TASKS_TOTAL, {"task_status": "in_progress"}) == 1.0
 
 
 @pytest.mark.asyncio
 async def test_llm_call_completed_increments_tokens() -> None:
     sink = PrometheusSink()
-    await sink.consume(SessionEvent(
-        event_name="llm.call_completed", session_id="s1", timestamp=0.0,
-        payload={"provider": "openai", "model": "gpt-4o-mini",
-                 "kind": "prompt", "tokens": 150},
-    ))
-    await sink.consume(SessionEvent(
-        event_name="llm.call_completed", session_id="s1", timestamp=0.0,
-        payload={"provider": "openai", "model": "gpt-4o-mini",
-                 "kind": "completion", "tokens": 50},
-    ))
-    assert _get_counter(sink, LLM_TOKENS_TOTAL, {
-        "provider": "openai", "model": "gpt-4o-mini", "kind": "prompt",
-    }) == 150.0
-    assert _get_counter(sink, LLM_TOKENS_TOTAL, {
-        "provider": "openai", "model": "gpt-4o-mini", "kind": "completion",
-    }) == 50.0
+    await sink.consume(
+        SessionEvent(
+            event_name="llm.call_completed",
+            session_id="s1",
+            timestamp=0.0,
+            payload={"provider": "openai", "model": "gpt-4o-mini", "kind": "prompt", "tokens": 150},
+        )
+    )
+    await sink.consume(
+        SessionEvent(
+            event_name="llm.call_completed",
+            session_id="s1",
+            timestamp=0.0,
+            payload={
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "kind": "completion",
+                "tokens": 50,
+            },
+        )
+    )
+    assert (
+        _get_counter(
+            sink,
+            LLM_TOKENS_TOTAL,
+            {
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "kind": "prompt",
+            },
+        )
+        == 150.0
+    )
+    assert (
+        _get_counter(
+            sink,
+            LLM_TOKENS_TOTAL,
+            {
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "kind": "completion",
+            },
+        )
+        == 50.0
+    )
 
 
 @pytest.mark.asyncio
 async def test_llm_call_completed_zero_tokens_skipped() -> None:
     """tokens=0 不增计数（避免误上报）"""
     sink = PrometheusSink()
-    await sink.consume(SessionEvent(
-        event_name="llm.call_completed", session_id="s1", timestamp=0.0,
-        payload={"provider": "openai", "model": "x", "kind": "prompt", "tokens": 0},
-    ))
+    await sink.consume(
+        SessionEvent(
+            event_name="llm.call_completed",
+            session_id="s1",
+            timestamp=0.0,
+            payload={"provider": "openai", "model": "x", "kind": "prompt", "tokens": 0},
+        )
+    )
     body = _scrape(sink)
     # 不应该有该 label 的样本
     assert 'kind="prompt"' not in body or "framework_llm_tokens_total" not in body
@@ -166,49 +223,77 @@ async def test_llm_call_completed_zero_tokens_skipped() -> None:
 @pytest.mark.asyncio
 async def test_cas_conflict_increments() -> None:
     sink = PrometheusSink()
-    await sink.consume(SessionEvent(
-        event_name="cas.conflict", session_id="s1", timestamp=0.0,
-        payload={"entity": "task", "version": 5},
-    ))
+    await sink.consume(
+        SessionEvent(
+            event_name="cas.conflict",
+            session_id="s1",
+            timestamp=0.0,
+            payload={"entity": "task", "version": 5},
+        )
+    )
     assert _get_counter(sink, CAS_CONFLICT_TOTAL, {"entity": "task"}) == 1.0
 
 
 @pytest.mark.asyncio
 async def test_mcp_circuit_state_changes() -> None:
     sink = PrometheusSink()
-    await sink.consume(SessionEvent(
-        event_name="mcp.circuit_changed", session_id="s1", timestamp=0.0,
-        payload={"server": "github", "state": "closed"},
-    ))
+    await sink.consume(
+        SessionEvent(
+            event_name="mcp.circuit_changed",
+            session_id="s1",
+            timestamp=0.0,
+            payload={"server": "github", "state": "closed"},
+        )
+    )
     assert _get_gauge(sink, MCP_CIRCUIT_STATE, {"server": "github"}) == 0.0
-    await sink.consume(SessionEvent(
-        event_name="mcp.circuit_changed", session_id="s1", timestamp=0.0,
-        payload={"server": "github", "state": "open"},
-    ))
+    await sink.consume(
+        SessionEvent(
+            event_name="mcp.circuit_changed",
+            session_id="s1",
+            timestamp=0.0,
+            payload={"server": "github", "state": "open"},
+        )
+    )
     assert _get_gauge(sink, MCP_CIRCUIT_STATE, {"server": "github"}) == 1.0
-    await sink.consume(SessionEvent(
-        event_name="mcp.circuit_changed", session_id="s1", timestamp=0.0,
-        payload={"server": "github", "state": "half_open"},
-    ))
+    await sink.consume(
+        SessionEvent(
+            event_name="mcp.circuit_changed",
+            session_id="s1",
+            timestamp=0.0,
+            payload={"server": "github", "state": "half_open"},
+        )
+    )
     assert _get_gauge(sink, MCP_CIRCUIT_STATE, {"server": "github"}) == 0.5
 
 
 @pytest.mark.asyncio
 async def test_approval_pending_increments_decrements() -> None:
     sink = PrometheusSink()
-    await sink.consume(SessionEvent(
-        event_name="approval.requested", session_id="s1", timestamp=0.0,
-        payload={"approval_id": "a1"},
-    ))
-    await sink.consume(SessionEvent(
-        event_name="approval.requested", session_id="s1", timestamp=0.0,
-        payload={"approval_id": "a2"},
-    ))
+    await sink.consume(
+        SessionEvent(
+            event_name="approval.requested",
+            session_id="s1",
+            timestamp=0.0,
+            payload={"approval_id": "a1"},
+        )
+    )
+    await sink.consume(
+        SessionEvent(
+            event_name="approval.requested",
+            session_id="s1",
+            timestamp=0.0,
+            payload={"approval_id": "a2"},
+        )
+    )
     assert _get_gauge(sink, APPROVAL_PENDING_COUNT, {}) == 2.0
-    await sink.consume(SessionEvent(
-        event_name="approval.resolved", session_id="s1", timestamp=0.0,
-        payload={"approval_id": "a1"},
-    ))
+    await sink.consume(
+        SessionEvent(
+            event_name="approval.resolved",
+            session_id="s1",
+            timestamp=0.0,
+            payload={"approval_id": "a1"},
+        )
+    )
     assert _get_gauge(sink, APPROVAL_PENDING_COUNT, {}) == 1.0
 
 
@@ -233,15 +318,24 @@ def test_add_llm_tokens_zero_skipped() -> None:
     sink = PrometheusSink()
     sink.add_llm_tokens("openai", "gpt-4o-mini", "prompt", 0)
     body = _scrape(sink)
-    assert "kind=\"prompt\"" not in body
+    assert 'kind="prompt"' not in body
 
 
 def test_add_llm_tokens_increments() -> None:
     sink = PrometheusSink()
     sink.add_llm_tokens("anthropic", "claude-3-5", "completion", 200)
-    assert _get_counter(sink, LLM_TOKENS_TOTAL, {
-        "provider": "anthropic", "model": "claude-3-5", "kind": "completion",
-    }) == 200.0
+    assert (
+        _get_counter(
+            sink,
+            LLM_TOKENS_TOTAL,
+            {
+                "provider": "anthropic",
+                "model": "claude-3-5",
+                "kind": "completion",
+            },
+        )
+        == 200.0
+    )
 
 
 def test_inc_cas_conflict() -> None:
@@ -275,9 +369,13 @@ def test_approval_inc_dec() -> None:
 @pytest.mark.asyncio
 async def test_consume_does_not_crash_on_unknown_event() -> None:
     sink = PrometheusSink()
-    await sink.consume(SessionEvent(
-        event_name="unknown.event", session_id="s1", timestamp=0.0,
-    ))
+    await sink.consume(
+        SessionEvent(
+            event_name="unknown.event",
+            session_id="s1",
+            timestamp=0.0,
+        )
+    )
     # 不抛
 
 
@@ -285,11 +383,14 @@ async def test_consume_does_not_crash_on_unknown_event() -> None:
 async def test_consume_handles_malformed_payload() -> None:
     sink = PrometheusSink()
     # llm.call_completed 但 tokens 不是数字
-    await sink.consume(SessionEvent(
-        event_name="llm.call_completed", session_id="s1", timestamp=0.0,
-        payload={"provider": "x", "model": "y", "kind": "prompt",
-                 "tokens": "not a number"},
-    ))
+    await sink.consume(
+        SessionEvent(
+            event_name="llm.call_completed",
+            session_id="s1",
+            timestamp=0.0,
+            payload={"provider": "x", "model": "y", "kind": "prompt", "tokens": "not a number"},
+        )
+    )
     # 不抛
 
 
@@ -343,6 +444,7 @@ async def test_metrics_content_type() -> None:
 def _scrape(sink: PrometheusSink) -> str:
     """直接生成 /metrics 输出（不经 HTTP）"""
     from prometheus_client import generate_latest
+
     return generate_latest(sink.registry).decode("utf-8")
 
 

@@ -79,9 +79,9 @@ class MCPCircuitOpenError(MCPConnectionError):
 class CircuitState:
     """熔断器状态机（DESIGN §7.3 三态）"""
 
-    CLOSED = "closed"          # 正常——失败计数，连续 N 次 → OPEN
-    OPEN = "open"              # 熔断——任何调用立即抛 MCPCircuitOpenError
-    HALF_OPEN = "half_open"    # 半开——允许 1 次试探；成功 → CLOSED，失败 → OPEN
+    CLOSED = "closed"  # 正常——失败计数，连续 N 次 → OPEN
+    OPEN = "open"  # 熔断——任何调用立即抛 MCPCircuitOpenError
+    HALF_OPEN = "half_open"  # 半开——允许 1 次试探；成功 → CLOSED，失败 → OPEN
 
 
 @dataclass
@@ -108,13 +108,9 @@ class CircuitBreaker:
 
     def __post_init__(self) -> None:
         if self.failure_threshold < 1:
-            raise ValueError(
-                f"failure_threshold must be >= 1, got {self.failure_threshold}"
-            )
+            raise ValueError(f"failure_threshold must be >= 1, got {self.failure_threshold}")
         if self.cool_off_s < 0:
-            raise ValueError(
-                f"cool_off_s must be >= 0, got {self.cool_off_s}"
-            )
+            raise ValueError(f"cool_off_s must be >= 0, got {self.cool_off_s}")
         self._state: str = CircuitState.CLOSED
         self._consecutive_failures: int = 0
         self._opened_at: float = 0.0
@@ -142,7 +138,8 @@ class CircuitBreaker:
         ):
             log.info(
                 "MCP %s circuit OPEN → HALF_OPEN (after %.1fs cool-off)",
-                self.server_name, self.cool_off_s,
+                self.server_name,
+                self.cool_off_s,
             )
             self._state = CircuitState.HALF_OPEN
 
@@ -151,7 +148,8 @@ class CircuitBreaker:
         if self._state in (CircuitState.HALF_OPEN, CircuitState.OPEN):
             log.info(
                 "MCP %s circuit %s → CLOSED (probe succeeded)",
-                self.server_name, self._state,
+                self.server_name,
+                self._state,
             )
             self._total_trips += 1
         self._state = CircuitState.CLOSED
@@ -168,8 +166,10 @@ class CircuitBreaker:
             if self._state != CircuitState.OPEN:
                 log.warning(
                     "MCP %s circuit %s → OPEN (failures=%d, threshold=%d)",
-                    self.server_name, self._state,
-                    self._consecutive_failures, self.failure_threshold,
+                    self.server_name,
+                    self._state,
+                    self._consecutive_failures,
+                    self.failure_threshold,
                 )
                 self._total_trips += 1
             self._state = CircuitState.OPEN
@@ -281,20 +281,22 @@ class ReconnectingMCPClient:
             backoff = _compute_backoff_s(attempt)
             log.info(
                 "MCP %s reconnect attempt %d/%d after %.1fs backoff",
-                self._config.name, attempt,
-                self._config.max_reconnect_attempts, backoff,
+                self._config.name,
+                attempt,
+                self._config.max_reconnect_attempts,
+                backoff,
             )
             await asyncio.sleep(backoff)
             try:
                 await self._inner.disconnect()
                 await self._inner.connect()
-                log.info("MCP %s reconnected (attempt %d)",
-                         self._config.name, attempt)
+                log.info("MCP %s reconnected (attempt %d)", self._config.name, attempt)
                 return
             except MCPConnectionError as exc:
                 last_exc = exc
-                log.warning("MCP %s reconnect attempt %d failed: %s",
-                            self._config.name, attempt, exc)
+                log.warning(
+                    "MCP %s reconnect attempt %d failed: %s", self._config.name, attempt, exc
+                )
         # 重连全部失败
         raise MCPConnectionError(
             f"MCP {self._config.name!r} failed to reconnect after "
@@ -314,8 +316,9 @@ class ReconnectingMCPClient:
         except MCPConnectionError as exc:
             if not self._config.auto_reconnect or self._reconnect_attempted:
                 raise
-            log.warning("MCP %s list_tools failed: %s — reconnecting (single shot)",
-                        self._config.name, exc)
+            log.warning(
+                "MCP %s list_tools failed: %s — reconnecting (single shot)", self._config.name, exc
+            )
             # 标记 + lock——保护本次单次调用；同时 lock 也防并发 reconnect
             self._reconnect_attempted = True
             try:
@@ -327,19 +330,27 @@ class ReconnectingMCPClient:
 
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
         return await self._breaker.call(
-            self._call_tool_with_reconnect, name, arguments,
+            self._call_tool_with_reconnect,
+            name,
+            arguments,
         )
 
     async def _call_tool_with_reconnect(
-        self, name: str, arguments: dict[str, Any],
+        self,
+        name: str,
+        arguments: dict[str, Any],
     ) -> Any:
         try:
             return await self._inner.call_tool(name, arguments)
         except MCPConnectionError as exc:
             if not self._config.auto_reconnect or self._reconnect_attempted:
                 raise
-            log.warning("MCP %s call_tool(%s) failed: %s — reconnecting (single shot)",
-                        self._config.name, name, exc)
+            log.warning(
+                "MCP %s call_tool(%s) failed: %s — reconnecting (single shot)",
+                self._config.name,
+                name,
+                exc,
+            )
             self._reconnect_attempted = True
             try:
                 await self._reconnect_with_backoff()
@@ -351,9 +362,7 @@ class ReconnectingMCPClient:
         # MCPClient ABC 没声明 initialize（initialize 是 MCP 协议层握手）
         # 用 getattr 防御式调用
         if not hasattr(self._inner, "initialize"):
-            raise NotImplementedError(
-                f"MCP {self._config.name!r} client has no initialize()"
-            )
+            raise NotImplementedError(f"MCP {self._config.name!r} client has no initialize()")
         inner_init = self._inner.initialize
         return await self._breaker.call(inner_init)
 

@@ -47,14 +47,15 @@ class VersionMismatchError(BackendError):
     """乐观锁冲突——expected_version 与实际不符"""
 
     def __init__(
-        self, key: str, expected: int, actual: int,
+        self,
+        key: str,
+        expected: int,
+        actual: int,
     ) -> None:
         self.key = key
         self.expected = expected
         self.actual = actual
-        super().__init__(
-            f"version_mismatch on {key!r}: expected={expected}, actual={actual}"
-        )
+        super().__init__(f"version_mismatch on {key!r}: expected={expected}, actual={actual}")
 
 
 # ---------------------------------------------------------------------------

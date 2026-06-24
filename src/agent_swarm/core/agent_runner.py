@@ -87,9 +87,7 @@ class AgentRunner:
         self.provider = provider
         # 仅保留 capabilities.allowed_tools 中允许的工具（防越权）
         allowed = set(agent.capabilities.allowed_tools)
-        self.tools: dict[str, Tool] = {
-            name: t for name, t in tools.items() if name in allowed
-        }
+        self.tools: dict[str, Tool] = {name: t for name, t in tools.items() if name in allowed}
         # 缓存工具 schema——每次 LLM 调用都要传
         self._tool_schemas = [
             {
@@ -126,8 +124,7 @@ class AgentRunner:
         # 深拷贝 task——后续 run() 内的所有修改只动副本
         task = copy.deepcopy(task)
 
-        log.info("agent=%s starting task=%s: %s",
-                 self.agent.id, task.id, task.title)
+        log.info("agent=%s starting task=%s: %s", self.agent.id, task.id, task.title)
         task.status = "in_progress"
         task.assigned_to = self.agent.id
 
@@ -138,8 +135,7 @@ class AgentRunner:
         iteration = 0
 
         for iteration in range(1, self.agent.max_iterations + 1):
-            log.debug("agent=%s iter=%d/%d",
-                      self.agent.id, iteration, self.agent.max_iterations)
+            log.debug("agent=%s iter=%d/%d", self.agent.id, iteration, self.agent.max_iterations)
 
             try:
                 resp = await self._think(history)
@@ -187,7 +183,8 @@ class AgentRunner:
         else:
             log.warning(
                 "agent=%s reached max_iterations=%d without stop",
-                self.agent.id, self.agent.max_iterations,
+                self.agent.id,
+                self.agent.max_iterations,
             )
             finish = "max_iterations"
             task.status = "completed"
@@ -239,8 +236,10 @@ class AgentRunner:
 
         log.info(
             "agent=%s loop end: completed=%d failed=%d cas_conflicts=%d",
-            self.agent.id, len(stats.tasks_completed),
-            len(stats.tasks_failed), stats.cas_conflicts,
+            self.agent.id,
+            len(stats.tasks_completed),
+            len(stats.tasks_failed),
+            stats.cas_conflicts,
         )
         return stats
 
@@ -263,9 +262,7 @@ class AgentRunner:
         claimable = await task_queue.list_claimable(agent_id=self.agent.id)
         claimed_task: Task | None = None
         for cand in claimable:
-            res = await task_queue.claim(
-                cand.id, self.agent.id, expected_version=cand.version
-            )
+            res = await task_queue.claim(cand.id, self.agent.id, expected_version=cand.version)
             if res.success and res.task:
                 claimed_task = res.task
                 break
@@ -286,18 +283,19 @@ class AgentRunner:
             final_task = run_res.task
             if final_task.status == "completed":
                 cr = await task_queue.complete(
-                    claimed_task.id, run_res.final_text,
+                    claimed_task.id,
+                    run_res.final_text,
                     expected_version=version_after_run,
                 )
                 if cr.success:
                     stats.tasks_completed.append(claimed_task.id)
                 else:
-                    log.warning("agent=%s complete cas failed: %s",
-                                self.agent.id, cr.reason)
+                    log.warning("agent=%s complete cas failed: %s", self.agent.id, cr.reason)
                     stats.tasks_failed.append(claimed_task.id)
             else:
                 cr = await task_queue.fail(
-                    claimed_task.id, final_task.error or "unknown",
+                    claimed_task.id,
+                    final_task.error or "unknown",
                     expected_version=version_after_run,
                 )
                 if cr.success:
@@ -305,9 +303,7 @@ class AgentRunner:
         elif inbox:
             stats.last_round_was_idle = False
         else:
-            got = await mailbox.wait_for_message(
-                self.agent.id, timeout=idle_timeout
-            )
+            got = await mailbox.wait_for_message(self.agent.id, timeout=idle_timeout)
             stats.last_round_was_idle = not got
 
     # ==================================================================
@@ -331,7 +327,8 @@ class AgentRunner:
             if s is None:
                 log.warning(
                     "agent=%s skill %r not registered—prompt will skip it",
-                    self.agent.id, sid,
+                    self.agent.id,
+                    sid,
                 )
                 continue
             resolved_skills.append(s)
@@ -353,9 +350,7 @@ class AgentRunner:
             user_lines.append("")
             user_lines.append("Pending messages from other agents:")
             for m in inbox_messages:
-                user_lines.append(
-                    f"  [{m.msg_type}] from {m.from_agent}: {m.content}"
-                )
+                user_lines.append(f"  [{m.msg_type}] from {m.from_agent}: {m.content}")
 
         user_lines.append("")
         user_lines.append("Please complete this task.")

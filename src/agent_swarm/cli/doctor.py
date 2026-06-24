@@ -457,11 +457,15 @@ def doctor(
 
     # 1) LLM provider 连通
     if skip_llm:
-        report.add(CheckResult(
-            name="llm.providers", status=CheckStatus.SKIP,
-            message="skipped (--skip-llm)",
-        ))
+        report.add(
+            CheckResult(
+                name="llm.providers",
+                status=CheckStatus.SKIP,
+                message="skipped (--skip-llm)",
+            )
+        )
     else:
+
         async def _run_llm() -> list[CheckResult]:
             results = []
             for prov, env in [("openai", "OPENAI_API_KEY"), ("anthropic", "ANTHROPIC_API_KEY")]:
@@ -472,47 +476,57 @@ def doctor(
             for r in asyncio.run(_run_llm()):
                 report.add(r)
         except Exception as exc:  # noqa: BLE001
-            report.add(CheckResult(
-                name="llm.providers",
-                status=CheckStatus.FAIL,
-                message=f"check crashed: {exc}",
-            ))
+            report.add(
+                CheckResult(
+                    name="llm.providers",
+                    status=CheckStatus.FAIL,
+                    message=f"check crashed: {exc}",
+                )
+            )
 
     # 2) SQLite 锁
     report.add(check_sqlite_lock(db_path))
 
     # 3) MCP server
     if skip_mcp:
-        report.add(CheckResult(
-            name="mcp.servers", status=CheckStatus.SKIP,
-            message="skipped (--skip-mcp)",
-        ))
+        report.add(
+            CheckResult(
+                name="mcp.servers",
+                status=CheckStatus.SKIP,
+                message="skipped (--skip-mcp)",
+            )
+        )
     else:
         try:
             mcp_result = asyncio.run(check_mcp_servers(mcp_config))
             report.add(mcp_result)
         except Exception as exc:  # noqa: BLE001
-            report.add(CheckResult(
-                name="mcp.servers",
-                status=CheckStatus.FAIL,
-                message=f"check crashed: {exc}",
-            ))
+            report.add(
+                CheckResult(
+                    name="mcp.servers",
+                    status=CheckStatus.FAIL,
+                    message=f"check crashed: {exc}",
+                )
+            )
 
     # 4) 密钥
     report.add(check_secrets())
 
     # 5) Docker sandbox (W19-4) —— 检查 Docker 可用性
     if skip_sandbox:
-        report.add(CheckResult(
-            name="sandbox.docker",
-            status=CheckStatus.SKIP,
-            message="skipped (--skip-sandbox)",
-        ))
+        report.add(
+            CheckResult(
+                name="sandbox.docker",
+                status=CheckStatus.SKIP,
+                message="skipped (--skip-sandbox)",
+            )
+        )
     else:
         try:
             from agent_swarm.security.sandbox_docker import (
                 DockerSandboxManager,
             )
+
             # 用临时 workspace 跑 doctor_check
             with tempfile.TemporaryDirectory() as td:
                 ws = Path(td) / "ws"
@@ -533,15 +547,21 @@ def doctor(
                     f"Recommendation: {dck_report['recommendation'][:80]}"
                 )
                 status = CheckStatus.WARN
-            report.add(CheckResult(
-                name="sandbox.docker", status=status, message=msg,
-            ))
+            report.add(
+                CheckResult(
+                    name="sandbox.docker",
+                    status=status,
+                    message=msg,
+                )
+            )
         except Exception as exc:  # noqa: BLE001
-            report.add(CheckResult(
-                name="sandbox.docker",
-                status=CheckStatus.WARN,
-                message=f"Docker check skipped: {exc}",
-            ))
+            report.add(
+                CheckResult(
+                    name="sandbox.docker",
+                    status=CheckStatus.WARN,
+                    message=f"Docker check skipped: {exc}",
+                )
+            )
 
     report.render()
     sys.exit(report.exit_code())

@@ -36,9 +36,7 @@ class OpenAIProvider(LLMProvider):
         """
         key = api_key or os.environ.get("OPENAI_API_KEY")
         if not key:
-            raise RuntimeError(
-                "OPENAI_API_KEY not set—either pass api_key= or export it"
-            )
+            raise RuntimeError("OPENAI_API_KEY not set—either pass api_key= or export it")
         self._client = AsyncOpenAI(api_key=key, base_url=base_url)
         self._default_model = default_model
 
@@ -59,9 +57,7 @@ class OpenAIProvider(LLMProvider):
         oai_messages = [self._turn_to_oai(t) for t in messages]
 
         # 2) tools schema 必须包装为 OpenAI function calling 格式
-        oai_tools = (
-            [{"type": "function", "function": t} for t in tools] if tools else None
-        )
+        oai_tools = [{"type": "function", "function": t} for t in tools] if tools else None
 
         # 3) 调用
         kwargs: dict[str, Any] = {
@@ -87,9 +83,7 @@ class OpenAIProvider(LLMProvider):
                 except json.JSONDecodeError:
                     # LLM 偶尔会输出非法 JSON——保留原文供调试
                     args = {"_raw": tc.function.arguments}
-                tool_calls.append(
-                    ToolCall(id=tc.id, name=tc.function.name, arguments=args)
-                )
+                tool_calls.append(ToolCall(id=tc.id, name=tc.function.name, arguments=args))
 
         # finish_reason 归一化：OpenAI 用 "tool_calls" 而我们用 "tool_use"
         finish_reason: Any = choice.finish_reason

@@ -19,7 +19,8 @@ from agent_swarm.golden import load_expectation
 TOOLS_DIR = Path(__file__).resolve().parent.parent.parent / "tools"
 sys.path.insert(0, str(TOOLS_DIR))
 _spec = importlib.util.spec_from_file_location(
-    "agent_review", TOOLS_DIR / "agent_review.py",
+    "agent_review",
+    TOOLS_DIR / "agent_review.py",
 )
 assert _spec and _spec.loader
 agent_review = importlib.util.module_from_spec(_spec)
@@ -34,7 +35,7 @@ CASES_ROOT = Path(__file__).parent / "cases"
 # ---------------------------------------------------------------------------
 
 
-VULNERABLE_DIFF = '''diff --git a/app.py b/app.py
+VULNERABLE_DIFF = """diff --git a/app.py b/app.py
 index 1234567..abcdef0 100644
 --- a/app.py
 +++ b/app.py
@@ -68,10 +69,10 @@ index 1234567..abcdef0 100644
  def hash_pw(pw):
 +    # 5) Weak hash → WEAK_HASH
 +    return hashlib.md5(pw.encode()).hexdigest()
-'''
+"""
 
 
-CLEAN_DIFF = '''diff --git a/app.py b/app.py
+CLEAN_DIFF = """diff --git a/app.py b/app.py
 index 1234567..abcdef0 100644
 --- a/app.py
 +++ b/app.py
@@ -81,7 +82,7 @@ index 1234567..abcdef0 100644
 +
 +def sub(a, b):
 +    return a - b
-'''
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -105,12 +106,8 @@ def test_g019_agent_review_finds_real_issues() -> None:
 def test_g019_no_false_positive_on_clean_diff() -> None:
     """G-019 副 case: 干净 diff → 无 CRITICAL/HIGH finding"""
     findings = agent_review.static_security_scan(CLEAN_DIFF)
-    critical_high = [
-        f for f in findings if f.severity in ("CRITICAL", "HIGH")
-    ]
-    assert len(critical_high) == 0, (
-        f"clean diff triggered false positive: {critical_high}"
-    )
+    critical_high = [f for f in findings if f.severity in ("CRITICAL", "HIGH")]
+    assert len(critical_high) == 0, f"clean diff triggered false positive: {critical_high}"
 
 
 def test_g019_run_simple_review_verdict() -> None:
@@ -118,7 +115,8 @@ def test_g019_run_simple_review_verdict() -> None:
     import unittest.mock as mock
 
     with mock.patch.object(
-        agent_review, "get_pr_diff",
+        agent_review,
+        "get_pr_diff",
         return_value=(VULNERABLE_DIFF, 1, 35),
     ):
         report = agent_review.run_simple_review("main..HEAD")
@@ -135,15 +133,14 @@ def test_g019_run_simple_review_clean_approves() -> None:
     import unittest.mock as mock
 
     with mock.patch.object(
-        agent_review, "get_pr_diff",
+        agent_review,
+        "get_pr_diff",
         return_value=(CLEAN_DIFF, 1, 3),
     ):
         report = agent_review.run_simple_review("main..HEAD")
 
     # clean diff 不应触发 request_changes
-    assert report.verdict == "approve", (
-        f"expected approve, got {report.verdict}"
-    )
+    assert report.verdict == "approve", f"expected approve, got {report.verdict}"
 
 
 def test_g019_expected_yaml_loads() -> None:
@@ -164,9 +161,9 @@ def test_g019_finding_severity_levels() -> None:
     findings = agent_review.static_security_scan(VULNERABLE_DIFF)
     secret_findings = [f for f in findings if f.category == "SECRET_LEAK"]
     assert secret_findings, "no SECRET_LEAK finding"
-    assert any(
-        f.severity in ("CRITICAL", "HIGH") for f in secret_findings
-    ), f"SECRET_LEAK not marked high enough: {[f.severity for f in secret_findings]}"
+    assert any(f.severity in ("CRITICAL", "HIGH") for f in secret_findings), (
+        f"SECRET_LEAK not marked high enough: {[f.severity for f in secret_findings]}"
+    )
 
 
 def test_g019_review_finding_has_required_fields() -> None:

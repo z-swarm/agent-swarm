@@ -29,8 +29,12 @@ from agent_swarm.core.types import (
 
 def _plan_only(id: str) -> Agent:
     return Agent(
-        id=id, role="judge", persona="", model="gpt-4o-mini",
-        provider="openai", capabilities=AgentCapabilities.plan_only(),
+        id=id,
+        role="judge",
+        persona="",
+        model="gpt-4o-mini",
+        provider="openai",
+        capabilities=AgentCapabilities.plan_only(),
     )
 
 
@@ -41,19 +45,27 @@ def _judge_from_truth(truth: str) -> callable:
 
     @param truth 真根因子串——hyp_statement 中包含则判 SUPPORT
     """
+
     async def judge_fn(agent, hyp_id, round_no, hypotheses: dict[str, str]):
         hyp_statement = hypotheses[hyp_id]
         if truth in hyp_statement:
             return Judgement(
-                agent_id=agent.id, hypothesis_id=hyp_id, round_no=round_no,
-                stance=Stance.SUPPORT, confidence=0.95,
+                agent_id=agent.id,
+                hypothesis_id=hyp_id,
+                round_no=round_no,
+                stance=Stance.SUPPORT,
+                confidence=0.95,
                 reasoning=f"evidence: {truth} matches hypothesis",
             )
         return Judgement(
-            agent_id=agent.id, hypothesis_id=hyp_id, round_no=round_no,
-            stance=Stance.REFUTE, confidence=0.85,
+            agent_id=agent.id,
+            hypothesis_id=hyp_id,
+            round_no=round_no,
+            stance=Stance.REFUTE,
+            confidence=0.85,
             reasoning=f"no evidence for {hyp_statement[:30]}",
         )
+
     return judge_fn
 
 
@@ -194,36 +206,56 @@ async def test_g015_memory_leak_root_cause() -> None:
 async def test_p2_overall_hit_rate_above_80_percent() -> None:
     """汇总：跑全部 5 个 P2 case 统计根因命中率，要求 ≥80%（Phase 2 DoD ②）"""
     cases = [
-        ("G-011", [
-            "conftest fixture not loading",
-            "test_login assertion fails because login() returns None when password is empty string — missing None check",
-            "pytest version mismatch with plugin",
-            "test runner has wrong working directory",
-        ], "missing None check"),
-        ("G-012", [
-            "compiler version too old",
-            "missing source file in Makefile",
-            "undefined reference: foo() in libbar.a — linker can't find symbol foo in static library",
-            "header file missing #include guard",
-        ], "undefined reference"),
-        ("G-013", [
-            "network latency to DB server",
-            "ORM lazy loading adds N+1 query: get_user_posts triggers SELECT per row instead of JOIN",
-            "Python GIL contention",
-            "JSON serialization on large response",
-        ], "N+1"),
-        ("G-014", [
-            "API endpoint returns 404",
-            "config dict lacks 'db' key when env var unset — accessing config['db']['host'] raises KeyError (null deref)",
-            "thread deadlock in connection pool",
-            "out of memory in worker process",
-        ], "config['db']"),
-        ("G-015", [
-            "cache eviction policy too aggressive",
-            "file handle not closed in exception path",
-            "event listener registered in request handler without removal — closure holds reference forever",
-            "memory-mapped file not unmapped",
-        ], "event listener"),
+        (
+            "G-011",
+            [
+                "conftest fixture not loading",
+                "test_login assertion fails because login() returns None when password is empty string — missing None check",
+                "pytest version mismatch with plugin",
+                "test runner has wrong working directory",
+            ],
+            "missing None check",
+        ),
+        (
+            "G-012",
+            [
+                "compiler version too old",
+                "missing source file in Makefile",
+                "undefined reference: foo() in libbar.a — linker can't find symbol foo in static library",
+                "header file missing #include guard",
+            ],
+            "undefined reference",
+        ),
+        (
+            "G-013",
+            [
+                "network latency to DB server",
+                "ORM lazy loading adds N+1 query: get_user_posts triggers SELECT per row instead of JOIN",
+                "Python GIL contention",
+                "JSON serialization on large response",
+            ],
+            "N+1",
+        ),
+        (
+            "G-014",
+            [
+                "API endpoint returns 404",
+                "config dict lacks 'db' key when env var unset — accessing config['db']['host'] raises KeyError (null deref)",
+                "thread deadlock in connection pool",
+                "out of memory in worker process",
+            ],
+            "config['db']",
+        ),
+        (
+            "G-015",
+            [
+                "cache eviction policy too aggressive",
+                "file handle not closed in exception path",
+                "event listener registered in request handler without removal — closure holds reference forever",
+                "memory-mapped file not unmapped",
+            ],
+            "event listener",
+        ),
     ]
     hits = 0
     for case_id, hypotheses, truth in cases:
@@ -266,9 +298,7 @@ async def test_g018_mcp_server_crash_circuit_opens() -> None:
 
         async def connect(self):
             self.connect_count += 1
-            raise MCPConnectionError(
-                f"dead server: connect attempt {self.connect_count} refused"
-            )
+            raise MCPConnectionError(f"dead server: connect attempt {self.connect_count} refused")
 
         async def disconnect(self):
             pass
@@ -283,8 +313,12 @@ async def test_g018_mcp_server_crash_circuit_opens() -> None:
             raise MCPConnectionError("dead server: call_tool refused")
 
     cfg = MCPServerConfig(
-        name="dead-server", transport="stdio", command=["fake"],
-        max_reconnect_attempts=3, circuit_breaker_threshold=3, auto_reconnect=True,
+        name="dead-server",
+        transport="stdio",
+        command=["fake"],
+        max_reconnect_attempts=3,
+        circuit_breaker_threshold=3,
+        auto_reconnect=True,
     )
     dead = _DeadMCPClient()
     wrapper = ReconnectingMCPClient(dead, cfg)
@@ -309,8 +343,7 @@ async def test_g018_mcp_server_crash_circuit_opens() -> None:
     assert exc_info.value.failure_count == 3
 
     assert dead.connect_count == 9, (
-        f"expected 9 connect attempts (3 list_tools * 3 reconnects), "
-        f"got {dead.connect_count}"
+        f"expected 9 connect attempts (3 list_tools * 3 reconnects), got {dead.connect_count}"
     )
 
 
@@ -330,9 +363,7 @@ async def test_g018_circuit_recovers_after_cool_off() -> None:
         async def connect(self):
             self.connect_count += 1
             if self.connect_count <= self.fail_first_n:
-                raise MCPConnectionError(
-                    f"recoverable: attempt {self.connect_count}"
-                )
+                raise MCPConnectionError(f"recoverable: attempt {self.connect_count}")
             self._connected = True
 
         async def disconnect(self):
@@ -350,8 +381,12 @@ async def test_g018_circuit_recovers_after_cool_off() -> None:
             return "ok"
 
     cfg = MCPServerConfig(
-        name="recoverable", transport="stdio", command=["fake"],
-        max_reconnect_attempts=2, circuit_breaker_threshold=1, auto_reconnect=True,
+        name="recoverable",
+        transport="stdio",
+        command=["fake"],
+        max_reconnect_attempts=2,
+        circuit_breaker_threshold=1,
+        auto_reconnect=True,
     )
     inner = _RecoverableMCPClient(fail_first_n=99)
     wrapper = ReconnectingMCPClient(inner, cfg)

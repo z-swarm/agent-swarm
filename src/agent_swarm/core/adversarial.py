@@ -82,21 +82,26 @@ async def gather_round(
     for j, (agent, h_id) in zip(raw, task_meta, strict=False):
         if j is None:
             # judge_fn 抛异常——兜底为 UNCERTAIN
-            judgements.append(Judgement(
-                agent_id=agent.id,
-                hypothesis_id=h_id,
-                round_no=round_no,
-                stance=Stance.UNCERTAIN,
-                confidence=0.0,
-                reasoning="judge_fn raised; treated as UNCERTAIN per DESIGN §6.2.5",
-            ))
+            judgements.append(
+                Judgement(
+                    agent_id=agent.id,
+                    hypothesis_id=h_id,
+                    round_no=round_no,
+                    stance=Stance.UNCERTAIN,
+                    confidence=0.0,
+                    reasoning="judge_fn raised; treated as UNCERTAIN per DESIGN §6.2.5",
+                )
+            )
         else:
             judgements.append(j)
     return judgements
 
 
 async def _safe_judge(
-    judge_fn: JudgeFn, agent: Agent, h: HypothesisState, round_no: int,
+    judge_fn: JudgeFn,
+    agent: Agent,
+    h: HypothesisState,
+    round_no: int,
 ) -> Judgement | None:
     """调 judge_fn，捕获异常并返回 None（gather_round 兜底为 UNCERTAIN）"""
     try:
@@ -104,13 +109,16 @@ async def _safe_judge(
     except Exception as exc:  # noqa: BLE001
         log.warning(
             "adversarial.gather_round: judge_fn raised for agent=%s hyp=%s: %s",
-            agent.id, h.id, exc,
+            agent.id,
+            h.id,
+            exc,
         )
         return None
 
 
 def attach_judgements(
-    hypotheses: list[HypothesisState], judgements: list[Judgement],
+    hypotheses: list[HypothesisState],
+    judgements: list[Judgement],
 ) -> None:
     """把 gather_round 产出的 Judgement 按 round_no 挂到对应假设上"""
     for j in judgements:
@@ -121,19 +129,17 @@ def attach_judgements(
 
 
 def compute_support_scores(
-    hypotheses: list[HypothesisState], round_no: int,
+    hypotheses: list[HypothesisState],
+    round_no: int,
 ) -> dict[str, float]:
     """对每个未淘汰假设返回本轮 support_score 字典"""
-    return {
-        h.id: h.support_score(round_no)
-        for h in hypotheses
-        if not h.eliminated
-    }
+    return {h.id: h.support_score(round_no) for h in hypotheses if not h.eliminated}
 
 
 @dataclass
 class EliminationResult:
     """eliminate() 的返回：存活 + 刚淘汰"""
+
     still_alive: list[HypothesisState] = field(default_factory=list)
     just_eliminated: list[HypothesisState] = field(default_factory=list)
 
@@ -203,7 +209,6 @@ def _round_has_no_support(h: HypothesisState) -> bool:
     return not any(j.stance == Stance.SUPPORT for j in judgements)
 
 
-
 # ---------------------------------------------------------------------------
 # W8-3: 收敛判定（DESIGN §6.2.4）—— 4 条优先级
 # ---------------------------------------------------------------------------
@@ -220,6 +225,7 @@ ConvergenceReason = Literal[
 @dataclass
 class ConvergenceCheck:
     """单次 check_convergence() 的输出：是否收敛 + 原因（如果收敛）"""
+
     converged: bool
     reason: ConvergenceReason | None = None
     # 调试信息：每条规则的命中情况（供日志 / observability 排查）
@@ -276,35 +282,49 @@ def check_convergence(
 
     if rule_a:
         return ConvergenceCheck(
-            converged=True, reason="min_survivors_reached",
-            rule_a_hit=rule_a, rule_b_hit=rule_b,
-            rule_c_hit=rule_c, rule_d_hit=rule_d,
+            converged=True,
+            reason="min_survivors_reached",
+            rule_a_hit=rule_a,
+            rule_b_hit=rule_b,
+            rule_c_hit=rule_c,
+            rule_d_hit=rule_d,
         )
     if rule_b:
         return ConvergenceCheck(
-            converged=True, reason="consensus_stable",
-            rule_a_hit=rule_a, rule_b_hit=rule_b,
-            rule_c_hit=rule_c, rule_d_hit=rule_d,
+            converged=True,
+            reason="consensus_stable",
+            rule_a_hit=rule_a,
+            rule_b_hit=rule_b,
+            rule_c_hit=rule_c,
+            rule_d_hit=rule_d,
         )
     if rule_d:
         return ConvergenceCheck(
-            converged=True, reason="all_eliminated",
-            rule_a_hit=rule_a, rule_b_hit=rule_b,
-            rule_c_hit=rule_c, rule_d_hit=rule_d,
+            converged=True,
+            reason="all_eliminated",
+            rule_a_hit=rule_a,
+            rule_b_hit=rule_b,
+            rule_c_hit=rule_c,
+            rule_d_hit=rule_d,
         )
     if rule_c:
         return ConvergenceCheck(
-            converged=True, reason="max_rounds_exhausted",
-            rule_a_hit=rule_a, rule_b_hit=rule_b,
-            rule_c_hit=rule_c, rule_d_hit=rule_d,
+            converged=True,
+            reason="max_rounds_exhausted",
+            rule_a_hit=rule_a,
+            rule_b_hit=rule_b,
+            rule_c_hit=rule_c,
+            rule_d_hit=rule_d,
         )
 
     return ConvergenceCheck(
-        converged=False, reason=None,
-        rule_a_hit=rule_a, rule_b_hit=rule_b,
-        rule_c_hit=rule_c, rule_d_hit=rule_d,
+        converged=False,
+        reason=None,
+        rule_a_hit=rule_a,
+        rule_b_hit=rule_b,
+        rule_c_hit=rule_c,
+        rule_d_hit=rule_d,
     )
-
 
 
 # ---------------------------------------------------------------------------
@@ -357,8 +377,7 @@ class AdversarialVerifier(CollaborationProtocol):
             raise ValueError("agents must be non-empty")
 
         states: list[HypothesisState] = [
-            HypothesisState(id=f"h{i}", statement=stmt)
-            for i, stmt in enumerate(hypotheses)
+            HypothesisState(id=f"h{i}", statement=stmt) for i, stmt in enumerate(hypotheses)
         ]
         history: list[Judgement] = []
         _judge_fn = judge_fn or _default_judge_fn
@@ -382,7 +401,8 @@ class AdversarialVerifier(CollaborationProtocol):
                 history = [j for j in history if j.round_no != round_no]
                 log.warning(
                     "adversarial.round %d: all agents failed; rolling back (streak=%d)",
-                    round_no, self._all_failed_streak,
+                    round_no,
+                    self._all_failed_streak,
                 )
                 continue
             self._all_failed_streak = 0
@@ -398,7 +418,8 @@ class AdversarialVerifier(CollaborationProtocol):
 
             curr_stances = _build_stance_dict(states, round_no)
             cc = check_convergence(
-                states, round_no,
+                states,
+                round_no,
                 min_survivors=self._min_survivors,
                 max_rounds=self._max_rounds,
                 prev_round_stances=prev_stances,
@@ -406,13 +427,17 @@ class AdversarialVerifier(CollaborationProtocol):
             )
             if cc.converged:
                 return self._build_verdict(
-                    states, history, rounds_used=round_no,
+                    states,
+                    history,
+                    rounds_used=round_no,
                     convergence_reason=cc.reason or "max_rounds_exhausted",
                 )
             prev_stances = curr_stances
 
         return self._build_verdict(
-            states, history, rounds_used=self._max_rounds,
+            states,
+            history,
+            rounds_used=self._max_rounds,
             convergence_reason="max_rounds_exhausted",
         )
 
@@ -427,10 +452,7 @@ class AdversarialVerifier(CollaborationProtocol):
         """
 
         hypotheses = [t.title for t in swarm.tasks if t.title]
-        judges = [
-            a for a in swarm.agents
-            if not a.capabilities.can_execute_actions
-        ]
+        judges = [a for a in swarm.agents if not a.capabilities.can_execute_actions]
         if not judges:
             judges = list(swarm.agents)
         try:
@@ -498,6 +520,7 @@ class AdversarialVerifier(CollaborationProtocol):
             if not rounds:
                 return float("-inf")
             return h.support_score(rounds[-1])
+
         survivors.sort(key=_sort_key, reverse=True)
 
         root_cause: str | None = None
@@ -508,15 +531,14 @@ class AdversarialVerifier(CollaborationProtocol):
                     eliminated,
                     key=lambda h: h.eliminated_at_round or 0,
                 )
-                root_cause = (
-                    f"all hypotheses eliminated; weak recommendation: {latest.statement}"
-                )
+                root_cause = f"all hypotheses eliminated; weak recommendation: {latest.statement}"
                 confidence = 0.1
         elif len(survivors) == 1:
             root_cause = survivors[0].statement
             last_round = max(survivors[0].judgements_by_round.keys())
             supports = [
-                j.confidence for j in survivors[0].judgements_by_round[last_round]
+                j.confidence
+                for j in survivors[0].judgements_by_round[last_round]
                 if j.stance == Stance.SUPPORT
             ]
             confidence = sum(supports) / len(supports) if supports else 0.0
@@ -533,7 +555,8 @@ class AdversarialVerifier(CollaborationProtocol):
 
 
 def _build_stance_dict(
-    states: list[HypothesisState], round_no: int,
+    states: list[HypothesisState],
+    round_no: int,
 ) -> dict[tuple[str, str], Stance]:
     """构造 (agent_id, hyp_id) -> Stance 字典（供 consensus_stable 判定）"""
     out: dict[tuple[str, str], Stance] = {}
@@ -550,7 +573,9 @@ def _rollback_round(states: list[HypothesisState], round_no: int) -> None:
 
 
 async def _default_judge_fn(
-    agent: Agent, hypothesis_id: str, round_no: int,
+    agent: Agent,
+    hypothesis_id: str,
+    round_no: int,
 ) -> Judgement:
     """
     默认 judge_fn——若用户未注入则抛错（强制 caller 接真 LLM）
@@ -559,8 +584,7 @@ async def _default_judge_fn(
           Case 时用 FakeLLMProvider 脚本构造确定性 judge_fn。
     """
     raise NotImplementedError(
-        "AdversarialVerifier.verify() requires judge_fn; "
-        "W8 骨架不绑死 LLM provider，调用方需注入。"
+        "AdversarialVerifier.verify() requires judge_fn; W8 骨架不绑死 LLM provider，调用方需注入。"
     )
 
 

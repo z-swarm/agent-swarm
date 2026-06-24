@@ -107,6 +107,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 真实 OpenAI/Anthropic SDK 接入留 W37+ (当前 fake 模式等价 simple + 异步)
   - 任务清理 1h TTL + 10min cleanup interval (后台 loop 留 W37+)
 
+#### W36e: repo 级 `ruff format` 150 文件欠债清理 (历史 cleanup) (2026-06-24)
+
+- **新增**: 1 原子 commit 把 150 个文件 `ruff format` 落地
+- **变更**: `+3308/-2133` 行 (格式调整, 无逻辑改动)
+- **守门**: `verify_w36e_dod.py` 5/5 全过
+  - `ruff format --check` 0 欠债 (185 files already formatted)
+  - `ruff check` 0 errors
+  - `mypy` 0 errors
+  - `pytest` 全量 1238 passed (W36f 1233 baseline + 5 G-029 修复)
+  - `git diff --stat` 150 files (确认 W36e 改的范围)
+- **衔接**: W36g (0.5.0 final, 等 TestPyPI) + W37 (LLM 真实接入)
+- **已知限制**: 1 原子 commit 改 150 文件, git blame 噪声 (可用 `.git-blame-ignore-revs` 隔离)
+
 ## [0.5.0a1] - 2026-06-22
 
 ### Phase 5 启动 (W28 GUI Web UI v1)

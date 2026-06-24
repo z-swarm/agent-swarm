@@ -70,11 +70,15 @@ async def test_websocket_sink_broadcasts_to_multiple_clients() -> None:
             assert sink.active_clients == 3
 
             # 推送一条事件
-            await sink.consume(SessionEvent(
-                event_name="task.created",
-                session_id="S1", timestamp=time.time(),
-                seq=1, payload={"task_id": "T1"},
-            ))
+            await sink.consume(
+                SessionEvent(
+                    event_name="task.created",
+                    session_id="S1",
+                    timestamp=time.time(),
+                    seq=1,
+                    payload={"task_id": "T1"},
+                )
+            )
             # 给发送协程时间跑
             await asyncio.sleep(0.3)
             # 每个客户端都收到
@@ -137,10 +141,15 @@ async def test_websocket_sink_client_disconnect_does_not_crash_sink() -> None:
         # 新客户端能连
         ws2 = await _connect_ws(port)
         try:
-            await sink.consume(SessionEvent(
-                event_name="x", session_id="s", timestamp=time.time(),
-                seq=1, payload={},
-            ))
+            await sink.consume(
+                SessionEvent(
+                    event_name="x",
+                    session_id="s",
+                    timestamp=time.time(),
+                    seq=1,
+                    payload={},
+                )
+            )
             msg = await ws2.receive(timeout=1.0)
             data = json.loads(msg.data)
             assert data["type"] == "event"
@@ -206,10 +215,15 @@ async def test_websocket_sink_tracks_client_stats() -> None:
             assert sink.active_clients == 1
             assert sink.total_clients_seen == 1
             for i in range(3):
-                await sink.consume(SessionEvent(
-                    event_name="x", session_id="s", timestamp=time.time(),
-                    seq=i, payload={},
-                ))
+                await sink.consume(
+                    SessionEvent(
+                        event_name="x",
+                        session_id="s",
+                        timestamp=time.time(),
+                        seq=i,
+                        payload={},
+                    )
+                )
             await asyncio.sleep(0.3)
             assert sink.total_events_sent == 3
         finally:
@@ -232,13 +246,16 @@ async def test_websocket_sink_event_envelope_format() -> None:
         port = sink.bound_port
         ws = await _connect_ws(port)
         try:
-            await sink.consume(SessionEvent(
-                event_name="metric.count",
-                session_id="S",
-                timestamp=1234.5, seq=42,
-                payload={"value": 7},
-                request_id="req-abc",
-            ))
+            await sink.consume(
+                SessionEvent(
+                    event_name="metric.count",
+                    session_id="S",
+                    timestamp=1234.5,
+                    seq=42,
+                    payload={"value": 7},
+                    request_id="req-abc",
+                )
+            )
             await asyncio.sleep(0.2)
             msg = await ws.receive(timeout=1.0)
             data = json.loads(msg.data)
@@ -267,9 +284,15 @@ async def test_websocket_sink_consume_with_no_clients_is_noop() -> None:
     sink = WebSocketSink(host="127.0.0.1", port=0)
     await sink.start()
     try:
-        await sink.consume(SessionEvent(
-            event_name="x", session_id="s", timestamp=time.time(), seq=1, payload={},
-        ))
+        await sink.consume(
+            SessionEvent(
+                event_name="x",
+                session_id="s",
+                timestamp=time.time(),
+                seq=1,
+                payload={},
+            )
+        )
         assert sink.total_events_sent == 0
     finally:
         await sink.stop()
@@ -301,10 +324,15 @@ async def test_websocket_sink_slow_consumer_does_not_block_consume() -> None:
             # 推 100 条事件
             t0 = time.time()
             for i in range(100):
-                await sink.consume(SessionEvent(
-                    event_name="burst", session_id="s", timestamp=time.time(),
-                    seq=i, payload={"i": i},
-                ))
+                await sink.consume(
+                    SessionEvent(
+                        event_name="burst",
+                        session_id="s",
+                        timestamp=time.time(),
+                        seq=i,
+                        payload={"i": i},
+                    )
+                )
             elapsed = time.time() - t0
             # 100 次 consume 应该在 1 秒内完成（不被慢消费者阻塞）
             assert elapsed < 1.0, f"consume() 被慢消费者阻塞 {elapsed:.2f}s"
@@ -342,10 +370,15 @@ async def test_websocket_sink_fast_consumer_unaffected_by_slow_peer() -> None:
             # 推 50 条
             n = 50
             for i in range(n):
-                await sink.consume(SessionEvent(
-                    event_name="multi", session_id="s", timestamp=time.time(),
-                    seq=i, payload={"i": i},
-                ))
+                await sink.consume(
+                    SessionEvent(
+                        event_name="multi",
+                        session_id="s",
+                        timestamp=time.time(),
+                        seq=i,
+                        payload={"i": i},
+                    )
+                )
             # 给快客户端时间收完
             await asyncio.sleep(0.5)
 
@@ -370,4 +403,4 @@ async def test_websocket_sink_fast_consumer_unaffected_by_slow_peer() -> None:
             await _close(ws_fast)
             await _close(ws_slow)
     finally:
-            await sink.stop()
+        await sink.stop()

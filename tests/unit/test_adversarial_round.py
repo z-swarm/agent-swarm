@@ -25,8 +25,12 @@ from agent_swarm.core.types import (
 
 def _plan_only_agent(id: str) -> Agent:
     return Agent(
-        id=id, role="judge", persona="", model="gpt-4o-mini",
-        provider="openai", capabilities=AgentCapabilities.plan_only(),
+        id=id,
+        role="judge",
+        persona="",
+        model="gpt-4o-mini",
+        provider="openai",
+        capabilities=AgentCapabilities.plan_only(),
     )
 
 
@@ -47,9 +51,13 @@ async def test_gather_round_returns_judgement_per_pair() -> None:
 
     async def judge_fn(agent, hyp_id, round_no):
         return Judgement(
-            agent_id=agent.id, hypothesis_id=hyp_id, round_no=round_no,
-            stance=Stance.SUPPORT, confidence=1.0,
+            agent_id=agent.id,
+            hypothesis_id=hyp_id,
+            round_no=round_no,
+            stance=Stance.SUPPORT,
+            confidence=1.0,
         )
+
     judgements = await gather_round(agents, hyps, round_no=1, judge_fn=judge_fn)
     assert len(judgements) == 6
     # 所有 judgement 的 round_no 都是 1
@@ -67,9 +75,13 @@ async def test_gather_round_skips_eliminated_hypotheses() -> None:
 
     async def judge_fn(agent, hyp_id, round_no):
         return Judgement(
-            agent_id=agent.id, hypothesis_id=hyp_id, round_no=round_no,
-            stance=Stance.SUPPORT, confidence=1.0,
+            agent_id=agent.id,
+            hypothesis_id=hyp_id,
+            round_no=round_no,
+            stance=Stance.SUPPORT,
+            confidence=1.0,
         )
+
     judgements = await gather_round(agents, [h1, h2], round_no=1, judge_fn=judge_fn)
     assert len(judgements) == 1
     assert judgements[0].hypothesis_id == "h1"
@@ -85,9 +97,13 @@ async def test_gather_round_treats_judge_exception_as_uncertain() -> None:
         if agent.id == "a1":
             raise RuntimeError("simulated LLM failure")
         return Judgement(
-            agent_id=agent.id, hypothesis_id=hyp_id, round_no=round_no,
-            stance=Stance.SUPPORT, confidence=1.0,
+            agent_id=agent.id,
+            hypothesis_id=hyp_id,
+            round_no=round_no,
+            stance=Stance.SUPPORT,
+            confidence=1.0,
         )
+
     judgements = await gather_round(agents, hyps, round_no=1, judge_fn=judge_fn)
     a1_j = next(j for j in judgements if j.agent_id == "a1")
     a2_j = next(j for j in judgements if j.agent_id == "a2")
@@ -133,14 +149,10 @@ def test_attach_judgements_groups_by_round() -> None:
 def test_compute_support_scores_skips_eliminated() -> None:
     """compute_support_scores 不返回已淘汰假设"""
     h1 = _hs("h1")
-    h1.judgements_by_round[1] = [
-        Judgement("a1", "h1", 1, Stance.SUPPORT, 1.0)
-    ]
+    h1.judgements_by_round[1] = [Judgement("a1", "h1", 1, Stance.SUPPORT, 1.0)]
     h2 = _hs("h2")
     h2.eliminated = True
-    h2.judgements_by_round[1] = [
-        Judgement("a1", "h2", 1, Stance.SUPPORT, 1.0)
-    ]
+    h2.judgements_by_round[1] = [Judgement("a1", "h2", 1, Stance.SUPPORT, 1.0)]
     scores = compute_support_scores([h1, h2], 1)
     assert "h1" in scores
     assert "h2" not in scores
@@ -210,9 +222,7 @@ def test_eliminate_does_not_re_eliminate() -> None:
     h = _hs("h1")
     h.eliminated = True
     h.eliminated_at_round = 1
-    h.judgements_by_round[1] = [
-        Judgement("a1", "h1", 1, Stance.REFUTE, 1.0)
-    ]
+    h.judgements_by_round[1] = [Judgement("a1", "h1", 1, Stance.REFUTE, 1.0)]
     result = eliminate([h], {"h1": -1.0}, threshold=-0.5)
     assert result.just_eliminated == []
     assert result.still_alive == []

@@ -235,6 +235,7 @@ class PostgresWebStateStore:
                 )
             else:
                 import asyncpg
+
                 self._pool = await asyncpg.create_pool(
                     dsn=self.config.dsn,
                     min_size=self.config.min_size,
@@ -265,7 +266,11 @@ class PostgresWebStateStore:
         payload_json = json.dumps(payload or {})
         async with self._pool.acquire() as conn:
             await conn.execute(
-                sql, event_name, payload_json, session_id, self.config.tenant_id,
+                sql,
+                event_name,
+                payload_json,
+                session_id,
+                self.config.tenant_id,
             )
         # 通知本地订阅者 (单进程 fan-out)
         rec: dict[str, Any] = {
@@ -325,14 +330,16 @@ class PostgresWebStateStore:
                 data = json.loads(data)
             ts = row["ts"]
             ts_float = ts.timestamp() if hasattr(ts, "timestamp") else float(ts)
-            out.append({
-                "seq": int(row["seq"]),
-                "timestamp": ts_float,
-                "event_name": row["event_type"],
-                "session_id": row["session_id"],
-                "tenant_id": row["tenant_id"],
-                "payload": data,
-            })
+            out.append(
+                {
+                    "seq": int(row["seq"]),
+                    "timestamp": ts_float,
+                    "event_name": row["event_type"],
+                    "session_id": row["session_id"],
+                    "tenant_id": row["tenant_id"],
+                    "payload": data,
+                }
+            )
         # recent 返回按时间正序 (新→旧为 reversed, 但 ORDER BY DESC + list 已新→旧)
         # 调用方期望"新→旧", 已是正确顺序
         return out
@@ -342,6 +349,7 @@ class PostgresWebStateStore:
 
     def unsubscribe(self, callback: Callable[..., Any]) -> None:
         import contextlib
+
         with contextlib.suppress(ValueError):
             self._subscribers.remove(callback)
 
@@ -385,24 +393,30 @@ class NotifyEnvelope:
 
     def encode(self) -> str:
         """编码为 JSON 字符串 (8KB 截断)"""
-        body = json.dumps({
-            "origin": self.origin,
-            "seq": self.seq,
-            "event_name": self.event_name,
-            "session_id": self.session_id,
-            "payload": self.payload,
-            "ts": self.ts,
-        }, ensure_ascii=False)
-        if len(body) > NOTIFY_PAYLOAD_LIMIT:
-            # 降级: payload 用摘要占位
-            body = json.dumps({
+        body = json.dumps(
+            {
                 "origin": self.origin,
                 "seq": self.seq,
                 "event_name": self.event_name,
                 "session_id": self.session_id,
-                "payload": {"_truncated": True, "size": len(body)},
+                "payload": self.payload,
                 "ts": self.ts,
-            }, ensure_ascii=False)
+            },
+            ensure_ascii=False,
+        )
+        if len(body) > NOTIFY_PAYLOAD_LIMIT:
+            # 降级: payload 用摘要占位
+            body = json.dumps(
+                {
+                    "origin": self.origin,
+                    "seq": self.seq,
+                    "event_name": self.event_name,
+                    "session_id": self.session_id,
+                    "payload": {"_truncated": True, "size": len(body)},
+                    "ts": self.ts,
+                },
+                ensure_ascii=False,
+            )
         return body
 
     @classmethod
@@ -457,11 +471,15 @@ class PostgresNotifier:
         if self.fake_module is not None:
             # fake mode: 复用 fake create_pool
             pool = await self.fake_module.create_pool(
-                dsn=self.dsn, min_size=1, max_size=2, command_timeout=5.0,
+                dsn=self.dsn,
+                min_size=1,
+                max_size=2,
+                command_timeout=5.0,
             )
             # LISTEN/NOTIFY 用单一长连接 (asyncpg 限制)
             return await pool.acquire()
         import asyncpg
+
         return await asyncpg.connect(self.dsn)
 
     async def listen(self) -> None:
@@ -478,7 +496,9 @@ class PostgresNotifier:
                 # 真 asyncpg: add_listener
                 await self._conn.add_listener(self.channel, self._on_asyncpg_notify)
             self._running = True
-            log.info("PostgresNotifier listening: channel=%s origin=%s", self.channel, self.origin_id[:8])
+            log.info(
+                "PostgresNotifier listening: channel=%s origin=%s", self.channel, self.origin_id[:8]
+            )
 
     def _on_asyncpg_notify(self, _conn: Any, _pid: int, channel: str, payload: str) -> None:
         """asyncpg 收到 NOTIFY 时的回调 (同步, 不可 await)"""
@@ -522,7 +542,8 @@ class PostgresNotifier:
         body = env.encode()
         if self.fake_module is not None:
             await self._conn.execute(
-                f"NOTIFY {self.channel}, $1", body,
+                f"NOTIFY {self.channel}, $1",
+                body,
             )
         else:
             # 真 asyncpg: 直接用 connection.execute

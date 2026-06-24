@@ -28,14 +28,17 @@ class _StubConnector:
     def __init__(self, ct: ChannelType = ChannelType.LARK) -> None:
         self._ct = ct
         self.sent: list[dict] = []
+
     @property
     def channel_type(self) -> ChannelType:
         return self._ct
+
     async def start(self) -> None: ...
     async def stop(self) -> None: ...
     async def send(self, response: ChannelResponse, target) -> bool:
         self.sent.append({"response": response, "target": target})
         return True
+
     def subscribe(self, handler) -> None: ...
     def unsubscribe(self, handler) -> None: ...
 
@@ -61,6 +64,7 @@ async def test_approver_sends_card_and_waits_for_callback() -> None:
     approver = ChannelApprover(adapter, _admin(), approval_timeout=5.0)
 
     ctx = _ctx()
+
     # 在后台跑 __call__，等待回调
     async def run_call():
         return await approver(_decision("rm -rf /"), ctx)
@@ -75,7 +79,8 @@ async def test_approver_sends_card_and_waits_for_callback() -> None:
     # 模拟用户点 Approve
     request_id = approver._inflight[list(approver._inflight.keys())[0]].request_id
     fake_msg = ChannelMessage(
-        id="act_1", channel=ChannelType.LARK,
+        id="act_1",
+        channel=ChannelType.LARK,
         from_user=_admin(),
         content=json.dumps({"value": {"action": f"approve:{request_id}"}}),
         msg_type=MessageType.EVENT,
@@ -102,7 +107,9 @@ async def test_approver_deny_callback_blocks() -> None:
     request_id = list(approver._inflight.keys())[0]
 
     fake_msg = ChannelMessage(
-        id="act_2", channel=ChannelType.LARK, from_user=_admin(),
+        id="act_2",
+        channel=ChannelType.LARK,
+        from_user=_admin(),
         content=json.dumps({"value": {"action": f"deny:{request_id}"}}),
         msg_type=MessageType.EVENT,
     )
@@ -131,9 +138,11 @@ async def test_approver_timeout_returns_false_fail_closed() -> None:
 @pytest.mark.asyncio
 async def test_approver_send_failure_returns_false() -> None:
     """send 失败 → 直接 False（不阻塞）"""
+
     class _FailingConnector(_StubConnector):
         async def send(self, response, target) -> bool:
             return False
+
     c = _FailingConnector()
     adapter = ChannelAdapter()
     adapter.register_connector(c)
@@ -153,8 +162,11 @@ async def test_approver_invalid_action_content_ignored() -> None:
     approver = ChannelApprover(adapter, _admin(), approval_timeout=5.0)
 
     fake_msg = ChannelMessage(
-        id="act_bad", channel=ChannelType.LARK, from_user=_admin(),
-        content="not-json", msg_type=MessageType.EVENT,
+        id="act_bad",
+        channel=ChannelType.LARK,
+        from_user=_admin(),
+        content="not-json",
+        msg_type=MessageType.EVENT,
     )
     # 不应抛
     await approver.handle_card_action(fake_msg)
@@ -170,7 +182,9 @@ async def test_approver_callback_unknown_request_ignored() -> None:
     approver = ChannelApprover(adapter, _admin(), approval_timeout=5.0)
 
     fake_msg = ChannelMessage(
-        id="act_ghost", channel=ChannelType.LARK, from_user=_admin(),
+        id="act_ghost",
+        channel=ChannelType.LARK,
+        from_user=_admin(),
         content=json.dumps({"value": {"action": "approve:nonexistent-id"}}),
         msg_type=MessageType.EVENT,
     )
@@ -195,14 +209,18 @@ async def test_approver_callback_already_done_ignored() -> None:
 
     # 第一次
     msg1 = ChannelMessage(
-        id="a1", channel=ChannelType.LARK, from_user=_admin(),
+        id="a1",
+        channel=ChannelType.LARK,
+        from_user=_admin(),
         content=json.dumps({"value": {"action": f"approve:{request_id}"}}),
         msg_type=MessageType.EVENT,
     )
     await approver.handle_card_action(msg1)
     # 第二次（重复）
     msg2 = ChannelMessage(
-        id="a2", channel=ChannelType.LARK, from_user=_admin(),
+        id="a2",
+        channel=ChannelType.LARK,
+        from_user=_admin(),
         content=json.dumps({"value": {"action": f"deny:{request_id}"}}),
         msg_type=MessageType.EVENT,
     )
@@ -244,8 +262,10 @@ async def test_approver_cancel_all() -> None:
 
     tasks = []
     for i in range(3):
+
         async def run_one(i: int = i) -> str:  # noqa: B023
             return await approver(_decision(f"op-{i}"), _ctx())
+
         tasks.append(asyncio.create_task(run_one()))
     await asyncio.sleep(0.1)
     assert approver.inflight_count == 3
@@ -273,6 +293,7 @@ async def test_approver_card_data_custom_fn() -> None:
 
     async def run_call():
         return await approver(_decision("custom-op"), _ctx())
+
     task = asyncio.create_task(run_call())
     await asyncio.sleep(0.05)
     # 校验卡片含 custom 内容
@@ -283,7 +304,9 @@ async def test_approver_card_data_custom_fn() -> None:
     # 清理
     request_id = list(approver._inflight.keys())[0]
     msg = ChannelMessage(
-        id="a", channel=ChannelType.LARK, from_user=_admin(),
+        id="a",
+        channel=ChannelType.LARK,
+        from_user=_admin(),
         content=json.dumps({"value": {"action": f"approve:{request_id}"}}),
         msg_type=MessageType.EVENT,
     )
@@ -303,13 +326,16 @@ async def test_approver_inflight_count_tracks_correctly() -> None:
 
     async def run_call():
         return await approver(_decision("x"), _ctx())
+
     task = asyncio.create_task(run_call())
     await asyncio.sleep(0.05)
     assert approver.inflight_count == 1
 
     request_id = list(approver._inflight.keys())[0]
     msg = ChannelMessage(
-        id="a", channel=ChannelType.LARK, from_user=_admin(),
+        id="a",
+        channel=ChannelType.LARK,
+        from_user=_admin(),
         content=json.dumps({"value": {"action": f"approve:{request_id}"}}),
         msg_type=MessageType.EVENT,
     )

@@ -239,9 +239,15 @@ async def test_swarm_session_id_is_unique(
     cfg = {
         "name": "x",
         "agents": [
-            {"id": "a", "role": "r", "persona": "p",
-             "provider": "openai", "model": "gpt-4o-mini",
-             "tools": [], "max_iterations": 2}
+            {
+                "id": "a",
+                "role": "r",
+                "persona": "p",
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "tools": [],
+                "max_iterations": 2,
+            }
         ],
         "tasks": [{"id": "T", "title": "t"}],
     }

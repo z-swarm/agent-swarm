@@ -182,8 +182,9 @@ class SqliteEventSink(ObservabilitySink):
                 self._migrated = True
             await conn.executescript(_SCHEMA_V2)
             await conn.commit()
-            log.info("SqliteEventSink connected to %s (tenant_id=%s)",
-                     self.db_path, _current_tenant_id())
+            log.info(
+                "SqliteEventSink connected to %s (tenant_id=%s)", self.db_path, _current_tenant_id()
+            )
             self._conn = conn
             return conn
 
@@ -257,8 +258,7 @@ class SqliteEventSink(ObservabilitySink):
         conn = await self._ensure_conn()
         tenant = _current_tenant_id()
         await conn.execute(
-            "UPDATE sessions SET ended_at=?, state=? "
-            "WHERE tenant_id=? AND session_id=?",
+            "UPDATE sessions SET ended_at=?, state=? WHERE tenant_id=? AND session_id=?",
             (time.time(), state, tenant, session_id),
         )
         await conn.commit()

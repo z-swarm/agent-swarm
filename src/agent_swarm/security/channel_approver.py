@@ -16,6 +16,7 @@ W11 范围：
   - 异步等待 + 超时 → fail-closed
   - 取消机制 (cancel_inflight)：避免泄漏 Future
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -116,17 +117,17 @@ class ChannelApprover:
             return False
         # 3) 等待用户回复
         request = ApprovalRequest(
-            request_id=request_id, decision=decision, approver=self._approver,
+            request_id=request_id,
+            decision=decision,
+            approver=self._approver,
         )
         async with self._lock:
             self._inflight[request_id] = request
         try:
-            log.info("channel_approver.request_sent id=%s reason=%s",
-                     request_id, decision.reason)
+            log.info("channel_approver.request_sent id=%s reason=%s", request_id, decision.reason)
             return await asyncio.wait_for(request.future, timeout=self._timeout)
         except TimeoutError:
-            log.warning("channel_approver.timeout id=%s after %.1fs",
-                        request_id, self._timeout)
+            log.warning("channel_approver.timeout id=%s after %.1fs", request_id, self._timeout)
             return False
         except asyncio.CancelledError:
             log.info("channel_approver.cancelled id=%s", request_id)
@@ -136,7 +137,10 @@ class ChannelApprover:
                 self._inflight.pop(request_id, None)
 
     def _build_card_data(
-        self, decision: PolicyDecision, ctx: SecurityContext, request_id: str,
+        self,
+        decision: PolicyDecision,
+        ctx: SecurityContext,
+        request_id: str,
     ) -> dict[str, Any]:
         """
         构造 confirm_dialog 卡片数据
@@ -156,10 +160,13 @@ class ChannelApprover:
                 ),
             }
         # 强制把 request_id 加到 actions value，让回调可识别
-        data.setdefault("actions", [
-            {"text": "Approve", "value": f"approve:{request_id}", "type": "primary"},
-            {"text": "Deny", "value": f"deny:{request_id}", "type": "danger"},
-        ])
+        data.setdefault(
+            "actions",
+            [
+                {"text": "Approve", "value": f"approve:{request_id}", "type": "primary"},
+                {"text": "Deny", "value": f"deny:{request_id}", "type": "danger"},
+            ],
+        )
         return data
 
     async def handle_card_action(self, msg: ChannelMessage) -> None:
@@ -170,6 +177,7 @@ class ChannelApprover:
         @note 解析出 request_id 和 decision → 触发对应 ApprovalRequest.future
         """
         import json
+
         try:
             action = json.loads(msg.content)
         except (json.JSONDecodeError, TypeError):

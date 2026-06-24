@@ -119,14 +119,20 @@ def gh_script(tmp_path: Path) -> Path:
 def test_registry_holds_two_servers(fs_script, gh_script) -> None:
     """W9-6: MCPRegistry 注册 filesystem + GitHub 两个 server（Phase 2 DoD ③）"""
     registry = MCPRegistry()
-    registry.register(MCPServerConfig(
-        name="filesystem", transport="stdio",
-        command=[sys.executable, str(fs_script)],
-    ))
-    registry.register(MCPServerConfig(
-        name="github", transport="stdio",
-        command=[sys.executable, str(gh_script)],
-    ))
+    registry.register(
+        MCPServerConfig(
+            name="filesystem",
+            transport="stdio",
+            command=[sys.executable, str(fs_script)],
+        )
+    )
+    registry.register(
+        MCPServerConfig(
+            name="github",
+            transport="stdio",
+            command=[sys.executable, str(gh_script)],
+        )
+    )
     assert registry.list_names() == ["filesystem", "github"]
 
 
@@ -138,7 +144,8 @@ def test_registry_holds_two_servers(fs_script, gh_script) -> None:
 @pytest.mark.asyncio
 async def test_filesystem_client_lists_tools(fs_script) -> None:
     cfg = MCPServerConfig(
-        name="filesystem", transport="stdio",
+        name="filesystem",
+        transport="stdio",
         command=[sys.executable, str(fs_script)],
     )
     client = StdioMCPClient(cfg, timeout_s=5.0)
@@ -150,7 +157,8 @@ async def test_filesystem_client_lists_tools(fs_script) -> None:
 @pytest.mark.asyncio
 async def test_github_client_lists_tools(gh_script) -> None:
     cfg = MCPServerConfig(
-        name="github", transport="stdio",
+        name="github",
+        transport="stdio",
         command=[sys.executable, str(gh_script)],
     )
     client = StdioMCPClient(cfg, timeout_s=5.0)
@@ -167,7 +175,8 @@ async def test_github_client_lists_tools(gh_script) -> None:
 @pytest.mark.asyncio
 async def test_filesystem_adapter_invoke(fs_script) -> None:
     cfg = MCPServerConfig(
-        name="filesystem", transport="stdio",
+        name="filesystem",
+        transport="stdio",
         command=[sys.executable, str(fs_script)],
     )
     client = StdioMCPClient(cfg, timeout_s=5.0)
@@ -183,12 +192,15 @@ async def test_filesystem_adapter_invoke(fs_script) -> None:
 async def test_github_adapter_invoke_create_issue_risk(gh_script) -> None:
     """create_issue 在 GitHub MCP 默认 risk=high（DESIGN §7.3 risk_overrides）"""
     cfg = MCPServerConfig(
-        name="github", transport="stdio",
+        name="github",
+        transport="stdio",
         command=[sys.executable, str(gh_script)],
     )
     client = StdioMCPClient(cfg, timeout_s=5.0)
     adapters = await await_build_tool_adapters(
-        "github", cfg, client,
+        "github",
+        cfg,
+        client,
         risk_overrides={"create_issue": "high"},
     )
     issue = next(a for a in adapters if a.mcp_tool_name == "create_issue")
@@ -209,6 +221,7 @@ def test_w9_example_yaml_parses() -> None:
         pytest.skip("examples/w9_mcp_github_filesystem.yaml 不存在")
     # Swarm.from_yaml 暂不解析 mcp_servers 字段——只验证 YAML 合法
     import yaml
+
     with open(cfg_path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     assert "mcp_servers" in cfg

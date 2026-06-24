@@ -40,8 +40,7 @@ class TenantQuotaExceeded(RuntimeError):
         self.limit = limit
         self.current = current
         super().__init__(
-            f"tenant {tenant_id!r} quota exceeded: "
-            f"{quota_type} current={current} > limit={limit}"
+            f"tenant {tenant_id!r} quota exceeded: {quota_type} current={current} > limit={limit}"
         )
 
 
@@ -71,15 +70,19 @@ class TenantQuota:
         """检查 agent 数；超限抛 TenantQuotaExceeded"""
         if current_count >= self.max_agents:
             raise TenantQuotaExceeded(
-                tenant_id=tenant_id, quota_type="agents",
-                limit=self.max_agents, current=current_count,
+                tenant_id=tenant_id,
+                quota_type="agents",
+                limit=self.max_agents,
+                current=current_count,
             )
 
     def check_concurrent_tasks(self, tenant_id: str, current_count: int) -> None:
         if current_count >= self.max_concurrent_tasks:
             raise TenantQuotaExceeded(
-                tenant_id=tenant_id, quota_type="concurrent_tasks",
-                limit=self.max_concurrent_tasks, current=current_count,
+                tenant_id=tenant_id,
+                quota_type="concurrent_tasks",
+                limit=self.max_concurrent_tasks,
+                current=current_count,
             )
 
     def check_tokens(self, tenant_id: str, additional_tokens: int) -> int:
@@ -98,7 +101,8 @@ class TenantQuota:
             self.tokens_used_window = now
         if self.tokens_used + additional_tokens > self.max_tokens_per_hour:
             raise TenantQuotaExceeded(
-                tenant_id=tenant_id, quota_type="tokens_per_hour",
+                tenant_id=tenant_id,
+                quota_type="tokens_per_hour",
                 limit=self.max_tokens_per_hour,
                 current=self.tokens_used + additional_tokens,
             )

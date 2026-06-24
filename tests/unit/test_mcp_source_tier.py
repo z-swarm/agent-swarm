@@ -104,9 +104,13 @@ def test_bump_tool_risk_low_source_community() -> None:
 
 def test_bump_tool_risk_critical_stays() -> None:
     """base=CRITICAL 不会被下调"""
-    assert bump_tool_risk_by_source(
-        ToolRisk.CRITICAL, "official",
-    ) == ToolRisk.CRITICAL
+    assert (
+        bump_tool_risk_by_source(
+            ToolRisk.CRITICAL,
+            "official",
+        )
+        == ToolRisk.CRITICAL
+    )
 
 
 def test_bump_tool_risk_high_community() -> None:
@@ -122,18 +126,23 @@ def test_bump_tool_risk_high_community() -> None:
 def test_mcp_server_config_requires_source() -> None:
     """MCPServerConfig.source 必须显式提供——YAML 缺此字段启动失败"""
     from agent_swarm.mcp.registry import MCPServerConfig
+
     with pytest.raises(ValueError, match="must be one of"):
         MCPServerConfig(
-            name="test", transport="stdio",
-            command=["echo"], source="random",  # type: ignore[arg-type]
+            name="test",
+            transport="stdio",
+            command=["echo"],
+            source="random",  # type: ignore[arg-type]
         )
 
 
 def test_mcp_server_config_default_source() -> None:
     """默认 source=community (安全侧——保守)"""
     from agent_swarm.mcp.registry import MCPServerConfig
+
     cfg = MCPServerConfig(
-        name="test", transport="stdio",
+        name="test",
+        transport="stdio",
         command=["echo"],
     )
     assert cfg.source == "community"
@@ -141,8 +150,10 @@ def test_mcp_server_config_default_source() -> None:
 
 def test_mcp_server_config_official_source() -> None:
     from agent_swarm.mcp.registry import MCPServerConfig
+
     cfg = MCPServerConfig(
-        name="anthropic", transport="sse",
+        name="anthropic",
+        transport="sse",
         url="https://api.anthropic.com/mcp",
         source="official",
     )

@@ -38,9 +38,7 @@ log = logging.getLogger(__name__)
 # P0-1: 环境变量脱敏——名称（大小写无关）命中以下任一片段即不透传给沙箱子进程。
 # 防 `env`/`cat`/`grep` 等白名单命令读出宿主进程里的 OPENAI_API_KEY / LARK_APP_SECRET /
 # PGPASSWORD 等。脱敏是 defense-in-depth：即使命令在白名单内也拿不到密钥。
-_SECRET_ENV_NAME_RE = re.compile(
-    r"(?i)(PASS|PASSWD|SECRET|TOKEN|CREDENTIAL|PRIVATE|API_KEY|_KEY)"
-)
+_SECRET_ENV_NAME_RE = re.compile(r"(?i)(PASS|PASSWD|SECRET|TOKEN|CREDENTIAL|PRIVATE|API_KEY|_KEY)")
 
 
 class SandboxMode(Enum):
@@ -86,12 +84,40 @@ class SandboxManager:
     #       仍是泄密面（且对 workspace_only 沙箱无实际用途）。
     #       `printenv` 保留（按名打印单变量；批量环境已脱敏，无密钥可读）。
     DEFAULT_ALLOWED_PREFIXES: tuple[str, ...] = (
-        "ls", "cat", "head", "tail", "wc", "grep",
-        "echo", "pwd", "which", "file", "stat", "printenv",
-        "du", "df", "sort", "uniq", "tr",
-        "cut", "paste", "diff", "tree", "less", "more",
-        "date", "uname", "whoami", "id", "true", "false",
-        "git status", "git log", "git diff", "git show", "git branch",
+        "ls",
+        "cat",
+        "head",
+        "tail",
+        "wc",
+        "grep",
+        "echo",
+        "pwd",
+        "which",
+        "file",
+        "stat",
+        "printenv",
+        "du",
+        "df",
+        "sort",
+        "uniq",
+        "tr",
+        "cut",
+        "paste",
+        "diff",
+        "tree",
+        "less",
+        "more",
+        "date",
+        "uname",
+        "whoami",
+        "id",
+        "true",
+        "false",
+        "git status",
+        "git log",
+        "git diff",
+        "git show",
+        "git branch",
     )
 
     def __init__(
@@ -114,9 +140,7 @@ class SandboxManager:
         if not self.workspace.is_dir():
             raise ValueError(f"sandbox workspace invalid: {self.workspace}")
         self.mode = mode
-        self.allowed_command_prefixes = (
-            allowed_command_prefixes or self.DEFAULT_ALLOWED_PREFIXES
-        )
+        self.allowed_command_prefixes = allowed_command_prefixes or self.DEFAULT_ALLOWED_PREFIXES
 
     async def execute(
         self,
@@ -132,16 +156,12 @@ class SandboxManager:
         @raise ValueError     workspace 路径无效
         """
         if self.mode != SandboxMode.WORKSPACE_ONLY:
-            raise NotImplementedError(
-                f"sandbox mode {self.mode} not implemented in W5"
-            )
+            raise NotImplementedError(f"sandbox mode {self.mode} not implemented in W5")
 
         # 1) shell 元字符检测（在白名单之前——避免 metachar 拆解绕过）
         for ch in _SHELL_META_CHARS:
             if ch in command:
-                raise PermissionError(
-                    f"shell metachar {ch!r} in command: {command!r}"
-                )
+                raise PermissionError(f"shell metachar {ch!r} in command: {command!r}")
 
         # 2) shlex 拆 argv
         try:
@@ -153,9 +173,7 @@ class SandboxManager:
 
         # 3) argv[0] 精确匹配白名单
         if not self._is_allowed_argv(argv):
-            raise PermissionError(
-                f"command not in sandbox whitelist: {command!r}"
-            )
+            raise PermissionError(f"command not in sandbox whitelist: {command!r}")
 
         # 4) 每 token 路径验证（含裸文件名——防 symlink 逃逸）
         for tok in argv[1:]:

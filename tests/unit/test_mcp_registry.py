@@ -15,7 +15,8 @@ from agent_swarm.mcp import MCPRegistry, MCPServerConfig
 def test_stdio_config_minimal() -> None:
     """stdio 最小配置：name + transport + command"""
     c = MCPServerConfig(
-        name="fs", transport="stdio",
+        name="fs",
+        transport="stdio",
         command=["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
     )
     assert c.name == "fs"
@@ -44,8 +45,10 @@ def test_stdio_with_url_rejected() -> None:
     """stdio 不应设 url（字段冲突）"""
     with pytest.raises(ValueError, match="should not set 'url'"):
         MCPServerConfig(
-            name="x", transport="stdio",
-            command=["x"], url="https://x",
+            name="x",
+            transport="stdio",
+            command=["x"],
+            url="https://x",
         )
 
 
@@ -53,7 +56,9 @@ def test_sse_with_command_rejected() -> None:
     """sse 不应设 command"""
     with pytest.raises(ValueError, match="should not set 'command'"):
         MCPServerConfig(
-            name="x", transport="sse", url="https://x",
+            name="x",
+            transport="sse",
+            url="https://x",
             command=["x"],
         )
 
@@ -169,15 +174,20 @@ def test_from_dict_rejects_invalid_transport() -> None:
 def test_from_yaml_round_trip(tmp_path) -> None:
     """YAML 配置 round-trip（DESIGN §7.3 示例）"""
     p = tmp_path / "mcp.yaml"
-    p.write_text(yaml.safe_dump({
-        "github": {
-            "transport": "stdio",
-            "command": ["npx", "-y", "@modelcontextprotocol/server-github"],
-            "env": {"GITHUB_TOKEN": "${GITHUB_TOKEN}"},
-            "risk_overrides": {"create_issue": "HIGH"},
-            "reliability": {"max_reconnect_attempts": 5},
-        },
-    }), encoding="utf-8")
+    p.write_text(
+        yaml.safe_dump(
+            {
+                "github": {
+                    "transport": "stdio",
+                    "command": ["npx", "-y", "@modelcontextprotocol/server-github"],
+                    "env": {"GITHUB_TOKEN": "${GITHUB_TOKEN}"},
+                    "risk_overrides": {"create_issue": "HIGH"},
+                    "reliability": {"max_reconnect_attempts": 5},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     r = MCPRegistry.from_yaml(str(p))
     g = r.get("github")
     assert g.transport == "stdio"

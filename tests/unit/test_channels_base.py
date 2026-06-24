@@ -32,7 +32,8 @@ def test_channel_user_required_fields() -> None:
 def test_channel_message_default_text() -> None:
     """ChannelMessage 默认 TEXT 类型 + 无 media"""
     m = ChannelMessage(
-        id="m1", channel=ChannelType.LARK,
+        id="m1",
+        channel=ChannelType.LARK,
         from_user=ChannelUser(channel=ChannelType.LARK, user_id="u", display_name="u"),
         content="hello",
     )
@@ -49,8 +50,10 @@ def test_channel_response_text_and_card() -> None:
     assert r_text.card_template is None
 
     r_card = ChannelResponse(
-        content="please confirm", msg_type=MessageType.CARD,
-        card_template="confirm_dialog", card_data={"title": "Deploy?"},
+        content="please confirm",
+        msg_type=MessageType.CARD,
+        card_template="confirm_dialog",
+        card_data={"title": "Deploy?"},
     )
     assert r_card.card_template == "confirm_dialog"
 
@@ -80,10 +83,12 @@ def test_channel_connector_full_subclass_works() -> None:
         @property
         def channel_type(self) -> ChannelType:
             return ChannelType.LARK
+
         async def start(self) -> None: ...
         async def stop(self) -> None: ...
         async def send(self, response, target) -> bool:  # type: ignore[override]
             return True
+
         def subscribe(self, handler) -> None: ...
         def unsubscribe(self, handler) -> None: ...
 

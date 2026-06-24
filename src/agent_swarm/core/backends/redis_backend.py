@@ -75,10 +75,12 @@ class RedisBackend(TaskQueueBackend):
 
                 # 用独立 FakeServer 实例保证 namespace 隔离
                 from fakeredis import FakeServer
+
                 server = FakeServer()
                 self._redis = far.FakeRedis(server=server)
             else:
                 import redis.asyncio as aioredis
+
                 self._redis = aioredis.from_url(
                     self.config.url,
                     max_connections=self.config.pool_max_connections,
@@ -166,14 +168,15 @@ class RedisBackend(TaskQueueBackend):
                 if current.version != expected_version:
                     await pipe.unwatch()
                     raise VersionMismatchError(
-                        task_id, expected_version, current.version,
+                        task_id,
+                        expected_version,
+                        current.version,
                     )
                 # 计算 new
                 new = mutator(current)
                 if new.version != expected_version + 1:
                     raise ValueError(
-                        f"mutator must bump version by 1, "
-                        f"got {expected_version} -> {new.version}",
+                        f"mutator must bump version by 1, got {expected_version} -> {new.version}",
                     )
                 pipe.multi()
                 pipe.set(key, json.dumps(new.to_dict()))
@@ -192,7 +195,9 @@ class RedisBackend(TaskQueueBackend):
                     raise KeyError(task_id)
                 current2 = StoredTask.from_dict(json.loads(raw2))
                 raise VersionMismatchError(
-                    task_id, expected_version, current2.version,
+                    task_id,
+                    expected_version,
+                    current2.version,
                 )
             return new
 

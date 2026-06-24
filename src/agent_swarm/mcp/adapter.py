@@ -74,10 +74,7 @@ class MCPToolAdapter:
             if decision.decision == "DENY":
                 return f"[error] policy denied: {decision.reason}"
             if decision.decision == "REQUIRE_APPROVAL":
-                return (
-                    f"[error] requires approval: {decision.reason} "
-                    f"(risk={self.risk})"
-                )
+                return f"[error] requires approval: {decision.reason} (risk={self.risk})"
 
         # 闸门 2：风险等级二次校验（解决通用 policy 不感知 MCP 工具的问题）
         risk_level = _RISK_ORDER.get(self.risk, 1)
@@ -143,15 +140,17 @@ async def build_tool_adapters(
         mcp_name = schema.get("name", "")
         if not mcp_name:
             continue
-        adapters.append(MCPToolAdapter(
-            server_name=server_name,
-            mcp_tool_name=mcp_name,
-            description=schema.get("description", ""),
-            parameters=schema.get("inputSchema", {"type": "object"}),
-            client=client,
-            risk=overrides.get(mcp_name, "medium"),
-            policy=policy,
-        ))
+        adapters.append(
+            MCPToolAdapter(
+                server_name=server_name,
+                mcp_tool_name=mcp_name,
+                description=schema.get("description", ""),
+                parameters=schema.get("inputSchema", {"type": "object"}),
+                client=client,
+                risk=overrides.get(mcp_name, "medium"),
+                policy=policy,
+            )
+        )
     return adapters
 
 

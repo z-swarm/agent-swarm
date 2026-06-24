@@ -58,6 +58,7 @@ class _FakeVaultKV(SecretManager):
             raise RuntimeError("simulated vault outage")
         if key not in self._store:
             from agent_swarm.security.secret_manager import SecretNotFoundError
+
             raise SecretNotFoundError(f"vault: {key!r} not found")
         return self._store[key]
 
@@ -109,14 +110,16 @@ async def test_g028_vault_no_field() -> None:
 async def test_g028_vault_with_field_extracts_json() -> None:
     """vault://path#field → JSON 文档中提取指定 field"""
     vault = _FakeVaultKV()
-    doc = json.dumps({
-        "current": "jwt-rotation-v1",
-        "previous": "jwt-rotation-v0",
-        "metadata": {
-            "rotated_at": "2026-06-24",
-            "rotated_by": "ops",
-        },
-    })
+    doc = json.dumps(
+        {
+            "current": "jwt-rotation-v1",
+            "previous": "jwt-rotation-v0",
+            "metadata": {
+                "rotated_at": "2026-06-24",
+                "rotated_by": "ops",
+            },
+        }
+    )
     await vault.put("web/jwt-secret", doc)
     iss = JWTIssuer(
         JWTConfig(secret_ref="vault://web/jwt-secret#current", secret_manager=vault),

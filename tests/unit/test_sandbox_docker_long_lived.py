@@ -100,7 +100,8 @@ def manager(workspace: Path, fake_runner: FakeDockerRunner) -> DockerSandboxMana
 
 @pytest.mark.asyncio
 async def test_long_lived_first_execute_starts_container(
-    manager: DockerSandboxManager, fake_runner: FakeDockerRunner,
+    manager: DockerSandboxManager,
+    fake_runner: FakeDockerRunner,
 ) -> None:
     """首次 execute() 应启动容器 (docker run -d) + exec 一次"""
     await manager.execute("echo hello")
@@ -116,7 +117,8 @@ async def test_long_lived_first_execute_starts_container(
 
 @pytest.mark.asyncio
 async def test_long_lived_subsequent_executes_reuse_container(
-    manager: DockerSandboxManager, fake_runner: FakeDockerRunner,
+    manager: DockerSandboxManager,
+    fake_runner: FakeDockerRunner,
 ) -> None:
     """后续 execute() 用 docker exec, 不再启新容器"""
     await manager.execute("echo a")
@@ -128,7 +130,8 @@ async def test_long_lived_subsequent_executes_reuse_container(
 
 @pytest.mark.asyncio
 async def test_long_lived_100_executes_one_container(
-    manager: DockerSandboxManager, fake_runner: FakeDockerRunner,
+    manager: DockerSandboxManager,
+    fake_runner: FakeDockerRunner,
 ) -> None:
     """100 次 execute() 只启 1 容器 (vs W19 兼容模式的 100 次)"""
     for i in range(100):
@@ -140,7 +143,8 @@ async def test_long_lived_100_executes_one_container(
 
 @pytest.mark.asyncio
 async def test_long_lived_close_stops_container(
-    manager: DockerSandboxManager, fake_runner: FakeDockerRunner,
+    manager: DockerSandboxManager,
+    fake_runner: FakeDockerRunner,
 ) -> None:
     """close() 调 docker stop"""
     await manager.execute("echo init")
@@ -154,7 +158,8 @@ async def test_long_lived_close_stops_container(
 
 @pytest.mark.asyncio
 async def test_long_lived_async_context_manager(
-    workspace: Path, fake_runner: FakeDockerRunner,
+    workspace: Path,
+    fake_runner: FakeDockerRunner,
 ) -> None:
     """async with DockerSandboxManager(): 退出时自动 stop"""
     cfg = DockerConfig(
@@ -171,7 +176,8 @@ async def test_long_lived_async_context_manager(
 
 @pytest.mark.asyncio
 async def test_long_lived_close_idempotent(
-    manager: DockerSandboxManager, fake_runner: FakeDockerRunner,
+    manager: DockerSandboxManager,
+    fake_runner: FakeDockerRunner,
 ) -> None:
     """close() 多次调用安全"""
     await manager.execute("echo")
@@ -182,7 +188,8 @@ async def test_long_lived_close_idempotent(
 
 @pytest.mark.asyncio
 async def test_long_lived_close_without_start(
-    workspace: Path, fake_runner: FakeDockerRunner,
+    workspace: Path,
+    fake_runner: FakeDockerRunner,
 ) -> None:
     """未启容器时 close() 不报错"""
     cfg = DockerConfig(
@@ -201,7 +208,8 @@ async def test_long_lived_close_without_start(
 
 @pytest.mark.asyncio
 async def test_long_lived_false_uses_run_each_time(
-    workspace: Path, fake_runner: FakeDockerRunner,
+    workspace: Path,
+    fake_runner: FakeDockerRunner,
 ) -> None:
     """long_lived=False 保持 W19 行为: 每次 docker run --rm"""
     cfg = DockerConfig(
@@ -222,7 +230,8 @@ async def test_long_lived_false_uses_run_each_time(
 
 @pytest.mark.asyncio
 async def test_long_lived_start_includes_cis_params(
-    manager: DockerSandboxManager, fake_runner: FakeDockerRunner,
+    manager: DockerSandboxManager,
+    fake_runner: FakeDockerRunner,
 ) -> None:
     """启动容器时 CIS 安全参数必须包含"""
     await manager.execute("echo")
@@ -245,7 +254,9 @@ async def test_long_lived_start_includes_cis_params(
 
 @pytest.mark.asyncio
 async def test_long_lived_container_name_unique_per_workspace(
-    workspace: Path, tmp_path: Path, fake_runner: FakeDockerRunner,
+    workspace: Path,
+    tmp_path: Path,
+    fake_runner: FakeDockerRunner,
 ) -> None:
     """不同 workspace 拿不同容器名"""
     cfg = DockerConfig(
@@ -260,12 +271,8 @@ async def test_long_lived_container_name_unique_per_workspace(
     await mgr2.execute("echo")
     # 提取两次 docker run 的 --name 参数 (calls 中每第 2 条是 run)
     # 顺序: [run1, exec1, run2, exec2] -> 提取 calls[0] 和 calls[2]
-    name1 = next(
-        a for a in fake_runner.calls[0] if a.startswith("agentswarm-")
-    )
-    name2 = next(
-        a for a in fake_runner.calls[2] if a.startswith("agentswarm-")
-    )
+    name1 = next(a for a in fake_runner.calls[0] if a.startswith("agentswarm-"))
+    name2 = next(a for a in fake_runner.calls[2] if a.startswith("agentswarm-"))
     assert name1 != name2, f"expected different names, got {name1!r} and {name2!r}"
     # 也验证 hash 段不同 (workspace 路径不同)
     assert name1.split("-")[1] != name2.split("-")[1]
@@ -278,6 +285,7 @@ async def test_long_lived_start_failure_returns_error_result(
     workspace: Path,
 ) -> None:
     """容器启动失败应返回错误 SandboxResult, 不抛"""
+
     async def failing_runner(argv: list[str]) -> dict[str, Any]:
         return {"exit_code": 1, "stdout": "", "stderr": "image not found"}
 

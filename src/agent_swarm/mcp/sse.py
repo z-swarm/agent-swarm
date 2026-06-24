@@ -60,6 +60,7 @@ class MCPHTTPError(MCPConnectionError):
 @dataclass
 class _PendingRequest:
     """in-flight 请求：future + 超时 deadline"""
+
     future: asyncio.Future
     deadline: float
 
@@ -84,13 +85,9 @@ class SseMCPClient(MCPClient):
         timeout_s: float = 30.0,
     ) -> None:
         if config.transport != "sse":
-            raise ValueError(
-                f"SseMCPClient requires transport=sse, got {config.transport!r}"
-            )
+            raise ValueError(f"SseMCPClient requires transport=sse, got {config.transport!r}")
         if not config.url:
-            raise ValueError(
-                f"SseMCPClient requires non-empty url in {config.name!r}"
-            )
+            raise ValueError(f"SseMCPClient requires non-empty url in {config.name!r}")
         self._config = config
         self._timeout_s = timeout_s
         self._session: aiohttp.ClientSession | None = None
@@ -115,9 +112,11 @@ class SseMCPClient(MCPClient):
         # H3: 防 _pending 状态泄漏
         for f in self._pending.values():
             if not f.done():
-                f.set_exception(MCPConnectionError(
-                    f"MCP {self._config.name} reconnecting; old request cancelled"
-                ))
+                f.set_exception(
+                    MCPConnectionError(
+                        f"MCP {self._config.name} reconnecting; old request cancelled"
+                    )
+                )
         self._pending.clear()
         self._next_id = 1
         # 准备 session
@@ -151,16 +150,13 @@ class SseMCPClient(MCPClient):
                 f"MCP SSE {self._config.name!r} handshake failed: {exc}"
             ) from exc
         self._connected = True
-        log.info("MCP SSE client connected: %s (url=%s)",
-                 self._config.name, self._config.url)
+        log.info("MCP SSE client connected: %s (url=%s)", self._config.name, self._config.url)
 
     async def disconnect(self) -> None:
         """关闭 session；清空 pending"""
         for f in self._pending.values():
             if not f.done():
-                f.set_exception(MCPConnectionError(
-                    f"MCP {self._config.name} disconnected"
-                ))
+                f.set_exception(MCPConnectionError(f"MCP {self._config.name} disconnected"))
         self._pending.clear()
         await self._close_session()
         self._connected = False
@@ -172,11 +168,7 @@ class SseMCPClient(MCPClient):
         self._session = None
 
     def is_connected(self) -> bool:
-        return (
-            self._connected
-            and self._session is not None
-            and not self._session.closed
-        )
+        return self._connected and self._session is not None and not self._session.closed
 
     # ------------------------------------------------------------------
     # HTTP headers
@@ -194,7 +186,8 @@ class SseMCPClient(MCPClient):
     # SSE 流解析
     # ------------------------------------------------------------------
     async def _post_and_read_sse(
-        self, request: dict[str, Any],
+        self,
+        request: dict[str, Any],
     ) -> dict[str, Any]:
         """POST 一个 JSON-RPC 请求，读取 SSE 流解析出 response
 
@@ -210,22 +203,21 @@ class SseMCPClient(MCPClient):
         body = json.dumps(request)
         try:
             async with self._session.post(
-                url, data=body, headers=self._build_headers(),
+                url,
+                data=body,
+                headers=self._build_headers(),
             ) as resp:
                 if resp.status < 200 or resp.status >= 300:
                     text = await resp.text()
-                    raise MCPHTTPError(
-                        f"MCP SSE POST {url} status={resp.status}: {text[:200]}"
-                    )
+                    raise MCPHTTPError(f"MCP SSE POST {url} status={resp.status}: {text[:200]}")
                 # text/event-stream；按行解析 event:/data: 字段
                 return await self._parse_sse_response(resp)
         except aiohttp.ClientError as exc:
-            raise MCPConnectionError(
-                f"MCP SSE {self._config.name!r} network error: {exc}"
-            ) from exc
+            raise MCPConnectionError(f"MCP SSE {self._config.name!r} network error: {exc}") from exc
 
     async def _parse_sse_response(
-        self, resp: aiohttp.ClientResponse,
+        self,
+        resp: aiohttp.ClientResponse,
     ) -> dict[str, Any]:
         """从 SSE 响应里解析出 JSON-RPC 响应对象
 
@@ -292,7 +284,9 @@ class SseMCPClient(MCPClient):
     # JSON-RPC 请求（与 stdio 协议一致）
     # ------------------------------------------------------------------
     async def _request(
-        self, method: str, params: dict[str, Any] | None = None,
+        self,
+        method: str,
+        params: dict[str, Any] | None = None,
     ) -> Any:
         if not self.is_connected():
             await self.connect()
@@ -319,9 +313,7 @@ class SseMCPClient(MCPClient):
         except MCPConnectionError:
             raise
         except Exception as exc:  # noqa: BLE001
-            raise MCPConnectionError(
-                f"MCP SSE {self._config.name!r} unexpected: {exc}"
-            ) from exc
+            raise MCPConnectionError(f"MCP SSE {self._config.name!r} unexpected: {exc}") from exc
 
         if "error" in response:
             err = response["error"]
@@ -336,21 +328,27 @@ class SseMCPClient(MCPClient):
     # MCP 协议层（与 StdioMCPClient 一致）
     # ------------------------------------------------------------------
     async def initialize(self) -> dict[str, Any]:
-        return await self._request("initialize", {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {},
-            "clientInfo": {"name": "agent-swarm", "version": "0.1.0"},
-        })
+        return await self._request(
+            "initialize",
+            {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "agent-swarm", "version": "0.1.0"},
+            },
+        )
 
     async def list_tools(self) -> list[dict[str, Any]]:
         result = await self._request("tools/list", {})
         return list(result.get("tools", []))
 
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
-        result = await self._request("tools/call", {
-            "name": name,
-            "arguments": arguments,
-        })
+        result = await self._request(
+            "tools/call",
+            {
+                "name": name,
+                "arguments": arguments,
+            },
+        )
         return result.get("content")
 
 

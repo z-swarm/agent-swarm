@@ -47,6 +47,7 @@ class _FakeVault(SecretManager):
         self.get_count += 1
         if key not in self._store:
             from agent_swarm.security.secret_manager import SecretNotFoundError
+
             raise SecretNotFoundError(f"vault: {key!r} not found")
         return self._store[key]
 

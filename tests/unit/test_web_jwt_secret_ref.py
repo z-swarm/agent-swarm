@@ -61,6 +61,7 @@ def test_secretref_empty_value_raises() -> None:
 def test_secretref_is_frozen() -> None:
     """SecretRef 是 frozen dataclass (W36a 协议契约)"""
     import dataclasses
+
     ref = SecretRef(kind="literal", value="x")
     with pytest.raises(dataclasses.FrozenInstanceError):
         ref.value = "y"  # type: ignore[misc]
@@ -198,5 +199,6 @@ def test_jwtconfig_secret_ref_without_manager_raises_at_init_time() -> None:
     assert cfg.secret_manager is None
     # 实际校验在 JWTIssuer 创建时
     from agent_swarm.web.auth import JWTIssuer
+
     with pytest.raises(ValueError, match="secret_ref \\+ secret_manager"):
         JWTIssuer(cfg)

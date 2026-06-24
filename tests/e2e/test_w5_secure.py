@@ -26,7 +26,8 @@ from agent_swarm.tools.builtin.shell import RunCommandTool
 from tests.conftest import FakeLLMProvider, ScriptedResponse
 
 pytestmark = pytest.mark.skipif(
-    sys.platform == "win32", reason="P3-WIN: e2e CLI run has Windows shell differences",
+    sys.platform == "win32",
+    reason="P3-WIN: e2e CLI run has Windows shell differences",
 )
 
 # ---------------------------------------------------------------------------
@@ -104,8 +105,14 @@ async def test_token_budget_does_not_crash_on_oversize(tmp_path: Path) -> None:
         cfg = {
             "name": "test",
             "agents": [
-                {"id": "a", "role": "r", "persona": "p", "provider": "openai",
-                 "model": "gpt-4o-mini", "max_iterations": 2}
+                {
+                    "id": "a",
+                    "role": "r",
+                    "persona": "p",
+                    "provider": "openai",
+                    "model": "gpt-4o-mini",
+                    "max_iterations": 2,
+                }
             ],
             "tasks": [{"title": "t", "description": "d"}],
             "workspace": str(tmp_path),
@@ -166,16 +173,29 @@ def test_w5_cli_runs_with_policy(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     (workspace / "README.md").write_text("# test", encoding="utf-8")
 
     import yaml as _yaml
+
     cfg_path = tmp_path / "x.yaml"
-    cfg_path.write_text(_yaml.safe_dump({
-        "name": "w5",
-        "agents": [
-            {"id": "a", "role": "r", "persona": "p", "provider": "openai",
-             "model": "gpt-4o-mini", "tools": ["read_file"], "max_iterations": 2}
-        ],
-        "tasks": [{"title": "t", "description": "d"}],
-        "workspace": str(workspace),
-    }), encoding="utf-8")
+    cfg_path.write_text(
+        _yaml.safe_dump(
+            {
+                "name": "w5",
+                "agents": [
+                    {
+                        "id": "a",
+                        "role": "r",
+                        "persona": "p",
+                        "provider": "openai",
+                        "model": "gpt-4o-mini",
+                        "tools": ["read_file"],
+                        "max_iterations": 2,
+                    }
+                ],
+                "tasks": [{"title": "t", "description": "d"}],
+                "workspace": str(workspace),
+            }
+        ),
+        encoding="utf-8",
+    )
 
     runner = CliRunner()
     res = runner.invoke(cli, ["run", str(cfg_path)])

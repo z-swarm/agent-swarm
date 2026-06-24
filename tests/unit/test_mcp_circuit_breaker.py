@@ -63,10 +63,12 @@ async def test_open_state_rejects_without_calling_fn() -> None:
     assert cb.state == CircuitState.OPEN
     # 此时再调一次应该抛 MCPCircuitOpenError，fn 不应被调到
     called = False
+
     def _fn():
         nonlocal called
         called = True
         return _async_return("should not run")
+
     with pytest.raises(MCPCircuitOpenError) as exc_info:
         await cb.call(_fn)
     assert not called

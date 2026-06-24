@@ -61,9 +61,7 @@ class WorktreeHandle:
     key: str  # "<tenant>/<session>/<agent>" 复合 key, 用于幂等查找
 
     def __repr__(self) -> str:
-        return (
-            f"WorktreeHandle(key={self.key!r} path={self.path} branch={self.branch!r})"
-        )
+        return f"WorktreeHandle(key={self.key!r} path={self.path} branch={self.branch!r})"
 
 
 @dataclass
@@ -98,9 +96,7 @@ class WorktreeManager:
     def __init__(self, repo_root: Path, base_dir: Path | None = None) -> None:
         self.repo_root = Path(repo_root).resolve(strict=True)
         if not _is_git_repo(self.repo_root):
-            raise WorktreeRepoError(
-                f"repo_root is not a git repository: {self.repo_root}"
-            )
+            raise WorktreeRepoError(f"repo_root is not a git repository: {self.repo_root}")
         self.base_dir = (base_dir or self.repo_root / ".worktrees").resolve()
         self.base_dir.mkdir(parents=True, exist_ok=True)
         # key -> handle
@@ -112,7 +108,8 @@ class WorktreeManager:
         self._global_lock = threading.Lock()
         log.info(
             "WorktreeManager initialized: repo=%s base=%s",
-            self.repo_root, self.base_dir,
+            self.repo_root,
+            self.base_dir,
         )
 
     # ------------------------------------------------------------------
@@ -152,9 +149,13 @@ class WorktreeManager:
                 if _worktree_registered(self.repo_root, wt_path):
                     # 已注册但 _handles 无记录——是 orphan, 复用
                     handle = WorktreeHandle(
-                        path=wt_path, branch=branch, agent_id=agent_id,
-                        tenant_id=tenant_id, session_id=session_id,
-                        created_at=time.time(), key=key,
+                        path=wt_path,
+                        branch=branch,
+                        agent_id=agent_id,
+                        tenant_id=tenant_id,
+                        session_id=session_id,
+                        created_at=time.time(),
+                        key=key,
                     )
                     self._handles[key] = handle
                     self._internals[wt_path] = _Internal(
@@ -163,9 +164,7 @@ class WorktreeManager:
                     log.info("worktree.reuse (orphan) %s -> %s", key, wt_path)
                     return handle
                 # 路径存在但不是 worktree——脏数据, 报错
-                raise WorktreeConflictError(
-                    f"worktree path exists but not registered: {wt_path}"
-                )
+                raise WorktreeConflictError(f"worktree path exists but not registered: {wt_path}")
             # 新建: 先建分支 (基于 HEAD), 再 add worktree
             self._git("branch", branch, check=False)  # 失败也无所谓 (可能已存在)
             try:
@@ -179,9 +178,13 @@ class WorktreeManager:
                 else:
                     raise
             handle = WorktreeHandle(
-                path=wt_path, branch=branch, agent_id=agent_id,
-                tenant_id=tenant_id, session_id=session_id,
-                created_at=time.time(), key=key,
+                path=wt_path,
+                branch=branch,
+                agent_id=agent_id,
+                tenant_id=tenant_id,
+                session_id=session_id,
+                created_at=time.time(),
+                key=key,
             )
             # 写 .lock 文件 (advisory)
             flock_path = wt_path / ".lock"
@@ -257,7 +260,10 @@ class WorktreeManager:
                 if _worktree_registered(self.repo_root, entry):
                     try:
                         self._git(
-                            "worktree", "remove", "--force", str(entry),
+                            "worktree",
+                            "remove",
+                            "--force",
+                            str(entry),
                         )
                         # 尝试找到对应分支名
                         branch = _worktree_branch(self.repo_root, entry)
@@ -267,7 +273,8 @@ class WorktreeManager:
                         cleaned += 1
                         log.info(
                             "worktree.orphan.cleaned path=%s age=%.0fs",
-                            entry, age,
+                            entry,
+                            age,
                         )
                     except WorktreeError as exc:
                         log.warning("orphan cleanup failed %s: %s", entry, exc)
@@ -309,8 +316,11 @@ class WorktreeManager:
         cmd = ["git", "-C", str(self.repo_root), *args]
         try:
             proc = subprocess.run(
-                cmd, capture_output=True, text=True,
-                timeout=30, check=False,
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
             )
         except subprocess.TimeoutExpired as exc:
             raise WorktreeError(f"git timeout: {' '.join(cmd)}") from exc
@@ -353,7 +363,10 @@ def _is_git_repo(path: Path) -> bool:
     try:
         proc = subprocess.run(
             ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, timeout=5, check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
         )
     except (subprocess.TimeoutExpired, OSError):
         return False
@@ -370,13 +383,16 @@ def _worktree_registered(repo_root: Path, wt_path: Path) -> bool:
     try:
         proc = subprocess.run(
             ["git", "-C", str(repo_root), "worktree", "list", "--porcelain"],
-            capture_output=True, text=True, timeout=5, check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
         )
     except (subprocess.TimeoutExpired, OSError):
         return False
     real = os.path.realpath(wt_path)
     for line in proc.stdout.splitlines():
-        if line.startswith("worktree ") and os.path.realpath(line[len("worktree "):]) == real:
+        if line.startswith("worktree ") and os.path.realpath(line[len("worktree ") :]) == real:
             return True
     return False
 
@@ -386,7 +402,10 @@ def _worktree_branch(repo_root: Path, wt_path: Path) -> str | None:
     try:
         proc = subprocess.run(
             ["git", "-C", str(repo_root), "worktree", "list", "--porcelain"],
-            capture_output=True, text=True, timeout=5, check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
         )
     except (subprocess.TimeoutExpired, OSError):
         return None
@@ -394,11 +413,11 @@ def _worktree_branch(repo_root: Path, wt_path: Path) -> str | None:
     found = False
     for line in proc.stdout.splitlines():
         if line.startswith("worktree "):
-            found = os.path.realpath(line[len("worktree "):]) == real
+            found = os.path.realpath(line[len("worktree ") :]) == real
         elif found and line.startswith("branch "):
-            ref = line[len("branch "):]
+            ref = line[len("branch ") :]
             if ref.startswith("refs/heads/"):
-                return ref[len("refs/heads/"):]
+                return ref[len("refs/heads/") :]
             return ref
     return None
 

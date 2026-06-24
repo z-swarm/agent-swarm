@@ -57,8 +57,7 @@ class MemoryBackend(TaskQueueBackend):
             new: StoredTask = mutator(t)
             if new.version != expected_version + 1:
                 raise ValueError(
-                    f"mutator must bump version by 1, "
-                    f"got {expected_version} -> {new.version}"
+                    f"mutator must bump version by 1, got {expected_version} -> {new.version}"
                 )
             self._tasks[task_id] = new
             return new

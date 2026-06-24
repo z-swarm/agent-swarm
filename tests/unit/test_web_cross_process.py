@@ -303,10 +303,13 @@ async def test_webstate_attach_notifier_with_store(fake_module) -> None:
     """WebState.attach_notifier → store 拿到 notifier 引用"""
     state = WebState()
     from agent_swarm.web.store import PostgresWebStateStore, WebStateConfig
-    state.store = PostgresWebStateStore(WebStateConfig(
-        dsn="postgresql://placeholder",
-        fake_module=fake_module,
-    ))
+
+    state.store = PostgresWebStateStore(
+        WebStateConfig(
+            dsn="postgresql://placeholder",
+            fake_module=fake_module,
+        )
+    )
     notifier = PostgresNotifier(dsn="postgresql://placeholder", fake_module=fake_module)
     state.attach_notifier(notifier)
     # store 应该挂上 notifier

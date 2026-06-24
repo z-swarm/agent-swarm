@@ -88,6 +88,7 @@ async def test_run_with_protocol_requires_registration() -> None:
 @dataclass
 class _OkProtocol(CollaborationProtocol):
     """stub 协议——直接返回成功 ProtocolResult，验证 run_with_protocol 透传"""
+
     return_value: ProtocolResult | None = None
 
     async def execute(self, swarm) -> ProtocolResult:  # type: ignore[override]
@@ -99,9 +100,7 @@ class _OkProtocol(CollaborationProtocol):
 @pytest.mark.asyncio
 async def test_run_with_protocol_delegates_to_protocol() -> None:
     """run_with_protocol() 应调用 protocol.execute(self) 并透传其结果"""
-    expected = ProtocolResult(
-        success=True, summary="ok-from-protocol", artifacts={"k": "v"}
-    )
+    expected = ProtocolResult(success=True, summary="ok-from-protocol", artifacts={"k": "v"})
     s = _build_minimal_swarm(protocol=_OkProtocol(return_value=expected))
     result = await s.run_with_protocol()
     assert result.success is True
@@ -112,6 +111,7 @@ async def test_run_with_protocol_delegates_to_protocol() -> None:
 @dataclass
 class _BoomProtocol(CollaborationProtocol):
     """stub 协议——execute 抛异常，验证 run_with_protocol 错误包装"""
+
     async def execute(self, swarm) -> ProtocolResult:  # type: ignore[override]
         raise RuntimeError("kaboom")
 

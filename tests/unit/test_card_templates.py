@@ -47,8 +47,13 @@ def _all_text(card) -> str:
 def test_templates_registry_has_five_entries() -> None:
     """5 个内置模板"""
     assert len(TEMPLATES) == 5
-    for k in ("task_progress", "code_review_result", "adversarial_debug",
-              "swarm_status", "confirm_dialog"):
+    for k in (
+        "task_progress",
+        "code_review_result",
+        "adversarial_debug",
+        "swarm_status",
+        "confirm_dialog",
+    ):
         assert k in TEMPLATES
 
 
@@ -64,15 +69,17 @@ def test_render_card_raises_on_unknown_template() -> None:
 
 
 def test_task_progress_basic() -> None:
-    card = render_task_progress({
-        "title": "Pipeline",
-        "tasks": [
-            {"id": "T1", "title": "build", "status": "completed"},
-            {"id": "T2", "title": "test", "status": "in_progress"},
-            {"id": "T3", "title": "deploy", "status": "failed"},
-        ],
-        "agent_count": 2,
-    })
+    card = render_task_progress(
+        {
+            "title": "Pipeline",
+            "tasks": [
+                {"id": "T1", "title": "build", "status": "completed"},
+                {"id": "T2", "title": "test", "status": "in_progress"},
+                {"id": "T3", "title": "deploy", "status": "failed"},
+            ],
+            "agent_count": 2,
+        }
+    )
     assert card["header"]["title"]["content"] == "Pipeline"
     txt = _all_text(card)
     assert "1/3" in txt  # completed=1
@@ -90,9 +97,11 @@ def test_task_progress_truncates_long_list() -> None:
 
 def test_task_progress_completed_all_green() -> None:
     """全 completed → 0 failed"""
-    card = render_task_progress({
-        "tasks": [{"id": "T1", "title": "x", "status": "completed"}],
-    })
+    card = render_task_progress(
+        {
+            "tasks": [{"id": "T1", "title": "x", "status": "completed"}],
+        }
+    )
     txt = _all_text(card)
     assert "failed: 0" in txt
 
@@ -103,15 +112,17 @@ def test_task_progress_completed_all_green() -> None:
 
 
 def test_code_review_result_severity_breakdown() -> None:
-    card = render_code_review_result({
-        "title": "PR #1",
-        "findings": [
-            {"severity": "critical", "file": "a.py", "line": 1, "msg": "x"},
-            {"severity": "high", "file": "b.py", "line": 2, "msg": "y"},
-            {"severity": "low", "file": "c.py", "line": 3, "msg": "z"},
-        ],
-        "verdict": "request_changes",
-    })
+    card = render_code_review_result(
+        {
+            "title": "PR #1",
+            "findings": [
+                {"severity": "critical", "file": "a.py", "line": 1, "msg": "x"},
+                {"severity": "high", "file": "b.py", "line": 2, "msg": "y"},
+                {"severity": "low", "file": "c.py", "line": 3, "msg": "z"},
+            ],
+            "verdict": "request_changes",
+        }
+    )
     txt = _all_text(card)
     assert "request_changes" in txt
     assert "Critical" in txt and "1" in txt  # severity count
@@ -124,11 +135,13 @@ def test_code_review_result_severity_breakdown() -> None:
 
 
 def test_code_review_result_no_high_shows_clean() -> None:
-    card = render_code_review_result({
-        "findings": [
-            {"severity": "low", "file": "a.py", "line": 1, "msg": "minor"},
-        ],
-    })
+    card = render_code_review_result(
+        {
+            "findings": [
+                {"severity": "low", "file": "a.py", "line": 1, "msg": "minor"},
+            ],
+        }
+    )
     txt = _all_text(card)
     assert "No high-severity" in txt
 
@@ -139,24 +152,28 @@ def test_code_review_result_no_high_shows_clean() -> None:
 
 
 def test_adversarial_debug_round_progress() -> None:
-    card = render_adversarial_debug({
-        "title": "Debug",
-        "round_no": 2,
-        "max_rounds": 5,
-        "survivors": ["h0", "h1"],
-    })
+    card = render_adversarial_debug(
+        {
+            "title": "Debug",
+            "round_no": 2,
+            "max_rounds": 5,
+            "survivors": ["h0", "h1"],
+        }
+    )
     txt = _all_text(card)
     assert "2 / 5" in txt
     assert "h0" in txt and "h1" in txt
 
 
 def test_adversarial_debug_convergence_message() -> None:
-    card = render_adversarial_debug({
-        "round_no": 3,
-        "max_rounds": 5,
-        "survivors": ["h0"],
-        "convergence_reason": "min_survivors_reached",
-    })
+    card = render_adversarial_debug(
+        {
+            "round_no": 3,
+            "max_rounds": 5,
+            "survivors": ["h0"],
+            "convergence_reason": "min_survivors_reached",
+        }
+    )
     txt = _all_text(card)
     assert "min_survivors_reached" in txt
 
@@ -167,16 +184,18 @@ def test_adversarial_debug_convergence_message() -> None:
 
 
 def test_swarm_status_running_info_color() -> None:
-    card = render_swarm_status({
-        "title": "My",
-        "state": "running",
-        "uptime_s": 12.3,
-        "tokens_used": 1000,
-        "agents": [
-            {"id": "a", "status": "idle", "tasks_done": 0},
-            {"id": "b", "status": "busy", "tasks_done": 3},
-        ],
-    })
+    card = render_swarm_status(
+        {
+            "title": "My",
+            "state": "running",
+            "uptime_s": 12.3,
+            "tokens_used": 1000,
+            "agents": [
+                {"id": "a", "status": "idle", "tasks_done": 0},
+                {"id": "b", "status": "busy", "tasks_done": 3},
+            ],
+        }
+    )
     assert card["header"]["template"] == "blue"  # info
     txt = _all_text(card)
     assert "12.3s" in txt
@@ -216,14 +235,16 @@ def test_confirm_dialog_default_actions() -> None:
 
 
 def test_confirm_dialog_custom_actions() -> None:
-    card = render_confirm_dialog({
-        "title": "Deploy",
-        "message": "Deploy to production?",
-        "actions": [
-            {"text": "Yes, deploy", "value": "approve", "type": "primary"},
-            {"text": "Cancel", "value": "deny", "type": "default"},
-        ],
-    })
+    card = render_confirm_dialog(
+        {
+            "title": "Deploy",
+            "message": "Deploy to production?",
+            "actions": [
+                {"text": "Yes, deploy", "value": "approve", "type": "primary"},
+                {"text": "Cancel", "value": "deny", "type": "default"},
+            ],
+        }
+    )
     txt = _all_text(card)
     assert "Yes, deploy" in txt
     assert "Cancel" in txt

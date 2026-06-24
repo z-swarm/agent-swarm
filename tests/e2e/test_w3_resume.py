@@ -73,9 +73,7 @@ def test_w3_run_persists_then_resume(
     runner = CliRunner()
 
     # 1) run
-    res_run = runner.invoke(
-        cli, ["run", str(yaml_path), "--db", str(db_path)]
-    )
+    res_run = runner.invoke(cli, ["run", str(yaml_path), "--db", str(db_path)])
     assert res_run.exit_code == 0, f"run failed: {res_run.stdout}"
     assert "completed" in res_run.stdout
 
@@ -90,23 +88,20 @@ def test_w3_run_persists_then_resume(
     # 3) 提取 session_id
     # 从 list 输出中解析（session id 以 s- 开头）
     import re
+
     match = re.search(r"(s-[a-f0-9]+)", res_list.stdout)
     assert match is not None, f"no session id in: {res_list.stdout}"
     session_id = match.group(1)
 
     # 4) session show 应有完整事件流
-    res_show = runner.invoke(
-        cli, ["session", "show", session_id, "--db", str(db_path)]
-    )
+    res_show = runner.invoke(cli, ["session", "show", session_id, "--db", str(db_path)])
     assert res_show.exit_code == 0
     assert "task.created" in res_show.stdout
     assert "task.completed" in res_show.stdout
     assert "swarm.completed" in res_show.stdout
 
     # 5) session resume 应重建出两个 completed 任务
-    res_resume = runner.invoke(
-        cli, ["session", "resume", session_id, "--db", str(db_path)]
-    )
+    res_resume = runner.invoke(cli, ["session", "resume", session_id, "--db", str(db_path)])
     assert res_resume.exit_code == 0
     assert "Restored" in res_resume.stdout
     assert "T-A" in res_resume.stdout
@@ -127,12 +122,11 @@ def test_w3_resume_unknown_session_returns_error(tmp_path: Path) -> None:
         sink = SqliteEventSink(db)
         await sink._ensure_conn()
         await sink.aclose()
+
     asyncio.run(_init())
 
     runner = CliRunner()
-    res = runner.invoke(
-        cli, ["session", "resume", "s-ghost", "--db", str(db)]
-    )
+    res = runner.invoke(cli, ["session", "resume", "s-ghost", "--db", str(db)])
     assert res.exit_code == 2
 
 
@@ -154,9 +148,7 @@ def test_w3_run_with_failing_task_persisted(
     db_path = tmp_path / "fail.db"
 
     runner = CliRunner()
-    res_run = runner.invoke(
-        cli, ["run", str(yaml_path), "--db", str(db_path)]
-    )
+    res_run = runner.invoke(cli, ["run", str(yaml_path), "--db", str(db_path)])
     assert res_run.exit_code == 1
     assert "failed" in res_run.stdout
 

@@ -52,6 +52,7 @@ class _FakeVaultSecretManager(SecretManager):
     async def get(self, key: str) -> Secret:
         if key not in self._store:
             from agent_swarm.security.secret_manager import SecretNotFoundError
+
             raise SecretNotFoundError(f"vault: {key!r} not found")
         return self._store[key]
 
@@ -180,11 +181,13 @@ async def test_resolve_vault_no_field_uses_value_directly() -> None:
 async def test_resolve_vault_with_field_extracts_json() -> None:
     """vault://path#field → JSON 提取 field"""
     mgr = _FakeVaultSecretManager()
-    doc = json.dumps({
-        "current": "jwt-secret-v1",
-        "previous": "jwt-secret-v0",
-        "metadata": {"rotated_at": "2026-06-24"},
-    })
+    doc = json.dumps(
+        {
+            "current": "jwt-secret-v1",
+            "previous": "jwt-secret-v0",
+            "metadata": {"rotated_at": "2026-06-24"},
+        }
+    )
     await mgr.put("web/jwt-secret", doc)
     iss = JWTIssuer(
         JWTConfig(secret_ref="vault://web/jwt-secret#current", secret_manager=mgr),

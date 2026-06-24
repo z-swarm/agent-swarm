@@ -80,9 +80,7 @@ class GoldenVerdict:
             lines.append(f"  must_not_claim violations: {len(self.must_not_violations)}")
         if self.performance_violations:
             lines.append(f"  perf violations: {self.performance_violations}")
-        lines.append(
-            f"  duration={self.duration_seconds:.1f}s tokens={self.total_tokens}"
-        )
+        lines.append(f"  duration={self.duration_seconds:.1f}s tokens={self.total_tokens}")
         return "\n".join(lines)
 
 
@@ -161,25 +159,17 @@ def evaluate(
     perf_violations: list[str] = []
     max_duration = expectation.performance.get("max_duration_seconds")
     if max_duration is not None and duration_seconds > max_duration:
-        perf_violations.append(
-            f"duration {duration_seconds:.1f}s > {max_duration}s"
-        )
+        perf_violations.append(f"duration {duration_seconds:.1f}s > {max_duration}s")
     max_tokens = expectation.performance.get("max_total_tokens")
     if max_tokens is not None and total_tokens > max_tokens:
-        perf_violations.append(
-            f"tokens {total_tokens} > {max_tokens}"
-        )
+        perf_violations.append(f"tokens {total_tokens} > {max_tokens}")
 
     total = len(expectation.must_find)
     score = (len(hits) / total) if total > 0 else 1.0
     min_rate = expectation.quality.get("min_must_find_hit_rate", 1.0)
     quality_ok = score >= min_rate
 
-    passed = (
-        not violations
-        and not perf_violations
-        and quality_ok
-    )
+    passed = not violations and not perf_violations and quality_ok
 
     return GoldenVerdict(
         case_id=expectation.case_id,

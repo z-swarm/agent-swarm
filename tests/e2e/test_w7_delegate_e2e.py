@@ -80,9 +80,7 @@ def _write_cfg(tmp_path: Path, cfg: dict) -> Path:
 
 def _stop_script(n: int) -> list[ScriptedResponse]:
     """生成 n 次 'no-op stop' 响应，让 agent loop 自然退出"""
-    return [
-        ScriptedResponse(content="ok", finish_reason="stop") for _ in range(n)
-    ]
+    return [ScriptedResponse(content="ok", finish_reason="stop") for _ in range(n)]
 
 
 # ---------------------------------------------------------------------------
@@ -200,9 +198,7 @@ def test_worker_agent_has_no_lead_tools() -> None:
     tool = SpawnAgentTool(caller_agent_id="w", ctx=_StubCtx([w]))
     import asyncio
 
-    out = asyncio.run(
-        tool.invoke({"agent_id": "x", "role": "x", "model": "m", "provider": "p"})
-    )
+    out = asyncio.run(tool.invoke({"agent_id": "x", "role": "x", "model": "m", "provider": "p"}))
     assert "[error]" in out
     assert "can_spawn_agents" in out
 

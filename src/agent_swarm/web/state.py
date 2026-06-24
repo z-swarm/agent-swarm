@@ -45,7 +45,7 @@ class EventRecord:
             f'<span class="name">{self.event_name}</span> '
             f'<span class="sid">{self.session_id[:8]}</span> '
             f'<span class="payload">{payload_str}</span>'
-            f'</li>'
+            f"</li>"
         )
 
 
@@ -121,6 +121,7 @@ class WebState:
     def unsubscribe(self, callback: Any) -> None:
         """取消订阅"""
         import contextlib
+
         with contextlib.suppress(ValueError):
             self._subscribers.remove(callback)
 
@@ -152,6 +153,7 @@ class WebState:
         self._notifier = notifier
         if self.store is not None and hasattr(self.store, "attach_notifier"):
             self.store.attach_notifier(notifier)
+
             # 把 notifier 收到的跨进程 envelope 转发给本进程订阅者
             # 注意: on_notify 触发是 sync (asyncpg 限制), 不能直接 async with self.lock
             # 改用 asyncio.run_coroutine_threadsafe 走 event loop, 避免 lock 死锁
@@ -165,6 +167,7 @@ class WebState:
                 )
                 try:
                     import asyncio
+
                     loop = asyncio.get_event_loop()
                     if loop.is_running():
                         # 走 ensure_future 排到事件循环, 内部用 lock 安全写
@@ -172,15 +175,19 @@ class WebState:
                     else:
                         # 同步环境 (测试), 直接写
                         self.events.append(rec)
-                        self.active_sessions.setdefault(rec.session_id, {
-                            "first_seen": time.time(),
-                            "event_count": 0,
-                            "last_event": None,
-                        })
+                        self.active_sessions.setdefault(
+                            rec.session_id,
+                            {
+                                "first_seen": time.time(),
+                                "event_count": 0,
+                                "last_event": None,
+                            },
+                        )
                         self.active_sessions[rec.session_id]["event_count"] += 1
                         self.active_sessions[rec.session_id]["last_event"] = rec.event_name
                 except Exception as exc:  # noqa: BLE001
                     log.debug("remote event apply failed: %s", exc)
+
             notifier.on_notify(_on_remote)
 
     async def _apply_remote_event(self, rec: EventRecord) -> None:
@@ -200,8 +207,8 @@ class WebState:
             try:
                 res = sub(rec)
                 import asyncio
+
                 if asyncio.iscoroutine(res):
                     await res
             except Exception as exc:  # noqa: BLE001
                 log.debug("remote subscriber notify failed: %s", exc)
-

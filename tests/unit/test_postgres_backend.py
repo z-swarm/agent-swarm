@@ -112,6 +112,7 @@ class _Acquire:
 
 def _mk_fake_module(store: dict[str, dict[str, Any]]) -> Any:
     """构造 fake asyncpg-like module"""
+
     class FakeMod:
         @staticmethod
         async def create_pool(**kwargs: Any) -> FakePool:
@@ -142,12 +143,20 @@ def backend(store: dict[str, dict[str, Any]]) -> PostgresBackend:
 
 def _mk_task(tid: str, version: int = 0, status: str = "pending") -> StoredTask:
     import time
+
     now = time.time()
     return StoredTask(
-        id=tid, title=f"t-{tid}", description="test",
-        status=status, version=version, assigned_to=None,
-        depends_on=[], result=None, error=None,
-        created_at=now, updated_at=now,
+        id=tid,
+        title=f"t-{tid}",
+        description="test",
+        status=status,
+        version=version,
+        assigned_to=None,
+        depends_on=[],
+        result=None,
+        error=None,
+        created_at=now,
+        updated_at=now,
     )
 
 
@@ -210,7 +219,9 @@ async def test_cas_success(backend: PostgresBackend) -> None:
     """CAS 成功: 版本匹配, 原子更新"""
     await backend.put(_mk_task("t1", version=0))
     new = await backend.compare_and_set(
-        "t1", 0, lambda t: StoredTask(
+        "t1",
+        0,
+        lambda t: StoredTask(
             **{**t.to_dict(), "version": 1, "status": "in_progress"},
         ),
     )
@@ -229,14 +240,18 @@ async def test_cas_version_mismatch(backend: PostgresBackend) -> None:
     await backend.put(_mk_task("t1", version=0))
     # 直接通过 CAS 改到 version=1, 模拟别人改了
     await backend.compare_and_set(
-        "t1", 0, lambda t: StoredTask(
+        "t1",
+        0,
+        lambda t: StoredTask(
             **{**t.to_dict(), "version": 1, "status": "in_progress"},
         ),
     )
     # 现在用 expected=0 改, 应失败
     with pytest.raises(VersionMismatchError) as exc_info:
         await backend.compare_and_set(
-            "t1", 0, lambda t: StoredTask(
+            "t1",
+            0,
+            lambda t: StoredTask(
                 **{**t.to_dict(), "version": 1},
             ),
         )
@@ -249,7 +264,9 @@ async def test_cas_missing_task(backend: PostgresBackend) -> None:
     """CAS 不存在的 task: 抛 KeyError"""
     with pytest.raises(KeyError, match="nonexistent"):
         await backend.compare_and_set(
-            "nonexistent", 0, lambda t: t,
+            "nonexistent",
+            0,
+            lambda t: t,
         )
 
 
@@ -259,7 +276,9 @@ async def test_cas_must_bump_version(backend: PostgresBackend) -> None:
     await backend.put(_mk_task("t1", version=0))
     with pytest.raises(ValueError, match="must bump version by 1"):
         await backend.compare_and_set(
-            "t1", 0, lambda t: t,  # 不改 version
+            "t1",
+            0,
+            lambda t: t,  # 不改 version
         )
 
 

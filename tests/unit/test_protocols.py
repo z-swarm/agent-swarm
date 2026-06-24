@@ -84,9 +84,7 @@ async def test_stub_protocol_execute() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _agent(
-    agent_id: str, *, spawn: bool = False, execute: bool = True
-) -> Agent:
+def _agent(agent_id: str, *, spawn: bool = False, execute: bool = True) -> Agent:
     """构造测试用 Agent——只填 DelegateMode 关心的字段"""
     if spawn and not execute:
         caps = AgentCapabilities.lead()
@@ -131,6 +129,7 @@ class _StubSwarm:
 
     只暴露 DelegateMode 真正用到的属性/方法：agents / tasks / run()
     """
+
     agents: list[Agent]
     tasks: list[Task]
     run_result_state: str = "completed"
@@ -203,9 +202,7 @@ async def test_delegate_mode_propagates_swarm_failure() -> None:
     """swarm.run() 抛异常 → ProtocolResult.success=False + 错误包装"""
     lead = _agent("lead-1", spawn=True, execute=False)
     worker = _agent("worker-1", execute=True)
-    swarm = _StubSwarm(
-        agents=[lead, worker], tasks=[], run_should_raise=True
-    )
+    swarm = _StubSwarm(agents=[lead, worker], tasks=[], run_should_raise=True)
     result = await DelegateMode().execute(swarm)  # type: ignore[arg-type]
     assert result.success is False
     assert "simulated swarm failure" in (result.error or "")
@@ -219,9 +216,7 @@ async def test_delegate_mode_marks_failed_when_swarm_state_failed() -> None:
     """swarm.run() 返回 state=failed → ProtocolResult.success=False"""
     lead = _agent("lead-1", spawn=True, execute=False)
     worker = _agent("worker-1", execute=True)
-    swarm = _StubSwarm(
-        agents=[lead, worker], tasks=[], run_result_state="failed"
-    )
+    swarm = _StubSwarm(agents=[lead, worker], tasks=[], run_result_state="failed")
     result = await DelegateMode().execute(swarm)  # type: ignore[arg-type]
     assert result.success is False
     assert result.artifacts["swarm_state"] == "failed"

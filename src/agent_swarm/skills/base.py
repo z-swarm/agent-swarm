@@ -84,8 +84,7 @@ class SkillRegistry:
         if skill.id in cls._instances:
             raise ValueError(f"skill {skill.id!r} already registered")
         cls._instances[skill.id] = skill
-        log.debug("skill.registered id=%s category=%s",
-                  skill.id, skill.category)
+        log.debug("skill.registered id=%s category=%s", skill.id, skill.category)
 
     @classmethod
     def get(cls, skill_id: str) -> Skill | None:
@@ -95,9 +94,7 @@ class SkillRegistry:
     def list_ids(cls, category: SkillCategory | None = None) -> list[str]:
         if category is None:
             return list(cls._instances.keys())
-        return [
-            sid for sid, s in cls._instances.items() if s.category == category
-        ]
+        return [sid for sid, s in cls._instances.items() if s.category == category]
 
     @classmethod
     def list_all(cls) -> list[Skill]:

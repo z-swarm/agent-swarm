@@ -169,6 +169,7 @@ async def test_swarm_result_distinguishes_failed_vs_unfinished(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """W2-B6 回归：tasks_failed 和 tasks_unfinished 分开统计"""
+
     # 让所有 LLM 调用直接抛——第一个任务变 failed
     class BoomProvider(FakeLLMProvider):
         async def chat(self, messages, **kwargs):  # type: ignore[override]

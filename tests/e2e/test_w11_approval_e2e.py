@@ -73,7 +73,9 @@ class _StubLarkConnector:
         return ChannelMessage(
             id=f"act_{int(time.time() * 1000)}",
             channel=ChannelType.LARK,
-            from_user=ChannelUser(channel=ChannelType.LARK, user_id="ou_admin", display_name="Admin"),
+            from_user=ChannelUser(
+                channel=ChannelType.LARK, user_id="ou_admin", display_name="Admin"
+            ),
             content=json.dumps({"value": {"action": action_str}}),
             msg_type=MessageType.EVENT,
         )
@@ -220,14 +222,23 @@ async def test_mcp_high_risk_with_channel_approver() -> None:
     class _StubMCP:
         async def call_tool(self, name, args):
             return [{"type": "text", "text": "ok"}]
-        async def list_tools(self): return []
-        def is_connected(self): return True
-        async def connect(self): pass
+
+        async def list_tools(self):
+            return []
+
+        def is_connected(self):
+            return True
+
+        async def connect(self):
+            pass
 
     MCPToolAdapter(
-        server_name="github", mcp_tool_name="create_issue",
-        description="x", parameters={"type": "object"},
-        client=_StubMCP(), risk="high",
+        server_name="github",
+        mcp_tool_name="create_issue",
+        description="x",
+        parameters={"type": "object"},
+        client=_StubMCP(),
+        risk="high",
     )
     # 用 channel approver 改写 invoke：高风险 → ApprovalFlow.request_approval
     # 简化：手动调用 approval flow
@@ -246,6 +257,7 @@ async def test_mcp_high_risk_with_channel_approver() -> None:
                 PolicyDecision("REQUIRE_APPROVAL", "MCP github create_issue (high)"),
                 _ctx(),
             )
+
     task = asyncio.create_task(run_and_approve())
     await asyncio.sleep(0.1)
     request_id = list(approver._inflight.keys())[0]
@@ -272,6 +284,7 @@ async def test_lark_handler_bridges_to_approver() -> None:
         if msg.msg_type == MessageType.EVENT:
             await approver.handle_card_action(msg)
         return ChannelResponse(content="")
+
     c.subscribe(lark_handler)
 
     async def run():
@@ -296,6 +309,7 @@ async def test_lark_handler_bridges_to_approver() -> None:
 @pytest.mark.asyncio
 async def test_send_failure_propagates_to_deny() -> None:
     """send 失败 → __call__ 立即 False（不阻塞）"""
+
     class _FailSendConnector(_StubLarkConnector):
         async def send(self, response, target) -> bool:
             return False  # 模拟 Lark API 失败

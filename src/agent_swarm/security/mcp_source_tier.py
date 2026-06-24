@@ -81,8 +81,7 @@ def get_source_risk(source: str | MCPSource) -> ToolRisk:
             source = MCPSource(source)
         except ValueError as e:
             raise ValueError(
-                f"unknown MCP source: {source!r}, "
-                f"expected one of {[s.value for s in MCPSource]}",
+                f"unknown MCP source: {source!r}, expected one of {[s.value for s in MCPSource]}",
             ) from e
     return SOURCE_TO_DEFAULT_RISK[source]
 
@@ -115,7 +114,8 @@ def validate_source(source: str | None) -> MCPSource:
 
 
 def bump_tool_risk_by_source(
-    base_risk: ToolRisk, source: str | MCPSource,
+    base_risk: ToolRisk,
+    source: str | MCPSource,
 ) -> ToolRisk:
     """
     根据 source 提升工具基础风险等级

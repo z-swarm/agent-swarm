@@ -86,6 +86,7 @@ class MCPClient(ABC):
 @dataclass
 class _PendingRequest:
     """in-flight 请求：future + timeout 任务"""
+
     future: asyncio.Future
     timeout_handle: asyncio.Handle
 
@@ -116,9 +117,7 @@ class StdioMCPClient(MCPClient):
         timeout_s: float = 30.0,
     ) -> None:
         if config.transport != "stdio":
-            raise ValueError(
-                f"StdioMCPClient requires transport=stdio, got {config.transport!r}"
-            )
+            raise ValueError(f"StdioMCPClient requires transport=stdio, got {config.transport!r}")
         self._config = config
         self._timeout_s = timeout_s
         self._process: asyncio.subprocess.Process | None = None
@@ -142,9 +141,11 @@ class StdioMCPClient(MCPClient):
         # H3: 防 _pending 状态泄漏
         for f in self._pending.values():
             if not f.done():
-                f.set_exception(MCPConnectionError(
-                    f"MCP {self._config.name} reconnecting; old request cancelled"
-                ))
+                f.set_exception(
+                    MCPConnectionError(
+                        f"MCP {self._config.name} reconnecting; old request cancelled"
+                    )
+                )
         self._pending.clear()
         self._next_id = 1
         # W9-2 简化：env 透传 config.env（不展开 SecretManager——DESIGN §7.3
@@ -169,7 +170,8 @@ class StdioMCPClient(MCPClient):
             ) from exc
 
         self._reader_task = asyncio.create_task(
-            self._read_loop(), name=f"mcp-stdio-reader-{self._config.name}",
+            self._read_loop(),
+            name=f"mcp-stdio-reader-{self._config.name}",
         )
         # M1: 并行 stderr drain——server stderr 输出（npm 启动日志等）
         # 累积到 OS pipe buffer 满后阻塞 server，进而阻塞 stdout readline；
@@ -178,8 +180,7 @@ class StdioMCPClient(MCPClient):
             self._stderr_drain_loop(),
             name=f"mcp-stdio-stderr-{self._config.name}",
         )
-        log.info("MCP stdio client connected: %s (pid=%d)",
-                 self._config.name, self._process.pid)
+        log.info("MCP stdio client connected: %s (pid=%d)", self._config.name, self._process.pid)
 
     async def disconnect(self) -> None:
         """关闭 reader + stderr drain + 终止子进程"""
@@ -209,7 +210,9 @@ class StdioMCPClient(MCPClient):
     # JSON-RPC 请求
     # ------------------------------------------------------------------
     async def _request(
-        self, method: str, params: dict[str, Any] | None = None,
+        self,
+        method: str,
+        params: dict[str, Any] | None = None,
     ) -> Any:
         """
         发送 JSON-RPC 请求并等待响应
@@ -261,11 +264,14 @@ class StdioMCPClient(MCPClient):
     # ------------------------------------------------------------------
     async def initialize(self) -> dict[str, Any]:
         """MCP 协议握手：client → server 介绍自己 + 协议版本"""
-        return await self._request("initialize", {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {},
-            "clientInfo": {"name": "agent-swarm", "version": "0.1.0"},
-        })
+        return await self._request(
+            "initialize",
+            {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "agent-swarm", "version": "0.1.0"},
+            },
+        )
 
     async def list_tools(self) -> list[dict[str, Any]]:
         """MCP tools/list——返回 [{"name": ..., "description": ..., "inputSchema": ...}, ...]"""
@@ -274,10 +280,13 @@ class StdioMCPClient(MCPClient):
 
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> Any:
         """MCP tools/call——返回 content 字段（str 或 list）"""
-        result = await self._request("tools/call", {
-            "name": name,
-            "arguments": arguments,
-        })
+        result = await self._request(
+            "tools/call",
+            {
+                "name": name,
+                "arguments": arguments,
+            },
+        )
         return result.get("content")
 
     # ------------------------------------------------------------------
@@ -297,13 +306,13 @@ class StdioMCPClient(MCPClient):
                     break
                 log.debug(
                     "MCP %s stderr: %s",
-                    self._config.name, line.decode("utf-8", errors="replace").rstrip(),
+                    self._config.name,
+                    line.decode("utf-8", errors="replace").rstrip(),
                 )
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
-            log.warning("MCP %s stderr drain crashed: %s",
-                        self._config.name, exc)
+            log.warning("MCP %s stderr drain crashed: %s", self._config.name, exc)
 
     async def _read_loop(self) -> None:
         """后台 task：持续读 stdout，按 id 派发到 pending future"""
@@ -314,14 +323,12 @@ class StdioMCPClient(MCPClient):
                 line = await self._process.stdout.readline()
                 if not line:
                     # EOF——子进程退出
-                    log.warning("MCP %s stdout EOF; disconnecting",
-                                self._config.name)
+                    log.warning("MCP %s stdout EOF; disconnecting", self._config.name)
                     break
                 try:
                     msg = json.loads(line.decode("utf-8"))
                 except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-                    log.warning("MCP %s invalid JSON: %s",
-                                self._config.name, exc)
+                    log.warning("MCP %s invalid JSON: %s", self._config.name, exc)
                     continue
                 if not isinstance(msg, dict):
                     continue
@@ -333,11 +340,13 @@ class StdioMCPClient(MCPClient):
                     continue
                 if "error" in msg:
                     err = msg["error"]
-                    future.set_exception(MCPRPCError(
-                        code=err.get("code", 0),
-                        message=err.get("message", ""),
-                        data=err.get("data"),
-                    ))
+                    future.set_exception(
+                        MCPRPCError(
+                            code=err.get("code", 0),
+                            message=err.get("message", ""),
+                            data=err.get("data"),
+                        )
+                    )
                 elif "result" in msg:
                     future.set_result(msg["result"])
         except asyncio.CancelledError:
@@ -348,9 +357,7 @@ class StdioMCPClient(MCPClient):
             # 把所有 pending future 标记失败
             for f in self._pending.values():
                 if not f.done():
-                    f.set_exception(MCPConnectionError(
-                        f"MCP {self._config.name} read loop ended"
-                    ))
+                    f.set_exception(MCPConnectionError(f"MCP {self._config.name} read loop ended"))
             self._pending.clear()
 
 

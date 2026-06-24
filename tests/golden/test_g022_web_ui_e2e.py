@@ -29,6 +29,7 @@ from agent_swarm.web.state import EventRecord, WebState
 # Fixtures
 # ============================================================
 
+
 @pytest.fixture
 def web_state() -> WebState:
     """默认缓冲 500,够大多数测试用"""
@@ -53,6 +54,7 @@ def app(web_state: WebState):
 # G-022-1: WebStateSink → WebState 单调推送
 # ============================================================
 
+
 @pytest.mark.asyncio
 async def test_g022_sink_pushes_to_state(web_state: WebState) -> None:
     """WebStateSink.consume 把 SessionEvent 转 EventRecord 推入 WebState"""
@@ -72,6 +74,7 @@ async def test_g022_sink_pushes_to_state(web_state: WebState) -> None:
 # G-022-2: WebSocket 端到端
 # ============================================================
 
+
 def test_g022_ws_receives_pushed_events(app, web_state: WebState) -> None:
     """WS 客户端能收到 sink 推入的全部事件 (跳过连接时的 _hello)"""
     from fastapi.testclient import TestClient
@@ -83,9 +86,9 @@ def test_g022_ws_receives_pushed_events(app, web_state: WebState) -> None:
 
         sink = WebStateSink(web_state)
         for i in range(3):
-            asyncio.run(sink.consume(_make_event(
-                f"event.{i}", session_id="sess-ws", payload={"i": i}
-            )))
+            asyncio.run(
+                sink.consume(_make_event(f"event.{i}", session_id="sess-ws", payload={"i": i}))
+            )
         received: list[dict[str, Any]] = []
         for _ in range(3):
             msg = ws.receive_text()
@@ -99,13 +102,16 @@ def test_g022_ws_receives_pushed_events(app, web_state: WebState) -> None:
 # G-022-3: /partials/events HTML 渲染
 # ============================================================
 
+
 def test_g022_partials_events_renders_html(app, web_state: WebState) -> None:
     """/partials/events 返回 HTMX 片段,含全部事件"""
     from fastapi.testclient import TestClient
 
-    asyncio.run(WebStateSink(web_state).consume(_make_event(
-        "swarm.start", session_id="abc12345xyz", payload={"agent": "writer"}
-    )))
+    asyncio.run(
+        WebStateSink(web_state).consume(
+            _make_event("swarm.start", session_id="abc12345xyz", payload={"agent": "writer"})
+        )
+    )
 
     with TestClient(app) as client:
         r = client.get("/partials/events")
@@ -119,6 +125,7 @@ def test_g022_partials_events_renders_html(app, web_state: WebState) -> None:
 # ============================================================
 # G-022-4: 多订阅者 fan-out
 # ============================================================
+
 
 @pytest.mark.asyncio
 async def test_g022_multi_subscriber_fanout(web_state: WebState) -> None:
@@ -147,6 +154,7 @@ async def test_g022_multi_subscriber_fanout(web_state: WebState) -> None:
 # G-022-5: 缓冲上限 (丢老不报错)
 # ============================================================
 
+
 @pytest.mark.asyncio
 async def test_g022_buffer_overflow_drops_old(small_state: WebState) -> None:
     """WebState deque maxlen 触发后,旧事件被丢弃,新事件仍推送"""
@@ -163,9 +171,11 @@ async def test_g022_buffer_overflow_drops_old(small_state: WebState) -> None:
 # G-022-6: sink 异常隔离
 # ============================================================
 
+
 @pytest.mark.asyncio
 async def test_g022_sink_exception_isolated(web_state: WebState) -> None:
     """WebStateSink 推送失败不传播到其他 sink / 业务"""
+
     async def bad(rec: EventRecord) -> None:
         raise RuntimeError("subscriber boom")
 
@@ -187,6 +197,7 @@ async def test_g022_sink_exception_isolated(web_state: WebState) -> None:
 # Helpers
 # ============================================================
 
+
 def _make_event(
     name: str,
     *,
@@ -194,6 +205,7 @@ def _make_event(
     payload: dict[str, Any] | None = None,
 ) -> Any:
     """构造 SessionEvent 鸭子类型——WebStateSink 只需 .event_name/.session_id/.payload"""
+
     class _FakeEvent:
         pass
 

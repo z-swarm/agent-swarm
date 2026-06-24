@@ -36,12 +36,15 @@ def _bearer() -> str:
 def _run(cmd: list[str], cwd: Path) -> str:
     """在 cwd 跑 git 命令, 返 stdout"""
     result = subprocess.run(
-        cmd, cwd=str(cwd), capture_output=True, text=True, timeout=15,
+        cmd,
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        timeout=15,
     )
     if result.returncode != 0:
         raise RuntimeError(
-            f"git command failed: {' '.join(cmd)}\n"
-            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+            f"git command failed: {' '.join(cmd)}\nstdout: {result.stdout}\nstderr: {result.stderr}"
         )
     return result.stdout
 
@@ -113,8 +116,7 @@ async def test_g027_secret_leak_findings(tmp_path: Path) -> None:
     _run(["git", "commit", "-m", "init"], repo)
     # 添加 hardcoded API key
     (repo / "app.py").write_text(
-        '# app\n'
-        'API_KEY = "sk-1234567890abcdefghijklmnopqrstuvwxyz1234567890abcd"\n',
+        '# app\nAPI_KEY = "sk-1234567890abcdefghijklmnopqrstuvwxyz1234567890abcd"\n',
         encoding="utf-8",
     )
     _run(["git", "add", "app.py"], repo)
@@ -159,8 +161,8 @@ async def test_g027_cmd_injection_findings(tmp_path: Path) -> None:
     _run(["git", "commit", "-m", "init"], repo)
     # 添加 cmd injection (W13 规则匹配: subprocess.run(..., shell=True))
     (repo / "unsafe.py").write_text(
-        'import subprocess\n'
-        'def run_user_cmd(user_input):\n'
+        "import subprocess\n"
+        "def run_user_cmd(user_input):\n"
         '    subprocess.run(f"echo {user_input}", shell=True)  # cmd injection risk\n',
         encoding="utf-8",
     )

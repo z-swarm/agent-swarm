@@ -42,14 +42,16 @@ class _FakeConn:
         if s.startswith("insert into"):
             event_type, payload_json, session_id, tenant_id = args
             self.seq_counter[0] += 1
-            self.store.append({
-                "seq": self.seq_counter[0],
-                "ts": 1.0 + self.seq_counter[0] * 0.001,
-                "event_type": event_type,
-                "payload": payload_json,  # 存为 str (真实 jsonb 行为见 row fetch)
-                "session_id": session_id,
-                "tenant_id": tenant_id,
-            })
+            self.store.append(
+                {
+                    "seq": self.seq_counter[0],
+                    "ts": 1.0 + self.seq_counter[0] * 0.001,
+                    "event_type": event_type,
+                    "payload": payload_json,  # 存为 str (真实 jsonb 行为见 row fetch)
+                    "session_id": session_id,
+                    "tenant_id": tenant_id,
+                }
+            )
             return "INSERT 0 1"
         return "OK"
 
@@ -125,11 +127,13 @@ def pg_factory() -> Any:
 
 
 def _mk_pg_store(fake_mod: Any) -> PostgresWebStateStore:
-    return PostgresWebStateStore(WebStateConfig(
-        dsn="postgresql://fake",
-        fake_module=fake_mod,
-        tenant_id="local",
-    ))
+    return PostgresWebStateStore(
+        WebStateConfig(
+            dsn="postgresql://fake",
+            fake_module=fake_mod,
+            tenant_id="local",
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -296,6 +300,7 @@ async def test_pg_satisfies_protocol(pg_factory: Any) -> None:
 async def test_pg_schema_sql_contains_required_columns() -> None:
     """SCHEMA_SQL 必须含 seq/ts/event_type/payload/session_id/tenant_id + 3 索引"""
     from agent_swarm.web.store import SCHEMA_SQL
+
     for col in ("seq", "ts", "event_type", "payload", "session_id", "tenant_id"):
         assert col in SCHEMA_SQL, f"缺列: {col}"
     for idx in ("_ts_idx", "_session_seq_idx", "_tenant_ts_idx"):
@@ -328,6 +333,7 @@ async def test_webstate_push_event_writes_to_store_when_attached() -> None:
 
 async def test_webstate_store_append_failure_does_not_break_memory() -> None:
     """store.append 抛错时, 内存路径仍正常"""
+
     class _Boom:
         async def append(self, *args: Any, **kw: Any) -> None:
             raise RuntimeError("simulated PG down")

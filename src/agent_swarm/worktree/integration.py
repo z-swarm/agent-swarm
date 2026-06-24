@@ -41,9 +41,7 @@ def substitute_placeholders(
 
     new_command = [PLACEHOLDER_RE.sub(repl, arg) for arg in config.command]
     new_cwd = PLACEHOLDER_RE.sub(repl, config.cwd) if config.cwd else None
-    new_env = {
-        k: PLACEHOLDER_RE.sub(repl, v) for k, v in config.env.items()
-    }
+    new_env = {k: PLACEHOLDER_RE.sub(repl, v) for k, v in config.env.items()}
     return replace(
         config,
         command=new_command,
@@ -74,13 +72,9 @@ def validate_config(config: MCPServerConfig) -> None:
     """
     # 占位符必须出现在 command 列表中, 或 cwd 中——不能在 token / url 中
     if PLACEHOLDER in (config.token or ""):
-        raise ValueError(
-            f"MCPServerConfig[{config.name!r}].token should not contain {PLACEHOLDER}"
-        )
+        raise ValueError(f"MCPServerConfig[{config.name!r}].token should not contain {PLACEHOLDER}")
     if config.url and PLACEHOLDER in config.url:
-        raise ValueError(
-            f"MCPServerConfig[{config.name!r}].url should not contain {PLACEHOLDER}"
-        )
+        raise ValueError(f"MCPServerConfig[{config.name!r}].url should not contain {PLACEHOLDER}")
 
 
 class WorktreeIntegration:

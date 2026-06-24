@@ -101,15 +101,19 @@ def test_serialize_content_mixed_text_and_json() -> None:
 
 def test_adapter_name_has_server_prefix() -> None:
     """Tool.name 加 server 前缀避免跨 server 冲突（DESIGN §7.3）"""
+
     # 不真连 client，构造 stub
     class _StubClient:
         async def call_tool(self, name, args):
             return [{"type": "text", "text": "ok"}]
 
     a = MCPToolAdapter(
-        server_name="github", mcp_tool_name="create_issue",
-        description="x", parameters={"type": "object"},
-        client=_StubClient(), risk="high",
+        server_name="github",
+        mcp_tool_name="create_issue",
+        description="x",
+        parameters={"type": "object"},
+        client=_StubClient(),
+        risk="high",
     )
     assert a.name == "mcp.github.create_issue"
     assert a.risk == "high"
@@ -117,8 +121,9 @@ def test_adapter_name_has_server_prefix() -> None:
 
 @pytest.mark.asyncio
 async def test_adapter_invoke_serializes_content(fake_mcp_script: Path) -> None:
-    cfg = MCPServerConfig(name="fake", transport="stdio",
-                          command=[sys.executable, str(fake_mcp_script)])
+    cfg = MCPServerConfig(
+        name="fake", transport="stdio", command=[sys.executable, str(fake_mcp_script)]
+    )
     client = StdioMCPClient(cfg, timeout_s=5.0)
     adapters = await await_build_tool_adapters("fake", cfg, client)
     echo = next(a for a in adapters if a.mcp_tool_name == "echo")
@@ -134,8 +139,9 @@ async def test_adapter_invoke_serializes_content(fake_mcp_script: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_build_adapters_connects_and_wraps_tools(fake_mcp_script: Path) -> None:
-    cfg = MCPServerConfig(name="fake", transport="stdio",
-                          command=[sys.executable, str(fake_mcp_script)])
+    cfg = MCPServerConfig(
+        name="fake", transport="stdio", command=[sys.executable, str(fake_mcp_script)]
+    )
     client = StdioMCPClient(cfg, timeout_s=5.0)
     adapters = await await_build_tool_adapters("fake", cfg, client)
     assert len(adapters) == 2
@@ -143,7 +149,10 @@ async def test_build_adapters_connects_and_wraps_tools(fake_mcp_script: Path) ->
     assert mcp_names == {"echo", "create_issue"}
     # create_issue 风险等级覆写
     adapters_risky = await await_build_tool_adapters(
-        "fake", cfg, client, risk_overrides={"create_issue": "high"},
+        "fake",
+        cfg,
+        client,
+        risk_overrides={"create_issue": "high"},
     )
     issue = next(a for a in adapters_risky if a.mcp_tool_name == "create_issue")
     assert issue.risk == "high"
@@ -153,16 +162,25 @@ async def test_build_adapters_connects_and_wraps_tools(fake_mcp_script: Path) ->
 @pytest.mark.asyncio
 async def test_build_adapters_skips_tools_without_name(fake_mcp_script: Path) -> None:
     """MCP tool 缺 name → 跳过（fail-soft）"""
-    cfg = MCPServerConfig(name="fake", transport="stdio",
-                          command=[sys.executable, str(fake_mcp_script)])
+    cfg = MCPServerConfig(
+        name="fake", transport="stdio", command=[sys.executable, str(fake_mcp_script)]
+    )
     StdioMCPClient(cfg, timeout_s=5.0)
+
     # 用 stub list_tools 模拟空 name
     class _StubClient:
         async def list_tools(self):
-            return [{"description": "no name"}, {"name": "valid", "description": "x",
-                                                   "inputSchema": {}}]
-        def is_connected(self): return True
-        async def connect(self): pass
+            return [
+                {"description": "no name"},
+                {"name": "valid", "description": "x", "inputSchema": {}},
+            ]
+
+        def is_connected(self):
+            return True
+
+        async def connect(self):
+            pass
+
     stub = _StubClient()
     adapters = await await_build_tool_adapters("fake", cfg, stub)  # type: ignore[arg-type]
     assert len(adapters) == 1
@@ -206,9 +224,12 @@ async def test_adapter_policy_deny_blocks_mcp_call() -> None:
 
     client, calls = _stub_client_with_call_log()
     a = MCPToolAdapter(
-        server_name="github", mcp_tool_name="create_issue",
-        description="x", parameters={"type": "object"},
-        client=client, risk="low",  # 低风险 → 风险闸门不会拦
+        server_name="github",
+        mcp_tool_name="create_issue",
+        description="x",
+        parameters={"type": "object"},
+        client=client,
+        risk="low",  # 低风险 → 风险闸门不会拦
     )
 
     class _MockPolicy(SecurityPolicy):
@@ -231,9 +252,12 @@ async def test_adapter_policy_require_approval_blocks_mcp_call() -> None:
 
     client, calls = _stub_client_with_call_log()
     a = MCPToolAdapter(
-        server_name="github", mcp_tool_name="create_issue",
-        description="x", parameters={"type": "object"},
-        client=client, risk="low",
+        server_name="github",
+        mcp_tool_name="create_issue",
+        description="x",
+        parameters={"type": "object"},
+        client=client,
+        risk="low",
     )
 
     class _MockPolicy(SecurityPolicy):
@@ -254,9 +278,12 @@ async def test_adapter_policy_allow_proceeds_to_mcp_call() -> None:
 
     client, calls = _stub_client_with_call_log()
     a = MCPToolAdapter(
-        server_name="github", mcp_tool_name="create_issue",
-        description="x", parameters={"type": "object"},
-        client=client, risk="low",
+        server_name="github",
+        mcp_tool_name="create_issue",
+        description="x",
+        parameters={"type": "object"},
+        client=client,
+        risk="low",
     )
 
     class _MockPolicy(SecurityPolicy):
@@ -277,9 +304,12 @@ async def test_adapter_high_risk_blocks_even_when_policy_allows() -> None:
 
     client, calls = _stub_client_with_call_log()
     a = MCPToolAdapter(
-        server_name="github", mcp_tool_name="create_issue",
-        description="x", parameters={"type": "object"},
-        client=client, risk="high",  # YAML risk_overrides=high
+        server_name="github",
+        mcp_tool_name="create_issue",
+        description="x",
+        parameters={"type": "object"},
+        client=client,
+        risk="high",  # YAML risk_overrides=high
     )
 
     class _MockPolicy(SecurityPolicy):
@@ -298,9 +328,12 @@ async def test_adapter_critical_risk_blocks_even_when_policy_allows() -> None:
     """risk_overrides=critical → REQUIRE_APPROVAL"""
     client, calls = _stub_client_with_call_log()
     a = MCPToolAdapter(
-        server_name="github", mcp_tool_name="create_issue",
-        description="x", parameters={"type": "object"},
-        client=client, risk="critical",
+        server_name="github",
+        mcp_tool_name="create_issue",
+        description="x",
+        parameters={"type": "object"},
+        client=client,
+        risk="critical",
     )
     out = await a.invoke({"title": "x"})
     assert "requires approval" in out
@@ -313,9 +346,12 @@ async def test_adapter_no_policy_keeps_backward_compat() -> None:
     """无 policy 注入时（旧测试 + Phase 1 路径）按 risk 走闸门——保持向后兼容"""
     client, calls = _stub_client_with_call_log()
     a = MCPToolAdapter(
-        server_name="github", mcp_tool_name="create_issue",
-        description="x", parameters={"type": "object"},
-        client=client, risk="medium",  # 中等风险 → 放行
+        server_name="github",
+        mcp_tool_name="create_issue",
+        description="x",
+        parameters={"type": "object"},
+        client=client,
+        risk="medium",  # 中等风险 → 放行
     )
     assert a.policy is None
     out = await a.invoke({"title": "x"})
@@ -335,20 +371,25 @@ async def test_build_adapters_passes_policy_through() -> None:
                 {"name": "create_issue", "description": "x", "inputSchema": {}},
                 {"name": "list_repos", "description": "y", "inputSchema": {}},
             ]
-        def is_connected(self): return True
-        async def connect(self): pass
+
+        def is_connected(self):
+            return True
+
+        async def connect(self):
+            pass
 
     class _CountPolicy(SecurityPolicy):
         def __init__(self) -> None:
             self.calls: list[str] = []
+
         def check_tool(self, tool_name, arguments):  # type: ignore[override]
             self.calls.append(tool_name)
             return PolicyDecision("ALLOW", "ok")
 
     pol = _CountPolicy()
     adapters = await build_tool_adapters(
-        "github", MCPServerConfig(name="github", transport="stdio",
-                                   command=["x"]),  # type: ignore[arg-type]
+        "github",
+        MCPServerConfig(name="github", transport="stdio", command=["x"]),  # type: ignore[arg-type]
         _StubClient(),  # type: ignore[arg-type]
         risk_overrides={"create_issue": "high"},
         policy=pol,
@@ -378,9 +419,13 @@ async def test_policy_check_tool_called_with_full_mcp_name() -> None:
 
     client, _ = _stub_client_with_call_log()
     a = MCPToolAdapter(
-        server_name="fs", mcp_tool_name="read_file",
-        description="x", parameters={"type": "object"},
-        client=client, risk="low", policy=_SpyPolicy(),
+        server_name="fs",
+        mcp_tool_name="read_file",
+        description="x",
+        parameters={"type": "object"},
+        client=client,
+        risk="low",
+        policy=_SpyPolicy(),
     )
     await a.invoke({"path": "/tmp/x"})
     assert seen == ["mcp.fs.read_file"], f"policy 收到的 tool_name 错: {seen}"

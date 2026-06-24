@@ -118,12 +118,13 @@ def render_task_progress(data: dict[str, Any]) -> dict[str, Any]:
     # 每个 task 一行
     for t in tasks[:10]:  # 最多 10 个
         status_emoji = {
-            "completed": "✅", "failed": "❌",
-            "in_progress": "🔄", "pending": "⏳", "blocked": "🚧",
+            "completed": "✅",
+            "failed": "❌",
+            "in_progress": "🔄",
+            "pending": "⏳",
+            "blocked": "🚧",
         }.get(t.get("status"), "•")
-        elements.append(_div(
-            f"{status_emoji} `{t.get('id', '?')}` {t.get('title', '?')}"
-        ))
+        elements.append(_div(f"{status_emoji} `{t.get('id', '?')}` {t.get('title', '?')}"))
     if len(tasks) > 10:
         elements.append(_div(f"... and {len(tasks) - 10} more"))
     return {
@@ -164,10 +165,12 @@ def render_code_review_result(data: dict[str, Any]) -> dict[str, Any]:
     # 列出 high 以上
     for f in findings:
         if f.get("severity") in ("critical", "high"):
-            elements.append(_div(
-                f"⚠️ **{f.get('severity', '?')}** `{f.get('file', '?')}:"
-                f"{f.get('line', '?')}` — {f.get('msg', '?')}"
-            ))
+            elements.append(
+                _div(
+                    f"⚠️ **{f.get('severity', '?')}** `{f.get('file', '?')}:"
+                    f"{f.get('line', '?')}` — {f.get('msg', '?')}"
+                )
+            )
     if not any(f.get("severity") in ("critical", "high") for f in findings):
         elements.append(_div("✅ No high-severity findings"))
     return {
@@ -200,9 +203,7 @@ def render_adversarial_debug(data: dict[str, Any]) -> dict[str, Any]:
         _div(f"**Active hypotheses**: {', '.join(data.get('survivors', [])) or '(none)'}"),
     ]
     if data.get("convergence_reason"):
-        elements.append(_div(
-            f"**Converged**: {data['convergence_reason']}"
-        ))
+        elements.append(_div(f"**Converged**: {data['convergence_reason']}"))
     return {
         "config": {"wide_screen_mode": True},
         "header": _header(data.get("title", "Adversarial Debug"), "info"),
@@ -229,8 +230,10 @@ def render_swarm_status(data: dict[str, Any]) -> dict[str, Any]:
     """
     state = data.get("state", "running")
     level = {
-        "running": "info", "completed": "success",
-        "failed": "error", "stuck": "warning",
+        "running": "info",
+        "completed": "success",
+        "failed": "error",
+        "stuck": "warning",
     }.get(state, "info")
     elements: list[dict[str, Any]] = [
         _field("State", state),
@@ -238,10 +241,12 @@ def render_swarm_status(data: dict[str, Any]) -> dict[str, Any]:
         _field("Tokens", f"{data.get('tokens_used', 0):,}"),
     ]
     for a in data.get("agents", [])[:8]:  # 最多 8 个
-        elements.append(_div(
-            f"{'🟢' if a.get('status') == 'idle' else '🔵'} "
-            f"`{a.get('id', '?')}` — done: {a.get('tasks_done', 0)}"
-        ))
+        elements.append(
+            _div(
+                f"{'🟢' if a.get('status') == 'idle' else '🔵'} "
+                f"`{a.get('id', '?')}` — done: {a.get('tasks_done', 0)}"
+            )
+        )
     if len(data.get("agents", [])) > 8:
         elements.append(_div(f"... and {len(data['agents']) - 8} more agents"))
     return {
@@ -270,10 +275,13 @@ def render_confirm_dialog(data: dict[str, Any]) -> dict[str, Any]:
     elements: list[dict[str, Any]] = [
         _div(data.get("message", "Please confirm")),
     ]
-    actions = data.get("actions", [
-        {"text": "Approve", "value": "approve", "type": "primary"},
-        {"text": "Deny", "value": "deny", "type": "danger"},
-    ])
+    actions = data.get(
+        "actions",
+        [
+            {"text": "Approve", "value": "approve", "type": "primary"},
+            {"text": "Deny", "value": "deny", "type": "danger"},
+        ],
+    )
     if actions:
         elements.append(_actions(actions))
     return {
@@ -303,10 +311,7 @@ def render_card(template: str, data: dict[str, Any]) -> dict[str, Any]:
     @raise ValueError 未知模板
     """
     if template not in TEMPLATES:
-        raise ValueError(
-            f"unknown card template: {template!r}; "
-            f"valid: {sorted(TEMPLATES.keys())}"
-        )
+        raise ValueError(f"unknown card template: {template!r}; valid: {sorted(TEMPLATES.keys())}")
     return TEMPLATES[template](data)
 
 

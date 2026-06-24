@@ -76,7 +76,7 @@ async def test_tui_sink_drops_oldest_when_full() -> None:
 def test_token_budget_add_result_estimation() -> None:
     """@brief 粗估: 1 token ≈ 4 chars"""
     b = TokenBudgetData()
-    added = b.add_result("a" * 400)        # 100 tokens
+    added = b.add_result("a" * 400)  # 100 tokens
     assert added == 100
     assert b.used_tokens == 100
     # 非字符串也支持——只验证是 >0 的合理值
@@ -162,12 +162,14 @@ async def _drive_swarm_completed(app: SwarmDashboardApp) -> None:
         )
     )
     # 2) 4 个 task.* 事件
-    for i, (name, _status, owner) in enumerate([
-        ("task.created", "pending", "-"),
-        ("task.claimed", "in_progress", "researcher"),
-        ("task.completed", "completed", "researcher"),
-        ("task.failed", "failed", "writer"),
-    ]):
+    for i, (name, _status, owner) in enumerate(
+        [
+            ("task.created", "pending", "-"),
+            ("task.claimed", "in_progress", "researcher"),
+            ("task.completed", "completed", "researcher"),
+            ("task.failed", "failed", "writer"),
+        ]
+    ):
         sink.queue.put_nowait(
             SessionEvent(
                 event_name=name,
@@ -223,19 +225,19 @@ async def test_app_renders_full_view_within_5_seconds() -> None:
     async with app.run_test() as pilot:
         # 等到 is_finished=True, _pump_events 会在 2s 后 exit
         deadline = time.monotonic() + 5.0
-        while not app._is_finished:    # noqa: SLF001
+        while not app._is_finished:  # noqa: SLF001
             if time.monotonic() > deadline:
                 pytest.fail("TUI did not finish within 5 seconds")
             await pilot.pause(0.05)
         # 验证所有面板收到了数据
-        assert app._status_data.name == "demo"      # noqa: SLF001
+        assert app._status_data.name == "demo"  # noqa: SLF001
         assert app._status_data.state == "completed"  # noqa: SLF001
         assert len(app._status_data.agents) == 2
         assert app._status_data.tasks_completed == 1
         assert app._status_data.tasks_failed == 1
-        assert len(app._task_panel.data) == 4        # noqa: SLF001
-        assert len(app._msg_panel.data) == 1         # noqa: SLF001
-        assert app._budget_data.used_tokens > 0      # noqa: SLF001
+        assert len(app._task_panel.data) == 4  # noqa: SLF001
+        assert len(app._msg_panel.data) == 1  # noqa: SLF001
+        assert app._budget_data.used_tokens > 0  # noqa: SLF001
         # 5 秒 DoD 校验
         elapsed = time.monotonic() - t0
         assert elapsed < 5.0, f"full view took {elapsed:.2f}s > 5s"
@@ -257,9 +259,9 @@ async def test_app_dispatches_task_completed_updates_budget() -> None:
     )
     async with app.run_test() as pilot:
         await pilot.pause(0.1)
-        assert app._budget_data.used_tokens >= 250    # noqa: SLF001
+        assert app._budget_data.used_tokens >= 250  # noqa: SLF001
         assert app._budget_data.last_task_id == "T1"  # noqa: SLF001
-        app._is_finished = True                       # noqa: SLF001
+        app._is_finished = True  # noqa: SLF001
         await pilot.pause(0.1)
 
 
@@ -295,8 +297,7 @@ async def test_tui_handles_very_many_agents_without_crash() -> None:
                 event_name="task.claimed",
                 session_id="s",
                 timestamp=base + 0.01 * (i + 1),
-                payload={"task_id": f"T{i}", "title": f"task-{i}",
-                         "agent_id": f"agent-{i:03d}"},
+                payload={"task_id": f"T{i}", "title": f"task-{i}", "agent_id": f"agent-{i:03d}"},
                 seq=i + 1,
             )
         )

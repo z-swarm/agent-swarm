@@ -26,13 +26,17 @@ router = APIRouter()
 
 async def _push_to_ws(ws: WebSocket, rec: EventRecord) -> None:
     """把事件转 JSON 推给一个 ws 连接"""
-    await ws.send_text(json.dumps({
-        "event_name": rec.event_name,
-        "session_id": rec.session_id,
-        "timestamp": rec.timestamp,
-        "seq": rec.seq,
-        "payload": rec.payload,
-    }))
+    await ws.send_text(
+        json.dumps(
+            {
+                "event_name": rec.event_name,
+                "session_id": rec.session_id,
+                "timestamp": rec.timestamp,
+                "seq": rec.seq,
+                "payload": rec.payload,
+            }
+        )
+    )
 
 
 @router.websocket("/ws")
@@ -57,19 +61,24 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     log.info("ws connected, total subscribers=%d", len(state._subscribers))
     try:
         # 推一条 hello 让客户端知道连接 OK
-        await websocket.send_text(json.dumps({
-            "event_name": "_hello",
-            "session_id": "server",
-            "timestamp": 0,
-            "seq": 0,
-            "payload": {"uptime_seconds": int(state.uptime_seconds())},
-        }))
+        await websocket.send_text(
+            json.dumps(
+                {
+                    "event_name": "_hello",
+                    "session_id": "server",
+                    "timestamp": 0,
+                    "seq": 0,
+                    "payload": {"uptime_seconds": int(state.uptime_seconds())},
+                }
+            )
+        )
         # 阻塞, 等待客户端断开
         while True:
             # 客户端可发 keepalive / 关闭, 我们只需保持连接
             try:
                 msg = await asyncio.wait_for(
-                    websocket.receive_text(), timeout=60.0,
+                    websocket.receive_text(),
+                    timeout=60.0,
                 )
                 # 客户端可发 ping, 我们回 pong
                 if msg == "ping":

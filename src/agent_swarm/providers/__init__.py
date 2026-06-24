@@ -14,9 +14,7 @@ def get_provider(name: str, **kwargs) -> LLMProvider:
         return OpenAIProvider(**kwargs)
     if name == "anthropic":
         return AnthropicProvider(**kwargs)
-    raise ValueError(
-        f"Unknown provider: {name!r} (W2 supports 'openai' and 'anthropic')"
-    )
+    raise ValueError(f"Unknown provider: {name!r} (W2 supports 'openai' and 'anthropic')")
 
 
 __all__ = [

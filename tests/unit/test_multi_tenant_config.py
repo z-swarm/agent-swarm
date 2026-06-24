@@ -73,6 +73,7 @@ def test_context_asyncio_context_returns_context() -> None:
     ctx = SecurityContext(tenant_id="t1", session_id="s1", mode=TenantMode.MULTI)
     c = ctx.asyncio_context()
     import contextvars
+
     assert isinstance(c, contextvars.Context)
 
 

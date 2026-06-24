@@ -140,13 +140,13 @@ def parse_secret_ref(ref: str) -> SecretRef:
         return SecretRef(kind="env", value=var_name)
     # 2) secret://key 模式 (W36a)
     if ref.startswith("secret://"):
-        key = ref[len("secret://"):]
+        key = ref[len("secret://") :]
         if not key:
             raise ValueError(f"empty SecretManager key in {ref!r}")
         return SecretRef(kind="secret_ref", value=key)
     # 3) vault://path#field 模式 (W36c)
     if ref.startswith("vault://"):
-        body = ref[len("vault://"):]
+        body = ref[len("vault://") :]
         if "#" in body:
             path, _, field = body.partition("#")
         else:
@@ -209,8 +209,7 @@ class JWTIssuer:
         if config.secret is None:
             if config.secret_ref is None or config.secret_manager is None:
                 raise ValueError(
-                    "JWTConfig requires either secret (W34) "
-                    "or secret_ref + secret_manager (W36a)"
+                    "JWTConfig requires either secret (W34) or secret_ref + secret_manager (W36a)"
                 )
             # W36a 模式: 校验 secret_ref 格式合法
             self._ref = parse_secret_ref(config.secret_ref)
@@ -220,11 +219,11 @@ class JWTIssuer:
             elif self._ref.kind == "env":
                 # env 模式: 走 os.environ 一次性 resolve
                 import os
+
                 env_val = os.environ.get(self._ref.value)
                 if env_val is None:
                     raise ValueError(
-                        f"env var {self._ref.value!r} not set "
-                        f"(referenced by {config.secret_ref!r})"
+                        f"env var {self._ref.value!r} not set (referenced by {config.secret_ref!r})"
                     )
                 config.secret = env_val
             # secret_ref / vault 模式: 保持 self._ref, 由 resolve_secret 走 SecretManager
@@ -269,16 +268,17 @@ class JWTIssuer:
                 log.warning(
                     "JWTIssuer.resolve_secret: SecretManager.get(%r) failed, "
                     "using cached version=%d: %s",
-                    key, self._cached_version, exc,
+                    key,
+                    self._cached_version,
+                    exc,
                 )
                 return self._cached_secret
-            raise JWTError(
-                f"SecretManager.get({key!r}) failed and no cache: {exc}"
-            ) from exc
+            raise JWTError(f"SecretManager.get({key!r}) failed and no cache: {exc}") from exc
         # vault 模式: 提取 field (W36c)
         if self._ref.kind == "vault" and self._ref.field is not None:
             try:
                 import json
+
                 data = json.loads(secret_obj.value)
             except json.JSONDecodeError as exc:
                 raise JWTError(
@@ -287,8 +287,7 @@ class JWTIssuer:
                 ) from exc
             except Exception as exc:
                 raise JWTError(
-                    f"vault://{self._ref.value}# field={self._ref.field!r}: "
-                    f"unexpected error: {exc}"
+                    f"vault://{self._ref.value}# field={self._ref.field!r}: unexpected error: {exc}"
                 ) from exc
             if self._ref.field not in data:
                 raise JWTError(
@@ -309,7 +308,8 @@ class JWTIssuer:
             self._cached_version = secret_obj.metadata.version
             log.debug(
                 "JWTIssuer.resolve_secret: cache updated key=%r version=%d",
-                key, secret_obj.metadata.version,
+                key,
+                secret_obj.metadata.version,
             )
         return secret_bytes
 
@@ -330,9 +330,7 @@ class JWTIssuer:
         if self.config.secret is not None:
             return self.config.secret.encode("utf-8")
         if self._cached_secret is None:
-            raise JWTError(
-                "JWTIssuer cache empty: call await resolve_secret() first"
-            )
+            raise JWTError("JWTIssuer cache empty: call await resolve_secret() first")
         return self._cached_secret
 
     def encode(self, subject: str, claims: dict[str, Any] | None = None) -> str:
@@ -440,6 +438,7 @@ def require_user(request: Any) -> dict[str, Any]:
     user = get_current_user(request)
     if user is None:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=401, detail="unauthorized")
     return user
 
@@ -462,6 +461,7 @@ def resolve_secret_ref(ref: str, env: dict[str, str] | None = None) -> str:
     @return 解析后的明文值
     """
     import os
+
     if not (ref.startswith(_SECRET_REF_RE_PREFIX) and ref.endswith(_SECRET_REF_RE_SUFFIX)):
         return ref
     var_name = ref[2:-1]

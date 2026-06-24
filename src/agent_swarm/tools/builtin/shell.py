@@ -34,10 +34,7 @@ class RunCommandTool:
     """
 
     name = "run_command"
-    description = (
-        "在 sandbox 中执行 shell 命令。只支持白名单命令前缀；"
-        "高风险命令必须经审批。"
-    )
+    description = "在 sandbox 中执行 shell 命令。只支持白名单命令前缀；高风险命令必须经审批。"
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {

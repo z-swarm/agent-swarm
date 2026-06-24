@@ -98,12 +98,16 @@ def test_issuer_unsupported_alg_raises() -> None:
     import json
 
     # 手工构造 alg=none 的 token
-    header = base64.urlsafe_b64encode(
-        json.dumps({"alg": "none", "typ": "JWT"}).encode()
-    ).rstrip(b"=").decode()
-    payload = base64.urlsafe_b64encode(
-        json.dumps({"sub": "u", "exp": int(time.time()) + 3600}).encode()
-    ).rstrip(b"=").decode()
+    header = (
+        base64.urlsafe_b64encode(json.dumps({"alg": "none", "typ": "JWT"}).encode())
+        .rstrip(b"=")
+        .decode()
+    )
+    payload = (
+        base64.urlsafe_b64encode(json.dumps({"sub": "u", "exp": int(time.time()) + 3600}).encode())
+        .rstrip(b"=")
+        .decode()
+    )
     forged = f"{header}.{payload}."
     iss = JWTIssuer(JWTConfig(secret=SECRET))
     # alg 不匹配 → 验签时因为 alg 不同算出不同 sig → 仍被拒
@@ -166,6 +170,7 @@ def test_create_app_with_secret_means_auth_required() -> None:
 def test_create_app_with_secret_dollar_ref() -> None:
     """配 ${ENV_VAR}: 应从 env 解析"""
     import os
+
     os.environ["MY_JWT_SECRET"] = "from-env"
     try:
         app = create_app(web_state=WebState(), jwt_secret="${MY_JWT_SECRET}")
@@ -332,6 +337,7 @@ def test_create_app_jwt_secret_ref_literal() -> None:
 def test_create_app_jwt_secret_ref_env() -> None:
     """W36a: jwt_secret_ref=${ENV_VAR} 模式 (env 一次性 resolve)"""
     import os
+
     os.environ["W36A_TEST_SECRET"] = "env-resolved-value"
     try:
         app = create_app(
@@ -350,6 +356,7 @@ def test_create_app_jwt_secret_ref_env() -> None:
 def test_create_app_jwt_secret_ref_env_missing_raises() -> None:
     """W36a: jwt_secret_ref=${MISSING} 抛 ValueError"""
     import os
+
     os.environ.pop("W36A_MISSING", None)
     with pytest.raises(ValueError, match="not set"):
         create_app(
@@ -421,6 +428,7 @@ def test_create_app_secret_manager_default_is_env_manager() -> None:
 
     # 设置 env 让 EnvSecretManager 能找到
     import os
+
     os.environ["W36A_DEFAULT_TEST_KEY"] = "default-test-secret"
     try:
         # 由于 create_app 内部无 DSN, lifespan 不会 await resolve_secret

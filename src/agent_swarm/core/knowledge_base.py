@@ -91,9 +91,7 @@ class KnowledgeBase:
     # ------------------------------------------------------------------
     # 项目文档（W4 简化：直接读文件）
     # ------------------------------------------------------------------
-    async def get_project_docs(
-        self, patterns: list[str] | None = None
-    ) -> list[Document]:
+    async def get_project_docs(self, patterns: list[str] | None = None) -> list[Document]:
         """
         读取项目文档——默认匹配 README / CLAUDE / docs/*
 
@@ -101,8 +99,11 @@ class KnowledgeBase:
         """
         if patterns is None:
             patterns = [
-                "README.md", "README.rst", "README.txt",
-                "CLAUDE.md", "AGENTS.md",
+                "README.md",
+                "README.rst",
+                "README.txt",
+                "CLAUDE.md",
+                "AGENTS.md",
                 "docs/**/*.md",
             ]
 
@@ -210,10 +211,7 @@ class KnowledgeBase:
             self._cache_size += size
 
             # LRU 淘汰
-            while (
-                self._cache_size > self.max_cache_size_bytes
-                and len(self._cache) > 1
-            ):
+            while self._cache_size > self.max_cache_size_bytes and len(self._cache) > 1:
                 evicted_key, evicted_entry = self._cache.popitem(last=False)
                 self._cache_size -= evicted_entry.size_bytes
                 log.debug("kb.evicted key=%s size=%d", evicted_key, evicted_entry.size_bytes)
@@ -332,19 +330,28 @@ def _estimate_size(obj: Any, _seen: set[int] | None = None) -> int:
     if isinstance(obj, list | tuple | set):
         return sum(_estimate_size(x, _seen) for x in obj) + 32
     if isinstance(obj, dict):
-        return sum(
-            _estimate_size(k, _seen) + _estimate_size(v, _seen)
-            for k, v in obj.items()
-        ) + 64
+        return sum(_estimate_size(k, _seen) + _estimate_size(v, _seen) for k, v in obj.items()) + 64
     return len(repr(obj).encode("utf-8"))
 
 
 _LANG_BY_EXT = {
-    ".py": "python", ".js": "javascript", ".ts": "typescript",
-    ".java": "java", ".go": "go", ".rs": "rust", ".rb": "ruby",
-    ".c": "c", ".cpp": "cpp", ".h": "c", ".hpp": "cpp",
-    ".md": "markdown", ".yaml": "yaml", ".yml": "yaml", ".json": "json",
-    ".sh": "bash", ".sql": "sql",
+    ".py": "python",
+    ".js": "javascript",
+    ".ts": "typescript",
+    ".java": "java",
+    ".go": "go",
+    ".rs": "rust",
+    ".rb": "ruby",
+    ".c": "c",
+    ".cpp": "cpp",
+    ".h": "c",
+    ".hpp": "cpp",
+    ".md": "markdown",
+    ".yaml": "yaml",
+    ".yml": "yaml",
+    ".json": "json",
+    ".sh": "bash",
+    ".sql": "sql",
 }
 
 

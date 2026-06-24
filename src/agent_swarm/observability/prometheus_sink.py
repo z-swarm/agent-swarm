@@ -45,6 +45,7 @@ try:
         Gauge,
         generate_latest,
     )
+
     _PROMETHEUS_AVAILABLE = True
 except ImportError:
     _PROMETHEUS_AVAILABLE = False
@@ -173,7 +174,9 @@ class PrometheusSink(ObservabilitySink):
                 tokens = int(payload.get("tokens", 0))
                 if tokens > 0:
                     self._llm_tokens_total.labels(
-                        provider=provider, model=model, kind=kind,
+                        provider=provider,
+                        model=model,
+                        kind=kind,
                     ).inc(tokens)
             elif name == "cas.conflict":
                 entity = str(payload.get("entity", "unknown"))
@@ -189,8 +192,7 @@ class PrometheusSink(ObservabilitySink):
             elif name == "approval.resolved":
                 self._approval_pending_count.dec()
         except Exception as exc:  # noqa: BLE001
-            log.warning("PrometheusSink consume failed: event=%s err=%s",
-                        event.event_name, exc)
+            log.warning("PrometheusSink consume failed: event=%s err=%s", event.event_name, exc)
 
     # ------------------------------------------------------------------
     # /metrics HTTP 端点
@@ -223,7 +225,10 @@ class PrometheusSink(ObservabilitySink):
         return app
 
     async def start_http_server(
-        self, host: str = "0.0.0.0", port: int = 9090, path: str = "/metrics",
+        self,
+        host: str = "0.0.0.0",
+        port: int = 9090,
+        path: str = "/metrics",
     ) -> tuple[web.AppRunner, web.TCPSite]:
         """
         启动独立 HTTP server 暴露 /metrics
@@ -235,12 +240,13 @@ class PrometheusSink(ObservabilitySink):
         await runner.setup()
         site = web.TCPSite(runner, host=host, port=port)
         await site.start()
-        log.info("PrometheusSink /metrics listening on http://%s:%d%s",
-                 host, port, path)
+        log.info("PrometheusSink /metrics listening on http://%s:%d%s", host, port, path)
         return runner, site
 
     async def stop_http_server(
-        self, runner: web.AppRunner, site: web.TCPSite,
+        self,
+        runner: web.AppRunner,
+        site: web.TCPSite,
     ) -> None:
         """关闭 HTTP server"""
         await site.stop()
@@ -257,13 +263,19 @@ class PrometheusSink(ObservabilitySink):
         self._tasks_total.labels(task_status=task_status).inc()
 
     def add_llm_tokens(
-        self, provider: str, model: str, kind: str, tokens: int,
+        self,
+        provider: str,
+        model: str,
+        kind: str,
+        tokens: int,
     ) -> None:
         """直接增加 LLM token 计数"""
         if tokens <= 0:
             return
         self._llm_tokens_total.labels(
-            provider=provider, model=model, kind=kind,
+            provider=provider,
+            model=model,
+            kind=kind,
         ).inc(tokens)
 
     def inc_cas_conflict(self, entity: str) -> None:

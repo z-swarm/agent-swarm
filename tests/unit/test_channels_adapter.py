@@ -137,8 +137,10 @@ class _StubConnector(ChannelConnector):
 
 def _make_msg(content: str, uid: str = "u1") -> ChannelMessage:
     return ChannelMessage(
-        id="m1", channel=ChannelType.LARK,
-        from_user=_user(uid), content=content,
+        id="m1",
+        channel=ChannelType.LARK,
+        from_user=_user(uid),
+        content=content,
     )
 
 

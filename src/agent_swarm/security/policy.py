@@ -143,7 +143,11 @@ class SecurityPolicy:
         @param require_approval_for 强制走 REQUIRE_APPROVAL 的工具集合
         """
         self.sensitive_paths = sensitive_paths
-        self.writable_roots = tuple(r.replace("{workspace}", workspace) for r in writable_roots) if workspace else writable_roots
+        self.writable_roots = (
+            tuple(r.replace("{workspace}", workspace) for r in writable_roots)
+            if workspace
+            else writable_roots
+        )
         self.command_blacklist = command_blacklist
         self.workspace = workspace
         self.require_approval_for = require_approval_for or set()

@@ -95,8 +95,8 @@ def test_support_score_mixed_stances_weighted_by_confidence() -> None:
     """混合 stance + 不同 confidence → 加权平均"""
     h = _hs()
     h.judgements_by_round[1] = [
-        Judgement("a1", "h1", 1, Stance.SUPPORT, 1.0),    # +1
-        Judgement("a2", "h1", 1, Stance.REFUTE, 0.5),     # -0.5
+        Judgement("a1", "h1", 1, Stance.SUPPORT, 1.0),  # +1
+        Judgement("a2", "h1", 1, Stance.REFUTE, 0.5),  # -0.5
         Judgement("a3", "h1", 1, Stance.UNCERTAIN, 0.9),  # 0
     ]
     # (1.0 + -0.5 + 0) / 3 = 0.1666...

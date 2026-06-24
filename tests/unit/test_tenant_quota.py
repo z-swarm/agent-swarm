@@ -175,8 +175,7 @@ def test_registry_reset_all() -> None:
 
 
 def test_quota_exceeded_error_message() -> None:
-    exc = TenantQuotaExceeded(tenant_id="t1", quota_type="agents",
-                              limit=10, current=15)
+    exc = TenantQuotaExceeded(tenant_id="t1", quota_type="agents", limit=10, current=15)
     msg = str(exc)
     assert "t1" in msg
     assert "agents" in msg

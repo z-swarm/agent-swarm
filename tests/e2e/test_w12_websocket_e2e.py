@@ -9,6 +9,7 @@ W12 DoD：
   ④ ObservabilityBus 集成（事件流走 WS）
   ⑤ 关闭时清理所有连接
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -66,7 +67,10 @@ async def test_e2e_websocket_broadcasts_bus_events() -> None:
             assert ws_sink.active_clients == 2
 
             # 通过 emit 推送事件
-            await emit("task.created", "S-test", {"task_id": "T1"},
+            await emit(
+                "task.created",
+                "S-test",
+                {"task_id": "T1"},
             )
             await asyncio.sleep(0.3)
 
@@ -93,12 +97,15 @@ def test_e2e_sqlite_five_tuple_index_exists(tmp_path) -> None:
     db = tmp_path / "indices.db"
     sink = SqliteEventSink(db)
     import asyncio
+
     async def _init():
         await sink._ensure_conn()
         await sink.aclose()
+
     asyncio.run(_init())
 
     import sqlite3
+
     con = sqlite3.connect(str(db))
     cur = con.execute(
         "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='session_events'"
@@ -139,7 +146,10 @@ async def test_e2e_websocket_handles_client_reconnect() -> None:
         # 重连
         ws2 = await _ws_connect(port)
         try:
-            await emit("reconnect.test", "s", {},
+            await emit(
+                "reconnect.test",
+                "s",
+                {},
             )
             await asyncio.sleep(0.2)
             msg = await ws2.receive(timeout=1.0)
@@ -174,7 +184,8 @@ async def test_e2e_websocket_with_sqlite_sink(tmp_path) -> None:
             # 推 2 条事件
             for i in range(2):
                 await emit(
-                    f"e{i}", "multi-sink",
+                    f"e{i}",
+                    "multi-sink",
                     payload={"i": i},
                 )
             await asyncio.sleep(0.3)

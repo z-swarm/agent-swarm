@@ -104,9 +104,7 @@ def test_turn_to_anthropic_assistant_with_tool_use() -> None:
 def test_turn_to_anthropic_assistant_tool_use_no_text() -> None:
     """空 content + 工具调用——不应有空 text block"""
     tc = ToolCall(id="t1", name="x", arguments={})
-    out = AnthropicProvider._turn_to_anthropic(
-        Turn(role="assistant", content="", tool_calls=[tc])
-    )
+    out = AnthropicProvider._turn_to_anthropic(Turn(role="assistant", content="", tool_calls=[tc]))
     blocks = out["content"]
     assert len(blocks) == 1
     assert blocks[0]["type"] == "tool_use"
@@ -198,9 +196,7 @@ async def test_chat_concatenates_multiple_text_blocks(
 async def test_chat_parses_tool_use(provider: AnthropicProvider) -> None:
     fake = _make_mock_response(
         text_blocks=["I will read it"],
-        tool_use_blocks=[
-            {"id": "tu_1", "name": "read_file", "input": {"path": "README.md"}}
-        ],
+        tool_use_blocks=[{"id": "tu_1", "name": "read_file", "input": {"path": "README.md"}}],
         stop_reason="tool_use",
     )
     provider._client.messages.create = AsyncMock(return_value=fake)
@@ -314,9 +310,7 @@ async def test_chat_round_trip_with_tool_history(provider: AnthropicProvider) ->
         Turn(
             role="assistant",
             content="",
-            tool_calls=[
-                ToolCall(id="tu1", name="read_file", arguments={"path": "README.md"})
-            ],
+            tool_calls=[ToolCall(id="tu1", name="read_file", arguments={"path": "README.md"})],
         ),
         Turn(role="tool", content="# project", tool_call_id="tu1"),
     ]

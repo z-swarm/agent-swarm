@@ -124,9 +124,7 @@ class _LeadToolBase:
         }
         return any(cap_flags.get(c, False) for c in self._REQUIRED_CAPS)
 
-    def _do_invoke(
-        self, arguments: dict[str, Any], caller: Agent, ctx: LeadToolContext
-    ) -> str:
+    def _do_invoke(self, arguments: dict[str, Any], caller: Agent, ctx: LeadToolContext) -> str:
         raise NotImplementedError
 
 
@@ -139,10 +137,7 @@ class SpawnAgentTool(_LeadToolBase):
     """Lead 工具：动态创建 worker agent 并注册到 swarm"""
 
     name = "spawn_agent"
-    description = (
-        "Lead 工具：动态创建一个 worker agent 并注册到 swarm。"
-        "返回新 agent 的 id。"
-    )
+    description = "Lead 工具：动态创建一个 worker agent 并注册到 swarm。返回新 agent 的 id。"
     parameters: dict[str, Any] = {
         "type": "object",
         "properties": {
@@ -176,9 +171,7 @@ class SpawnAgentTool(_LeadToolBase):
     }
     _REQUIRED_CAPS = {"can_spawn_agents"}
 
-    def _do_invoke(
-        self, arguments: dict[str, Any], caller: Agent, ctx: LeadToolContext
-    ) -> str:
+    def _do_invoke(self, arguments: dict[str, Any], caller: Agent, ctx: LeadToolContext) -> str:
         agent_id = arguments.get("agent_id")
         if not isinstance(agent_id, str) or not agent_id.strip():
             return "[error] spawn_agent: 'agent_id' must be a non-empty string"
@@ -189,9 +182,7 @@ class SpawnAgentTool(_LeadToolBase):
 
         # 构造新 agent——默认 worker capabilities（按 tools 子集）
         tools_arg = arguments.get("tools") or []
-        if not isinstance(tools_arg, list) or not all(
-            isinstance(t, str) for t in tools_arg
-        ):
+        if not isinstance(tools_arg, list) or not all(isinstance(t, str) for t in tools_arg):
             return "[error] spawn_agent: 'tools' must be a list of strings"
 
         new_agent = Agent(
@@ -229,9 +220,7 @@ class ShutdownAgentTool(_LeadToolBase):
     }
     _REQUIRED_CAPS = {"can_shutdown_agents"}
 
-    def _do_invoke(
-        self, arguments: dict[str, Any], caller: Agent, ctx: LeadToolContext
-    ) -> str:
+    def _do_invoke(self, arguments: dict[str, Any], caller: Agent, ctx: LeadToolContext) -> str:
         target_id = arguments.get("agent_id")
         if not isinstance(target_id, str) or not target_id.strip():
             return "[error] shutdown_agent: 'agent_id' must be a non-empty string"
@@ -263,9 +252,7 @@ class AssignTaskTool(_LeadToolBase):
     }
     _REQUIRED_CAPS = {"can_assign_tasks"}
 
-    def _do_invoke(
-        self, arguments: dict[str, Any], caller: Agent, ctx: LeadToolContext
-    ) -> str:
+    def _do_invoke(self, arguments: dict[str, Any], caller: Agent, ctx: LeadToolContext) -> str:
         task_id = arguments.get("task_id")
         agent_id = arguments.get("agent_id")
         if not isinstance(task_id, str) or not isinstance(agent_id, str):
@@ -309,18 +296,13 @@ class UpdateTaskTool(_LeadToolBase):
 
     _ALLOWED_STATUSES = {"pending", "in_progress", "completed", "failed"}
 
-    def _do_invoke(
-        self, arguments: dict[str, Any], caller: Agent, ctx: LeadToolContext
-    ) -> str:
+    def _do_invoke(self, arguments: dict[str, Any], caller: Agent, ctx: LeadToolContext) -> str:
         task_id = arguments.get("task_id")
         status = arguments.get("status")
         if not isinstance(task_id, str):
             return "[error] update_task: 'task_id' must be a string"
         if status not in self._ALLOWED_STATUSES:
-            return (
-                f"[error] update_task: 'status' must be one of "
-                f"{sorted(self._ALLOWED_STATUSES)}"
-            )
+            return f"[error] update_task: 'status' must be one of {sorted(self._ALLOWED_STATUSES)}"
         if ctx.update_task_status(task_id, str(status)):
             return f"updated task {task_id!r} -> {status}"
         return f"[error] update_task: task {task_id!r} not found"
@@ -356,9 +338,7 @@ class ReviewPlanTool(_LeadToolBase):
     # review_plan 任何 lead/worker 都可调（不需要 spawn/shutdown/assign 权限）
     _REQUIRED_CAPS: set[str] = set()
 
-    def _do_invoke(
-        self, arguments: dict[str, Any], caller: Agent, ctx: LeadToolContext
-    ) -> str:
+    def _do_invoke(self, arguments: dict[str, Any], caller: Agent, ctx: LeadToolContext) -> str:
         plan = arguments.get("plan")
         if not isinstance(plan, str) or not plan.strip():
             return "[error] review_plan: 'plan' must be a non-empty string"
@@ -372,9 +352,7 @@ class ReviewPlanTool(_LeadToolBase):
 # ---------------------------------------------------------------------------
 
 
-def build_lead_tools(
-    caller_agent_id: str, ctx: LeadToolContext
-) -> list[Tool]:
+def build_lead_tools(caller_agent_id: str, ctx: LeadToolContext) -> list[Tool]:
     """
     为指定 caller 构造 lead 工具集
 

@@ -133,15 +133,19 @@ def test_llm_factory_fake() -> None:
 
 def test_llm_factory_openai_no_key_raises() -> None:
     """openai 无 API key 时 fail-fast"""
-    with patch.dict("os.environ", {}, clear=True), \
-         pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        pytest.raises(RuntimeError, match="OPENAI_API_KEY"),
+    ):
         review_runner.llm_judge_factory("openai")
 
 
 def test_llm_factory_anthropic_no_key_raises() -> None:
     """anthropic 无 API key 时 fail-fast"""
-    with patch.dict("os.environ", {}, clear=True), \
-         pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"),
+    ):
         review_runner.llm_judge_factory("anthropic")
 
 
@@ -185,8 +189,10 @@ def test_post_review_full_mode_creates_task_in_store() -> None:
 
 def test_post_review_simple_mode_returns_200_with_report() -> None:
     """POST /api/review simple mode 返 200 + report (W36b 兼容)"""
-    with patch("agent_swarm.web.review_runner._is_git_repo", return_value=True), \
-         patch("agent_swarm.web.review_runner.run_review_sync") as mock_sync:
+    with (
+        patch("agent_swarm.web.review_runner._is_git_repo", return_value=True),
+        patch("agent_swarm.web.review_runner.run_review_sync") as mock_sync,
+    ):
         mock_sync.return_value = {
             "pr_ref": "main..HEAD",
             "verdict": "approve",
@@ -247,9 +253,12 @@ async def test_run_full_review_async_fake_provider() -> None:
     repo_root = Path("/tmp").resolve()  # 真实 git repo 路径用测试 fixture
     # 用 monkey patch _is_git_repo + run_full_review 简化 (不依赖真实 git)
     task = review_runner.create_task("main..HEAD", "fake")
-    with patch("agent_swarm.web.review_runner._is_git_repo", return_value=True), \
-         patch("agent_swarm.web.review_runner._run_full_in_thread") as mock_thread:
+    with (
+        patch("agent_swarm.web.review_runner._is_git_repo", return_value=True),
+        patch("agent_swarm.web.review_runner._run_full_in_thread") as mock_thread,
+    ):
         from dataclasses import dataclass, field
+
         @dataclass
         class FakeReport:
             pr_ref: str = "main..HEAD"
@@ -260,9 +269,14 @@ async def test_run_full_review_async_fake_provider() -> None:
             confidence: float = 0.9
             files_changed: int = 0
             lines_changed: int = 0
+
         mock_thread.return_value = FakeReport()
         await review_runner.run_full_review_async(
-            task.task_id, "main..HEAD", repo_root, "fake", timeout=5.0,
+            task.task_id,
+            "main..HEAD",
+            repo_root,
+            "fake",
+            timeout=5.0,
         )
     done_task = review_runner.get_task(task.task_id)
     assert done_task is not None
@@ -281,10 +295,13 @@ async def test_run_full_review_async_fake_provider() -> None:
 async def test_run_full_review_async_does_not_block() -> None:
     """异步任务在跑时, 其他 coroutine 可推进 (不阻塞 event loop)"""
     task = review_runner.create_task("main..HEAD", "fake")
-    with patch("agent_swarm.web.review_runner._is_git_repo", return_value=True), \
-         patch("agent_swarm.web.review_runner._run_full_in_thread") as mock_thread:
+    with (
+        patch("agent_swarm.web.review_runner._is_git_repo", return_value=True),
+        patch("agent_swarm.web.review_runner._run_full_in_thread") as mock_thread,
+    ):
         # 模拟 LLM 慢响应 (0.3s), 但应该不阻塞
         from dataclasses import dataclass, field
+
         @dataclass
         class FakeReport:
             pr_ref: str = "main..HEAD"
@@ -299,11 +316,16 @@ async def test_run_full_review_async_does_not_block() -> None:
         def slow_run(*args, **kwargs):
             time.sleep(0.3)
             return FakeReport()
+
         mock_thread.side_effect = slow_run
         # 启动 task
         task_coro = asyncio.create_task(
             review_runner.run_full_review_async(
-                task.task_id, "main..HEAD", None, "fake", timeout=10.0,
+                task.task_id,
+                "main..HEAD",
+                None,
+                "fake",
+                timeout=10.0,
             )
         )
         # 期间跑其他 coroutine, 测不阻塞

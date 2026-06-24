@@ -37,23 +37,34 @@ def git_repo(tmp_path: Path) -> Path:
     repo.mkdir()
     subprocess.run(
         ["git", "init", "-b", "main", str(repo)],
-        check=True, capture_output=True, timeout=10,
+        check=True,
+        capture_output=True,
+        timeout=10,
     )
     subprocess.run(
         ["git", "-C", str(repo), "config", "user.email", "t@t"],
-        check=True, capture_output=True, timeout=5,
+        check=True,
+        capture_output=True,
+        timeout=5,
     )
     subprocess.run(
         ["git", "-C", str(repo), "config", "user.name", "T"],
-        check=True, capture_output=True, timeout=5,
+        check=True,
+        capture_output=True,
+        timeout=5,
     )
     (repo / "README.md").write_text("# T", encoding="utf-8")
     subprocess.run(
-        ["git", "-C", str(repo), "add", "."], check=True, capture_output=True, timeout=5,
+        ["git", "-C", str(repo), "add", "."],
+        check=True,
+        capture_output=True,
+        timeout=5,
     )
     subprocess.run(
         ["git", "-C", str(repo), "commit", "-m", "init"],
-        check=True, capture_output=True, timeout=10,
+        check=True,
+        capture_output=True,
+        timeout=10,
     )
     return repo
 
@@ -82,8 +93,11 @@ def _make_config(
         return MCPServerConfig(
             name=name,
             transport="stdio",
-            command=command or [
-                "npx", "-y", "@modelcontextprotocol/server-filesystem",
+            command=command
+            or [
+                "npx",
+                "-y",
+                "@modelcontextprotocol/server-filesystem",
                 PLACEHOLDER,
             ],
             cwd=cwd,
@@ -224,7 +238,9 @@ def test_validate_accepts_command_placeholder() -> None:
 def test_integration_acquire_for_agent(integration: WorktreeIntegration) -> None:
     """acquire_for_agent: 返回 WorktreeHandle"""
     h = integration.acquire_for_agent(
-        agent_id="a1", tenant_id="t1", session_id="s1",
+        agent_id="a1",
+        tenant_id="t1",
+        session_id="s1",
     )
     assert h.agent_id == "a1"
     assert h.tenant_id == "t1"

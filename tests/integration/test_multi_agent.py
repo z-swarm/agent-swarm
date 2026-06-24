@@ -48,9 +48,7 @@ def _multi_agent_cfg(tmp_path: Path, num_tasks: int = 4) -> dict:
             }
             for i in range(3)
         ],
-        "tasks": [
-            {"title": f"task-{j}", "description": f"work {j}"} for j in range(num_tasks)
-        ],
+        "tasks": [{"title": f"task-{j}", "description": f"work {j}"} for j in range(num_tasks)],
         "workspace": str(tmp_path),
     }
 
@@ -165,13 +163,9 @@ async def test_multi_agent_send_message_delivery(
             finish_reason="tool_use",
         )
     )
-    fake_provider.script.append(
-        ScriptedResponse(content="sent the message", finish_reason="stop")
-    )
+    fake_provider.script.append(ScriptedResponse(content="sent the message", finish_reason="stop"))
     for _ in range(20):
-        fake_provider.script.append(
-            ScriptedResponse(content="nothing to do", finish_reason="stop")
-        )
+        fake_provider.script.append(ScriptedResponse(content="nothing to do", finish_reason="stop"))
 
     cfg = {
         "name": "msg-demo",
@@ -224,12 +218,24 @@ async def test_multi_agent_assigned_to_filters_correctly(
     cfg = {
         "name": "assign",
         "agents": [
-            {"id": "a1", "role": "r", "persona": "p",
-             "provider": "openai", "model": "gpt-4o-mini",
-             "tools": ["read_file"], "max_iterations": 2},
-            {"id": "a2", "role": "r", "persona": "p",
-             "provider": "openai", "model": "gpt-4o-mini",
-             "tools": ["read_file"], "max_iterations": 2},
+            {
+                "id": "a1",
+                "role": "r",
+                "persona": "p",
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "tools": ["read_file"],
+                "max_iterations": 2,
+            },
+            {
+                "id": "a2",
+                "role": "r",
+                "persona": "p",
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "tools": ["read_file"],
+                "max_iterations": 2,
+            },
         ],
         "tasks": [
             {"id": "Ta", "title": "x", "assigned_to": "a1"},

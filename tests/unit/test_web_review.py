@@ -141,7 +141,9 @@ def test_api_review_unsafe_pr_ref_returns_400() -> None:
     )
     assert r.status_code == 400
     body = r.json()
-    assert "unsafe" in body.get("detail", "").lower() or "characters" in body.get("detail", "").lower()
+    assert (
+        "unsafe" in body.get("detail", "").lower() or "characters" in body.get("detail", "").lower()
+    )
 
 
 def test_api_review_pipe_injection_returns_400() -> None:
@@ -158,6 +160,7 @@ def test_api_review_pipe_injection_returns_400() -> None:
 def test_api_review_non_git_repo_returns_500() -> None:
     """非 git 仓库 → 500 + 友好错"""
     import tempfile
+
     with tempfile.TemporaryDirectory() as tmpdir:
         # 设置 web_repo_root 指向非 git 目录
         app = create_app(
@@ -173,7 +176,9 @@ def test_api_review_non_git_repo_returns_500() -> None:
         )
         assert r.status_code == 500
         body = r.json()
-        assert "not a git" in body.get("detail", "").lower() or "git" in body.get("detail", "").lower()
+        assert (
+            "not a git" in body.get("detail", "").lower() or "git" in body.get("detail", "").lower()
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -53,6 +53,7 @@ class _FakeSecretManager(SecretManager):
             raise RuntimeError("simulated vault outage")
         if key not in self._store:
             from agent_swarm.security.secret_manager import SecretNotFoundError
+
             raise SecretNotFoundError(f"key {key!r} not found")
         return self._store[key]
 

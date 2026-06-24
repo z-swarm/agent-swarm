@@ -11,7 +11,8 @@ from agent_swarm.security import SandboxManager, SecurityPolicy
 from agent_swarm.tools.builtin.shell import RunCommandTool
 
 pytestmark = pytest.mark.skipif(
-    sys.platform == "win32", reason="P3-WIN: subprocess echo differs on Windows",
+    sys.platform == "win32",
+    reason="P3-WIN: subprocess echo differs on Windows",
 )
 
 
@@ -105,8 +106,7 @@ async def test_run_command_output_includes_stderr(tmp_path) -> None:
 
     policy = SecurityPolicy(workspace=str(tmp_path))
     policy._tool_default_risk = lambda name: (
-        ToolRisk.LOW if name == "run_command"
-        else SecurityPolicy._tool_default_risk(name)
+        ToolRisk.LOW if name == "run_command" else SecurityPolicy._tool_default_risk(name)
     )
     tool = RunCommandTool(policy=policy, sandbox=SandboxManager(workspace=tmp_path))
     out = await tool.invoke({"command": "ls /nonexistent 2>&1; true"})

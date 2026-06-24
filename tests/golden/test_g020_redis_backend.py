@@ -18,9 +18,7 @@ def _load_run_case() -> object:
     # parents[0] = tests/golden, parents[1] = tests, parents[2] = repo
     test_path = Path(__file__).resolve()
     repo = test_path.parents[2]
-    case_dir = (
-        repo / "tests" / "golden" / "cases" / "G-020_redis_backend_concurrent_cas"
-    )
+    case_dir = repo / "tests" / "golden" / "cases" / "G-020_redis_backend_concurrent_cas"
     run_path = case_dir / "run_case.py"
     spec = importlib.util.spec_from_file_location("g020_run_case", run_path)
     if spec is None or spec.loader is None:
@@ -49,8 +47,7 @@ def test_g020_expected_yaml_matches() -> None:
     test_path = Path(__file__).resolve()
     repo = test_path.parents[2]
     expected_path = (
-        repo / "tests" / "golden" / "cases"
-        / "G-020_redis_backend_concurrent_cas" / "expected.yaml"
+        repo / "tests" / "golden" / "cases" / "G-020_redis_backend_concurrent_cas" / "expected.yaml"
     )
     if not expected_path.exists():
         return  # 还没跑过 run_case.py

@@ -42,6 +42,7 @@ async def test_tui_sink_registers_into_global_bus() -> None:
     set_global_bus(bus)
 
     from agent_swarm.observability import emit
+
     await emit("task.created", "e2e-session", {"task_id": "T-e2e", "title": "x"})
 
     # TUISink 应已收到
@@ -67,14 +68,16 @@ async def test_tui_app_full_lifecycle_in_5s() -> None:
 
     # 预塞事件
     base = time.time()
-    for i, (name, payload) in enumerate([
-        ("swarm.started", {"name": "e2e", "agent_ids": ["a1"], "task_count": 1}),
-        ("task.created", {"task_id": "T1", "title": "demo"}),
-        ("task.claimed", {"task_id": "T1", "agent_id": "a1"}),
-        ("message.sent", {"from": "a1", "to": "a1", "subject": "self"}),
-        ("task.completed", {"task_id": "T1", "result": "x" * 400}),
-        ("swarm.completed", {"tasks_completed": 1, "tasks_failed": 0}),
-    ]):
+    for i, (name, payload) in enumerate(
+        [
+            ("swarm.started", {"name": "e2e", "agent_ids": ["a1"], "task_count": 1}),
+            ("task.created", {"task_id": "T1", "title": "demo"}),
+            ("task.claimed", {"task_id": "T1", "agent_id": "a1"}),
+            ("message.sent", {"from": "a1", "to": "a1", "subject": "self"}),
+            ("task.completed", {"task_id": "T1", "result": "x" * 400}),
+            ("swarm.completed", {"tasks_completed": 1, "tasks_failed": 0}),
+        ]
+    ):
         sink.queue.put_nowait(
             SessionEvent(
                 event_name=name,
@@ -93,12 +96,12 @@ async def test_tui_app_full_lifecycle_in_5s() -> None:
                 pytest.fail("TUI full lifecycle exceeded 5s")
             await pilot.pause(0.05)
         # 验证数据落地
-        assert app._status_data.name == "e2e"        # noqa: SLF001
-        assert app._status_data.state == "completed"   # noqa: SLF001
-        assert "a1" in app._status_data.agents        # noqa: SLF001
+        assert app._status_data.name == "e2e"  # noqa: SLF001
+        assert app._status_data.state == "completed"  # noqa: SLF001
+        assert "a1" in app._status_data.agents  # noqa: SLF001
         assert app._task_panel.data["T1"].status == "completed"  # noqa: SLF001
-        assert len(app._msg_panel.data) == 1          # noqa: SLF001
-        assert app._budget_data.used_tokens >= 100    # noqa: SLF001
+        assert len(app._msg_panel.data) == 1  # noqa: SLF001
+        assert app._budget_data.used_tokens >= 100  # noqa: SLF001
         # 5 秒 DoD
         assert time.monotonic() - t0 < 5.0
 
@@ -112,6 +115,7 @@ async def test_tui_sink_does_not_block_emit_under_load() -> None:
     set_global_bus(bus)
 
     from agent_swarm.observability import emit
+
     # 灌 50 条——超过 sink maxsize
     t0 = time.monotonic()
     for i in range(50):

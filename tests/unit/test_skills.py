@@ -59,8 +59,11 @@ def test_security_skill_metadata() -> None:
 def test_register_duplicate_raises() -> None:
     """同 id 重复注册应抛"""
     s = Skill(
-        id="test:dup", description="x", version="1.0",
-        category="develop", system_prompt_extension="",
+        id="test:dup",
+        description="x",
+        version="1.0",
+        category="develop",
+        system_prompt_extension="",
     )
     SkillRegistry.register(s)
     try:
@@ -76,8 +79,11 @@ def test_get_unknown_returns_none() -> None:
 
 def test_unregister_removes() -> None:
     s = Skill(
-        id="test:tmp", description="x", version="1.0",
-        category="ops", system_prompt_extension="",
+        id="test:tmp",
+        description="x",
+        version="1.0",
+        category="ops",
+        system_prompt_extension="",
     )
     SkillRegistry.register(s)
     assert SkillRegistry.get("test:tmp") is not None
@@ -146,9 +152,7 @@ def test_compose_multiple_skills() -> None:
 
 def test_compose_includes_tool_use_instruction() -> None:
     """无论是否有 skill，都应包含工具使用提示"""
-    out = compose_system_prompt(
-        base_persona="x", role="r", agent_id="a", skills=[]
-    )
+    out = compose_system_prompt(base_persona="x", role="r", agent_id="a", skills=[])
     assert "tools" in out.lower()
 
 
@@ -170,14 +174,15 @@ def test_compose_no_blank_lines_with_empty_persona() -> None:
 def test_compose_skills_block_format(monkeypatch: pytest.MonkeyPatch) -> None:
     """W4-ZT6 回归：skills 段格式良好——# Skills 标题 + ## skill_id 子块"""
     s = Skill(
-        id="test:format", description="desc here", version="1.0",
-        category="develop", system_prompt_extension="ext line",
+        id="test:format",
+        description="desc here",
+        version="1.0",
+        category="develop",
+        system_prompt_extension="ext line",
     )
     SkillRegistry.register(s)
     try:
-        out = compose_system_prompt(
-            base_persona="careful", role="r", agent_id="a", skills=[s]
-        )
+        out = compose_system_prompt(base_persona="careful", role="r", agent_id="a", skills=[s])
         # 必含的标题
         assert "# Skills" in out
         assert "## test:format (v1.0)" in out
@@ -190,14 +195,15 @@ def test_compose_skills_block_format(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_compose_skill_with_empty_extension() -> None:
     """skill extension 为空字符串时不应产生空行"""
     s = Skill(
-        id="test:empty-ext", description="desc", version="1.0",
-        category="develop", system_prompt_extension="",
+        id="test:empty-ext",
+        description="desc",
+        version="1.0",
+        category="develop",
+        system_prompt_extension="",
     )
     SkillRegistry.register(s)
     try:
-        out = compose_system_prompt(
-            base_persona="p", role="r", agent_id="a", skills=[s]
-        )
+        out = compose_system_prompt(base_persona="p", role="r", agent_id="a", skills=[s])
         assert "\n\n\n" not in out
         assert "test:empty-ext" in out
     finally:
@@ -211,15 +217,21 @@ def test_compose_skill_with_empty_extension() -> None:
 
 async def test_default_validate_input_returns_true() -> None:
     s = Skill(
-        id="test:val1", description="", version="1.0",
-        category="develop", system_prompt_extension="",
+        id="test:val1",
+        description="",
+        version="1.0",
+        category="develop",
+        system_prompt_extension="",
     )
     assert await s.validate_input({}) is True
 
 
 async def test_default_validate_output_returns_true() -> None:
     s = Skill(
-        id="test:val2", description="", version="1.0",
-        category="develop", system_prompt_extension="",
+        id="test:val2",
+        description="",
+        version="1.0",
+        category="develop",
+        system_prompt_extension="",
     )
     assert await s.validate_output("anything") is True

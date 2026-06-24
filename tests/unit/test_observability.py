@@ -200,9 +200,7 @@ async def test_json_log_sink_includes_request_id_only_when_present() -> None:
 
     buf2 = io.StringIO()
     sink2 = JsonLogSink(stream=buf2)
-    e_req = SessionEvent(
-        event_name="x", session_id="S", timestamp=0.0, seq=0, request_id="r1"
-    )
+    e_req = SessionEvent(event_name="x", session_id="S", timestamp=0.0, seq=0, request_id="r1")
     await sink2.consume(e_req)
     obj2 = json.loads(buf2.getvalue().strip())
     assert obj2["req"] == "r1"

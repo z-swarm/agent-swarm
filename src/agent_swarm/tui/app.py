@@ -49,24 +49,27 @@ log = logging.getLogger(__name__)
 @dataclass
 class AgentInfo:
     """@brief 单 agent 的运行时摘要"""
+
     agent_id: str
     model: str = "?"
-    status: str = "idle"      # idle / running / done
+    status: str = "idle"  # idle / running / done
     tasks_done: int = 0
 
 
 @dataclass
 class TaskRow:
     """@brief Task Queue 表格的一行"""
+
     task_id: str
     title: str
-    status: str               # pending / in_progress / completed / failed / blocked
+    status: str  # pending / in_progress / completed / failed / blocked
     owner: str = "-"
 
 
 @dataclass
 class MessageRow:
     """@brief Message Stream 的一行"""
+
     timestamp: str
     src: str
     dst: str
@@ -76,8 +79,9 @@ class MessageRow:
 @dataclass
 class SwarmStatusData:
     """@brief Swarm Status 面板的可观察状态"""
+
     name: str = "(starting...)"
-    state: str = "pending"     # pending / running / completed / failed
+    state: str = "pending"  # pending / running / completed / failed
     session_id: str = "-"
     started_at: float | None = None
     agents: dict[str, AgentInfo] = field(default_factory=dict)
@@ -97,6 +101,7 @@ class SwarmStatusData:
 @dataclass
 class TokenBudgetData:
     """@brief Token Budget 面板的运行时统计"""
+
     # 粗估: 1 token ≈ 4 chars（与 TokenBudgetManager 一致）
     CHARS_PER_TOKEN: ClassVar[int] = 4
     # 假设默认上下文上限 (W6 简化; W7 接入 per-model 真实限制)
@@ -196,7 +201,7 @@ class MessageStreamPanel(Static):
         if len(self.data) > self.MAX_ROWS:
             self.data = self.data[-self.MAX_ROWS :]
         self._table.clear()
-        for r in self.data[-50:]:    # 只渲染最近 50 行
+        for r in self.data[-50:]:  # 只渲染最近 50 行
             self._table.add_row(r.timestamp, r.src, r.dst, r.preview[:64])
 
 
@@ -257,12 +262,8 @@ class SwarmDashboardApp(App):
     ]
 
     # 反应式全局状态
-    swarm_status: reactive[SwarmStatusData] = reactive(
-        SwarmStatusData(), recompose=False
-    )
-    token_data: reactive[TokenBudgetData] = reactive(
-        TokenBudgetData(), recompose=False
-    )
+    swarm_status: reactive[SwarmStatusData] = reactive(SwarmStatusData(), recompose=False)
+    token_data: reactive[TokenBudgetData] = reactive(TokenBudgetData(), recompose=False)
 
     def __init__(self, sink: TUISink, swarm_name: str = "?") -> None:
         super().__init__()
@@ -298,6 +299,7 @@ class SwarmDashboardApp(App):
         # F-09: TUI 后台 task 显式传 ctx——TUI 启动时通常无 SecurityContext 包裹
         try:
             from agent_swarm.security.context import SecurityContextManager
+
             ctx = SecurityContextManager.current_or_default(session_id="tui")
         except Exception:
             ctx = None
@@ -399,7 +401,7 @@ class SwarmDashboardApp(App):
             status = "failed"
             owner = self._task_rows.get(tid, TaskRow(tid, title, "pending")).owner
         elif evt.event_name == "task.unblocked":
-            status = "pending"     # 解阻塞后等待认领
+            status = "pending"  # 解阻塞后等待认领
             owner = "-"
         else:
             return
@@ -460,6 +462,7 @@ async def run_dashboard(
         # F-09: 显式传 ctx 给 swarm.run() 任务
         try:
             from agent_swarm.security.context import SecurityContextManager
+
             ctx = SecurityContextManager.current_or_default(session_id=swarm.session_id)
             task_ctx = ctx.asyncio_context()
             swarm_task = asyncio.create_task(swarm.run(), context=task_ctx)

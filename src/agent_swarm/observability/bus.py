@@ -119,7 +119,9 @@ class ObservabilityBus:
             except Exception as exc:  # noqa: BLE001
                 log.warning(
                     "obs.sink_error sink=%s event=%s err=%s",
-                    type(sink).__name__, event_name, exc,
+                    type(sink).__name__,
+                    event_name,
+                    exc,
                 )
         return evt
 
@@ -129,8 +131,7 @@ class ObservabilityBus:
             try:
                 await sink.aclose()
             except Exception as exc:  # noqa: BLE001
-                log.warning("obs.sink_close_error sink=%s err=%s",
-                            type(sink).__name__, exc)
+                log.warning("obs.sink_close_error sink=%s err=%s", type(sink).__name__, exc)
         # 清空——避免 close 后误用已关闭 sink
         self._sinks.clear()
 

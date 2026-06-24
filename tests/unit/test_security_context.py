@@ -119,6 +119,7 @@ async def test_create_task_with_context_preserves_tenant() -> None:
 
     async def child_task() -> None:
         from agent_swarm.security.context import SecurityContextManager
+
         captured_tenant.append(SecurityContextManager.current().tenant_id)
 
     ctx = SecurityContext(tenant_id="T-X", session_id="S-X")
@@ -131,15 +132,12 @@ async def test_create_task_with_context_preserves_tenant() -> None:
     assert captured_tenant == ["T-X"]
 
 
-
-
-
 def test_security_context_asyncio_context_returns_context() -> None:
     """
     @brief SecurityContext.asyncio_context() 返回 contextvars.Context 实例
     """
     import contextvars
+
     ctx = SecurityContext(tenant_id="T", session_id="S")
     result = ctx.asyncio_context()
     assert isinstance(result, contextvars.Context)
-

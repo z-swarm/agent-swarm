@@ -81,8 +81,12 @@ def _register_builtin_skills() -> None:
                 required_tools=["read_file"],
                 metadata={
                     "checks": [
-                        "SQL_INJECTION", "XSS", "AUTH",
-                        "PATH_TRAVERSAL", "CMD_INJECTION", "DATA_EXPOSURE",
+                        "SQL_INJECTION",
+                        "XSS",
+                        "AUTH",
+                        "PATH_TRAVERSAL",
+                        "CMD_INJECTION",
+                        "DATA_EXPOSURE",
                     ],
                 },
             )
@@ -112,10 +116,7 @@ def _register_builtin_skills() -> None:
         SkillRegistry.register(
             Skill(
                 id="code-review:architecture",
-                description=(
-                    "Review module coupling, SOLID principles, and "
-                    "design pattern fit."
-                ),
+                description=("Review module coupling, SOLID principles, and design pattern fit."),
                 version="1.0",
                 category="review",
                 system_prompt_extension=(

@@ -43,26 +43,36 @@ def git_repo(tmp_path: Path) -> Path:
     # git init
     subprocess.run(
         ["git", "init", "-b", "main", str(repo)],
-        check=True, capture_output=True, timeout=10,
+        check=True,
+        capture_output=True,
+        timeout=10,
     )
     # 配置 user (CI 环境无 git config)
     subprocess.run(
         ["git", "-C", str(repo), "config", "user.email", "test@test.local"],
-        check=True, capture_output=True, timeout=5,
+        check=True,
+        capture_output=True,
+        timeout=5,
     )
     subprocess.run(
         ["git", "-C", str(repo), "config", "user.name", "Test"],
-        check=True, capture_output=True, timeout=5,
+        check=True,
+        capture_output=True,
+        timeout=5,
     )
     # 初始 commit
     (repo / "README.md").write_text("# Test\n", encoding="utf-8")
     subprocess.run(
         ["git", "-C", str(repo), "add", "."],
-        check=True, capture_output=True, timeout=5,
+        check=True,
+        capture_output=True,
+        timeout=5,
     )
     subprocess.run(
         ["git", "-C", str(repo), "commit", "-m", "init"],
-        check=True, capture_output=True, timeout=10,
+        check=True,
+        capture_output=True,
+        timeout=10,
     )
     return repo
 
@@ -122,7 +132,9 @@ def test_manager_init_rejects_non_git(tmp_path: Path) -> None:
 def test_acquire_returns_handle(manager: WorktreeManager) -> None:
     """acquire: 返回 WorktreeHandle 含正确字段"""
     h = manager.acquire(
-        tenant_id="t1", session_id="s1", agent_id="a1",
+        tenant_id="t1",
+        session_id="s1",
+        agent_id="a1",
     )
     assert isinstance(h, WorktreeHandle)
     assert h.tenant_id == "t1"
@@ -140,7 +152,10 @@ def test_acquire_creates_branch(manager: WorktreeManager, git_repo: Path) -> Non
     h = manager.acquire(tenant_id="t1", session_id="s1", agent_id="a1")
     proc = subprocess.run(
         ["git", "-C", str(git_repo), "branch", "--list", h.branch],
-        capture_output=True, text=True, timeout=5, check=False,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
     )
     assert h.branch in proc.stdout
 
@@ -193,7 +208,10 @@ def test_release_force_keeps_branch(manager: WorktreeManager, git_repo: Path) ->
     # branch 还在
     proc = subprocess.run(
         ["git", "-C", str(git_repo), "branch", "--list", h.branch],
-        capture_output=True, text=True, timeout=5, check=False,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
     )
     assert h.branch in proc.stdout
 
@@ -202,8 +220,13 @@ def test_release_unknown_handle_is_noop(manager: WorktreeManager) -> None:
     """release: 不同 handle 对象是 no-op (警告但不报错)"""
     h1 = manager.acquire(tenant_id="t1", session_id="s1", agent_id="a1")
     fake = WorktreeHandle(
-        path=h1.path, branch=h1.branch, agent_id="x",
-        tenant_id="x", session_id="x", created_at=0.0, key="x/x/x",
+        path=h1.path,
+        branch=h1.branch,
+        agent_id="x",
+        tenant_id="x",
+        session_id="x",
+        created_at=0.0,
+        key="x/x/x",
     )
     manager.release(fake)  # no raise
     assert h1.path.exists()  # 原始还在
@@ -226,7 +249,9 @@ def test_list_active_sorted(manager: WorktreeManager) -> None:
     manager.acquire(tenant_id="t2", session_id="s1", agent_id="a")
     handles = manager.list_active()
     assert [h.key for h in handles] == [
-        "t1/s1/a", "t1/s1/b", "t2/s1/a",
+        "t1/s1/a",
+        "t1/s1/b",
+        "t2/s1/a",
     ]
 
 
@@ -257,16 +282,20 @@ def test_cleanup_orphans_removes_stale(git_repo: Path, tmp_path: Path) -> None:
     orphan_path = base / "wt-orphan-external"
     subprocess.run(
         ["git", "-C", str(git_repo), "branch", orphan_branch],
-        check=True, capture_output=True, timeout=5,
+        check=True,
+        capture_output=True,
+        timeout=5,
     )
     subprocess.run(
-        ["git", "-C", str(git_repo), "worktree", "add",
-         str(orphan_path), orphan_branch],
-        check=True, capture_output=True, timeout=10,
+        ["git", "-C", str(git_repo), "worktree", "add", str(orphan_path), orphan_branch],
+        check=True,
+        capture_output=True,
+        timeout=10,
     )
     assert orphan_path.exists()
     # 修改 mtime 让它"老"
     import os as _os
+
     old_time = time.time() - 1000
     _os.utime(orphan_path, (old_time, old_time))
     # 等于零 ttl
@@ -390,7 +419,8 @@ def test_worktree_inherits_main_branch_files(manager: WorktreeManager) -> None:
 
 
 def test_path_collision_with_existing_dir(
-    git_repo: Path, tmp_path: Path,
+    git_repo: Path,
+    tmp_path: Path,
 ) -> None:
     """worktree 路径与既有目录冲突时抛 WorktreeConflictError"""
     base = tmp_path / "worktrees"
@@ -407,7 +437,9 @@ def test_path_collision_with_existing_dir(
 def test_worktree_path_safety(manager: WorktreeManager) -> None:
     """worktree 路径必须在 base_dir 内 (无 path traversal)"""
     h = manager.acquire(
-        tenant_id="../../etc", session_id="../../passwd", agent_id="a1",
+        tenant_id="../../etc",
+        session_id="../../passwd",
+        agent_id="a1",
     )
     # sanitize 后应被锁在 base_dir 内
     assert h.path.is_relative_to(manager.base_dir)

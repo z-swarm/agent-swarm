@@ -86,6 +86,7 @@ def test_hmac_sha256_hex_uses_hmac_not_plain_sha256() -> None:
     """
     import hashlib
     import hmac
+
     key = "my-token"
     payload = "1700000000nonce1body"
     # 正确 HMAC 结果
@@ -325,10 +326,13 @@ async def test_send_confirm_dialog_card_has_buttons() -> None:
         content="Deploy to production?",
         msg_type=MessageType.CARD,
         card_template="confirm_dialog",
-        card_data={"title": "Confirm", "actions": [
-            {"text": "Yes", "value": "approve", "type": "primary"},
-            {"text": "No", "value": "deny", "type": "danger"},
-        ]},
+        card_data={
+            "title": "Confirm",
+            "actions": [
+                {"text": "Yes", "value": "approve", "type": "primary"},
+                {"text": "No", "value": "deny", "type": "danger"},
+            ],
+        },
     )
     await c.send(resp, target)
     sent = c._sent_for_test()
@@ -367,7 +371,8 @@ async def test_send_unknown_card_template_falls_back() -> None:
     c = _make_connector()
     target = ChannelUser(channel=ChannelType.LARK, user_id="u", display_name="u")
     resp = ChannelResponse(
-        content="hi", msg_type=MessageType.CARD,
+        content="hi",
+        msg_type=MessageType.CARD,
         card_template="unknown_template_xyz",
         card_data={"title": "X"},
     )
@@ -387,6 +392,7 @@ async def test_send_unknown_card_template_falls_back() -> None:
 def test_subscribe_unsubscribe() -> None:
     """subscribe 多次注册同一 handler 只算一次；unsubscribe 移除"""
     c = _make_connector()
+
     async def h(msg: ChannelMessage) -> ChannelResponse:
         return ChannelResponse(content="ok")
 
@@ -423,6 +429,7 @@ async def test_start_stop_idempotent() -> None:
 def test_request_signature_rejects_old_timestamp() -> None:
     """时间戳超出 5 分钟窗口 → 拒绝"""
     import time
+
     c = _make_connector()
     # 10 分钟前的时间戳
     old_ts = str(int(time.time()) - 600)
@@ -438,6 +445,7 @@ def test_request_signature_rejects_malformed_timestamp() -> None:
 def test_request_signature_rejects_empty_signature_header() -> None:
     """header 中无签名 → 拒绝"""
     import time
+
     c = _make_connector()
     ts = str(int(time.time()))
     assert c._verify_request_signature(ts, "n", "body", "") is False

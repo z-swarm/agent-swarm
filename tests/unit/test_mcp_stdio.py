@@ -95,7 +95,8 @@ def fake_mcp_script(tmp_path: Path) -> Path:
 def _config_for(script: Path) -> MCPServerConfig:
     # timeout_s 是 StdioMCPClient 的参数，不是 MCPServerConfig 字段
     return MCPServerConfig(
-        name="fake", transport="stdio",
+        name="fake",
+        transport="stdio",
         command=[sys.executable, str(script)],
     )
 
@@ -122,7 +123,8 @@ async def test_connect_disconnect(fake_mcp_script: Path) -> None:
 @pytest.mark.asyncio
 async def test_connect_with_missing_command_raises() -> None:
     cfg = MCPServerConfig(
-        name="missing", transport="stdio",
+        name="missing",
+        transport="stdio",
         command=["definitely-not-a-real-binary-12345"],
     )
     client = StdioMCPClient(cfg)
@@ -278,8 +280,7 @@ async def test_verbose_stderr_does_not_block_stdio(tmp_path: Path) -> None:
     """M1 fix：server stderr 大量输出不阻塞 stdout readline"""
     script = tmp_path / "verbose.py"
     script.write_text(_VERBOSE_FAKE_SCRIPT, encoding="utf-8")
-    cfg = MCPServerConfig(name="v", transport="stdio",
-                          command=[sys.executable, str(script)])
+    cfg = MCPServerConfig(name="v", transport="stdio", command=[sys.executable, str(script)])
     client = StdioMCPClient(cfg, timeout_s=5.0)
     tools = await client.list_tools()
     assert {t["name"] for t in tools} == {"ok"}

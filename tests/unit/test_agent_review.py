@@ -18,7 +18,8 @@ from tools.agent_review import (
 )
 
 pytestmark = pytest.mark.skipif(
-    sys.platform == "win32", reason="P3-WIN: agent_review CLI invocation differs on Windows",
+    sys.platform == "win32",
+    reason="P3-WIN: agent_review CLI invocation differs on Windows",
 )
 
 
@@ -28,10 +29,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_review_finding_dataclass() -> None:
-    f = ReviewFinding(
-        severity="HIGH", file="x.py", line=10,
-        category="XSS", description="bad"
-    )
+    f = ReviewFinding(severity="HIGH", file="x.py", line=10, category="XSS", description="bad")
     assert f.severity == "HIGH"
     d = f.__dict__
     assert d["file"] == "x.py"
@@ -54,28 +52,17 @@ def test_get_pr_diff_returns_stats(tmp_path) -> None:
     """在临时 git 仓库里跑 get_pr_diff"""
     # Init repo
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    subprocess.run(
-        ["git", "config", "user.email", "test@test.com"],
-        cwd=tmp_path, check=True
-    )
-    subprocess.run(
-        ["git", "config", "user.name", "Test"],
-        cwd=tmp_path, check=True
-    )
+    subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
     (tmp_path / "x.py").write_text("a = 1\n")
     subprocess.run(["git", "add", "x.py"], cwd=tmp_path, check=True)
-    subprocess.run(
-        ["git", "commit", "-q", "-m", "init"],
-        cwd=tmp_path, check=True
-    )
+    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
     (tmp_path / "x.py").write_text("a = 1\nb = 2\nc = 3\n")
     subprocess.run(["git", "add", "x.py"], cwd=tmp_path, check=True)
-    subprocess.run(
-        ["git", "commit", "-q", "-m", "add lines"],
-        cwd=tmp_path, check=True
-    )
+    subprocess.run(["git", "commit", "-q", "-m", "add lines"], cwd=tmp_path, check=True)
     # 用 monkey-patch REPO
     import tools.agent_review
+
     orig_repo = tools.agent_review.REPO
     tools.agent_review.REPO = tmp_path
     try:
@@ -372,6 +359,7 @@ def test_get_pr_diff_numstat_counts_added_and_deleted() -> None:
     """M3 修复:lines_changed 应包含 added + deleted"""
     import subprocess
     import tempfile
+
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
         subprocess.run(["git", "init", "-q"], cwd=tmp, check=True)
@@ -386,6 +374,7 @@ def test_get_pr_diff_numstat_counts_added_and_deleted() -> None:
         subprocess.run(["git", "add", "x.py"], cwd=tmp, check=True)
         subprocess.run(["git", "commit", "-q", "-m", "u"], cwd=tmp, check=True)
         import tools.agent_review
+
         orig = tools.agent_review.REPO
         tools.agent_review.REPO = tmp
         try:
@@ -405,12 +394,8 @@ def test_get_pr_diff_numstat_counts_added_and_deleted() -> None:
 def test_run_simple_review_clean_diff_returns_approve(tmp_path) -> None:
     """干净 diff → verdict=approve"""
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    subprocess.run(
-        ["git", "config", "user.email", "t@t"], cwd=tmp_path, check=True
-    )
-    subprocess.run(
-        ["git", "config", "user.name", "T"], cwd=tmp_path, check=True
-    )
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "T"], cwd=tmp_path, check=True)
     (tmp_path / "x.py").write_text("a = 1\n")
     subprocess.run(["git", "add", "x.py"], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-q", "-m", "i"], cwd=tmp_path, check=True)
@@ -418,6 +403,7 @@ def test_run_simple_review_clean_diff_returns_approve(tmp_path) -> None:
     subprocess.run(["git", "add", "x.py"], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-q", "-m", "u"], cwd=tmp_path, check=True)
     import tools.agent_review
+
     orig = tools.agent_review.REPO
     tools.agent_review.REPO = tmp_path
     try:
@@ -431,12 +417,8 @@ def test_run_simple_review_clean_diff_returns_approve(tmp_path) -> None:
 def test_run_simple_review_dirty_diff_returns_request_changes(tmp_path) -> None:
     """有 critical finding → verdict=request_changes"""
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    subprocess.run(
-        ["git", "config", "user.email", "t@t"], cwd=tmp_path, check=True
-    )
-    subprocess.run(
-        ["git", "config", "user.name", "T"], cwd=tmp_path, check=True
-    )
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "T"], cwd=tmp_path, check=True)
     (tmp_path / "x.py").write_text("# init\n")
     subprocess.run(["git", "add", "x.py"], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-q", "-m", "i"], cwd=tmp_path, check=True)
@@ -444,6 +426,7 @@ def test_run_simple_review_dirty_diff_returns_request_changes(tmp_path) -> None:
     subprocess.run(["git", "add", "x.py"], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-q", "-m", "u"], cwd=tmp_path, check=True)
     import tools.agent_review
+
     orig = tools.agent_review.REPO
     tools.agent_review.REPO = tmp_path
     try:
@@ -462,12 +445,8 @@ def test_run_simple_review_dirty_diff_returns_request_changes(tmp_path) -> None:
 def test_cli_runs_and_outputs_json(tmp_path) -> None:
     """CLI --output=json 模式"""
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    subprocess.run(
-        ["git", "config", "user.email", "t@t"], cwd=tmp_path, check=True
-    )
-    subprocess.run(
-        ["git", "config", "user.name", "T"], cwd=tmp_path, check=True
-    )
+    subprocess.run(["git", "config", "user.email", "t@t"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "T"], cwd=tmp_path, check=True)
     (tmp_path / "x.py").write_text("a\n")
     subprocess.run(["git", "add", "x.py"], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-q", "-m", "i"], cwd=tmp_path, check=True)
@@ -479,10 +458,12 @@ def test_cli_runs_and_outputs_json(tmp_path) -> None:
     env = {"AGENT_REVIEW_REPO": str(tmp_path), "PATH": "/usr/bin:/bin"}
     # tools/agent_review.py 在 git 仓库根目录；cwd 用项目根
     import os
+
     result = subprocess.run(
-        [".venv/bin/python", "tools/agent_review.py",
-         "--pr", "HEAD~1..HEAD", "--output", "json"],
-        capture_output=True, text=True, timeout=30,
+        [".venv/bin/python", "tools/agent_review.py", "--pr", "HEAD~1..HEAD", "--output", "json"],
+        capture_output=True,
+        text=True,
+        timeout=30,
         env={**os.environ, **env},
     )
     assert result.returncode == 0, f"stderr={result.stderr}"

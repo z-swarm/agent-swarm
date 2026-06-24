@@ -75,8 +75,7 @@ async def test_get_project_docs_handles_unreadable(
 @pytest.fixture
 def code_workspace(tmp_path: Path) -> Path:
     (tmp_path / "main.py").write_text(
-        "def login():\n    SELECT_USER = 'SELECT * FROM users'\n"
-        "    return query(SELECT_USER)\n",
+        "def login():\n    SELECT_USER = 'SELECT * FROM users'\n    return query(SELECT_USER)\n",
         encoding="utf-8",
     )
     (tmp_path / "auth.py").write_text(
@@ -244,9 +243,9 @@ async def test_cache_lru_promotes_on_hit() -> None:
 async def test_stats_tracks_hits_and_misses() -> None:
     kb = KnowledgeBase()
     await kb.cache_analysis("k", "v")
-    await kb.get_cached_analysis("k")    # hit
-    await kb.get_cached_analysis("k")    # hit
-    await kb.get_cached_analysis("nope") # miss
+    await kb.get_cached_analysis("k")  # hit
+    await kb.get_cached_analysis("k")  # hit
+    await kb.get_cached_analysis("nope")  # miss
 
     stats = await kb.stats()
     assert stats["hits"] == 2

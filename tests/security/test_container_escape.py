@@ -36,10 +36,12 @@ def mgr(tmp_path: Path) -> DockerSandboxManager:
 
 def _mk_runner(captured: dict[str, Any] | None = None):  # type: ignore[no-untyped-def]
     """构造一个 mock runner——拦截 docker argv 用于断言 CIS 标志 + 不真正执行"""
+
     async def runner(argv: list[str]) -> dict[str, Any]:
         if captured is not None:
             captured["argv"] = argv
         return {"exit_code": 0, "stdout": "", "stderr": ""}
+
     return runner
 
 

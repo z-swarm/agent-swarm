@@ -73,8 +73,7 @@ class MCPServerConfig:
         if self.transport == "stdio":
             if not self.command:
                 raise ValueError(
-                    f"MCPServerConfig[{self.name!r}] transport=stdio requires "
-                    f"non-empty 'command'"
+                    f"MCPServerConfig[{self.name!r}] transport=stdio requires non-empty 'command'"
                 )
             if self.url is not None:
                 raise ValueError(
@@ -84,8 +83,7 @@ class MCPServerConfig:
         elif self.transport == "sse":
             if not self.url:
                 raise ValueError(
-                    f"MCPServerConfig[{self.name!r}] transport=sse requires "
-                    f"non-empty 'url'"
+                    f"MCPServerConfig[{self.name!r}] transport=sse requires non-empty 'url'"
                 )
             if self.command:
                 raise ValueError(
@@ -93,9 +91,7 @@ class MCPServerConfig:
                     f"set 'command' (stdio-only field)"
                 )
             if self.auth == "bearer" and not self.token:
-                raise ValueError(
-                    f"MCPServerConfig[{self.name!r}] auth=bearer requires 'token'"
-                )
+                raise ValueError(f"MCPServerConfig[{self.name!r}] auth=bearer requires 'token'")
         else:
             raise ValueError(
                 f"MCPServerConfig[{self.name!r}] transport must be stdio or sse, "
@@ -106,6 +102,7 @@ class MCPServerConfig:
 @dataclass
 class MCPHealthStatus:
     """单个 server 的健康状态——DESIGN §7.3 "连接监控" 暴露"""
+
     name: str
     connected: bool
     circuit_state: str  # "closed" / "open" / "half_open"
@@ -134,9 +131,7 @@ class MCPRegistry:
 
     def register(self, config: MCPServerConfig) -> None:
         if config.name in self._servers:
-            raise ValueError(
-                f"MCP server {config.name!r} already registered"
-            )
+            raise ValueError(f"MCP server {config.name!r} already registered")
         self._servers[config.name] = config
 
     def get(self, name: str) -> MCPServerConfig:
@@ -199,7 +194,9 @@ class MCPRegistry:
         return results
 
     async def _connect_one(
-        self, name: str, cfg: MCPServerConfig,
+        self,
+        name: str,
+        cfg: MCPServerConfig,
     ) -> bool:
         """连接单个 server 并包成 ReconnectingMCPClient 存进 _clients"""
         # 避免循环 import
@@ -220,6 +217,7 @@ class MCPRegistry:
         except Exception as exc:  # noqa: BLE001
             log.warning("MCP %s connect failed: %s", name, exc)
             import contextlib
+
             with contextlib.suppress(Exception):
                 await wrapper.disconnect()
             return False
@@ -249,15 +247,21 @@ class MCPRegistry:
         cfg = self._servers.get(name)
         if cfg is None:
             return MCPHealthStatus(
-                name=name, connected=False, circuit_state="closed",
-                consecutive_failures=0, last_check_at=_time.time(),
+                name=name,
+                connected=False,
+                circuit_state="closed",
+                consecutive_failures=0,
+                last_check_at=_time.time(),
                 last_error=f"server {name!r} not registered",
             )
         client = self._clients.get(name)
         if client is None:
             return MCPHealthStatus(
-                name=name, connected=False, circuit_state="closed",
-                consecutive_failures=0, last_check_at=_time.time(),
+                name=name,
+                connected=False,
+                circuit_state="closed",
+                consecutive_failures=0,
+                last_check_at=_time.time(),
                 last_error="client not initialized (call connect_all first)",
             )
         connected = client.is_connected()
@@ -291,8 +295,7 @@ class MCPRegistry:
             transport = server_cfg.get("transport")
             if transport not in ("stdio", "sse"):
                 raise ValueError(
-                    f"mcp_servers[{name!r}].transport must be 'stdio' or 'sse', "
-                    f"got {transport!r}"
+                    f"mcp_servers[{name!r}].transport must be 'stdio' or 'sse', got {transport!r}"
                 )
             # 提取可靠性配置（与 MCP 字段同级）
             reliability = server_cfg.get("reliability", {}) or {}
@@ -327,9 +330,7 @@ class MCPRegistry:
         with open(path, encoding="utf-8") as f:
             cfg = yaml.safe_load(f)
         if not isinstance(cfg, dict):
-            raise ValueError(
-                f"MCP YAML root must be a mapping, got {type(cfg).__name__}"
-            )
+            raise ValueError(f"MCP YAML root must be a mapping, got {type(cfg).__name__}")
         return cls.from_dict(cfg)
 
 

@@ -67,9 +67,7 @@ async def test_send_to_self_rejected() -> None:
 
 async def test_send_invalid_msg_type() -> None:
     tool = SendMessageTool(from_agent="a", mailbox=Mailbox())
-    out = await tool.invoke(
-        {"to_agent": "b", "content": "x", "msg_type": "praise"}
-    )
+    out = await tool.invoke({"to_agent": "b", "content": "x", "msg_type": "praise"})
     assert out.startswith("[error]")
     assert "msg_type" in out
 
@@ -77,9 +75,7 @@ async def test_send_invalid_msg_type() -> None:
 async def test_send_to_unknown_agent_rejected_by_whitelist() -> None:
     """known_agents 白名单生效——杜撰 id 被拒"""
     mb = Mailbox()
-    tool = SendMessageTool(
-        from_agent="a", mailbox=mb, known_agents={"a", "b", "c"}
-    )
+    tool = SendMessageTool(from_agent="a", mailbox=mb, known_agents={"a", "b", "c"})
     out = await tool.invoke({"to_agent": "ghost", "content": "x"})
     assert out.startswith("[error]")
     assert "unknown agent" in out
@@ -89,8 +85,6 @@ async def test_send_to_unknown_agent_rejected_by_whitelist() -> None:
 
 async def test_send_known_agent_whitelist_passes() -> None:
     mb = Mailbox()
-    tool = SendMessageTool(
-        from_agent="a", mailbox=mb, known_agents={"a", "b"}
-    )
+    tool = SendMessageTool(from_agent="a", mailbox=mb, known_agents={"a", "b"})
     out = await tool.invoke({"to_agent": "b", "content": "x"})
     assert out.startswith("[ok]")

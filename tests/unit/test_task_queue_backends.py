@@ -24,14 +24,23 @@ from agent_swarm.core.task_queue_backend import (
 
 
 def _mk_task(
-    tid: str = "t1", version: int = 0, status: str = "pending",
+    tid: str = "t1",
+    version: int = 0,
+    status: str = "pending",
 ) -> StoredTask:
     now = time.time()
     return StoredTask(
-        id=tid, title=f"task-{tid}", description="",
-        status=status, version=version, assigned_to=None,
-        depends_on=[], result=None, error=None,
-        created_at=now, updated_at=now,
+        id=tid,
+        title=f"task-{tid}",
+        description="",
+        status=status,
+        version=version,
+        assigned_to=None,
+        depends_on=[],
+        result=None,
+        error=None,
+        created_at=now,
+        updated_at=now,
     )
 
 
@@ -167,6 +176,7 @@ async def redis_backend(request):  # type: ignore[no-untyped-def]
         RedisBackend,
         RedisConfig,
     )
+
     # 用 test name + 时间戳做 namespace, 隔离 fakeredis 全局状态
     cfg = RedisConfig(
         namespace=f"test-{request.node.name}-{time.time_ns()}",
@@ -228,6 +238,7 @@ async def test_redis_cas_key_not_found(redis_backend) -> None:  # type: ignore[n
 async def test_redis_concurrent_cas_only_one_wins(redis_backend) -> None:  # type: ignore[no-untyped-def]
     """并发 50 个 claim 同 task_id, 只能 1 个成功——Redis WATCH/MULTI/EXEC 验证"""
     import asyncio
+
     await redis_backend.put(_mk_task("t1", version=0))
 
     def mut(t: StoredTask) -> StoredTask:
@@ -260,6 +271,7 @@ async def test_redis_namespace_isolation() -> None:
         RedisBackend,
         RedisConfig,
     )
+
     a = RedisBackend(RedisConfig(namespace="ns-a", use_fakeredis=True))
     b = RedisBackend(RedisConfig(namespace="ns-b", use_fakeredis=True))
     try:

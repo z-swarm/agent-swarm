@@ -165,6 +165,7 @@ async def test_reconnect_disabled_does_not_retry() -> None:
     # 之后所有 list_tools 抛 ConnectionError
     async def _raise():
         raise MCPConnectionError("boom")
+
     inner.list_tools = _raise  # type: ignore[assignment]
 
     cfg = _stdio_config(auto_reconnect=False, max_reconnect_attempts=5)
@@ -186,6 +187,7 @@ async def test_reconnect_records_failures_in_circuit_breaker() -> None:
 
     async def _raise():
         raise MCPConnectionError("boom")
+
     inner.list_tools = _raise  # type: ignore[assignment]
 
     cfg = _stdio_config(
@@ -245,6 +247,7 @@ async def test_reconnect_serializes_with_lock() -> None:
 
     async def _raise():
         raise MCPConnectionError("boom")
+
     inner.list_tools = _raise  # type: ignore[assignment]
 
     cfg = _stdio_config(max_reconnect_attempts=2, circuit_breaker_threshold=100)
@@ -329,8 +332,11 @@ def test_registry_circuit_breaker_accessor() -> None:
 def test_health_status_dataclass() -> None:
     """MCPHealthStatus 字段对齐"""
     s = MCPHealthStatus(
-        name="x", connected=True, circuit_state="closed",
-        consecutive_failures=0, last_check_at=1.0,
+        name="x",
+        connected=True,
+        circuit_state="closed",
+        consecutive_failures=0,
+        last_check_at=1.0,
     )
     assert s.name == "x"
     assert s.connected is True

@@ -27,24 +27,35 @@ def git_repo(tmp_path: Path) -> Path:
     repo.mkdir()
     subprocess.run(
         ["git", "init", "-b", "main", str(repo)],
-        check=True, capture_output=True, timeout=10,
+        check=True,
+        capture_output=True,
+        timeout=10,
     )
     subprocess.run(
         ["git", "-C", str(repo), "config", "user.email", "g021@t.local"],
-        check=True, capture_output=True, timeout=5,
+        check=True,
+        capture_output=True,
+        timeout=5,
     )
     subprocess.run(
         ["git", "-C", str(repo), "config", "user.name", "G021"],
-        check=True, capture_output=True, timeout=5,
+        check=True,
+        capture_output=True,
+        timeout=5,
     )
     (repo / "README.md").write_text("# G-021\n", encoding="utf-8")
     (repo / "shared.txt").write_text("shared", encoding="utf-8")
     subprocess.run(
-        ["git", "-C", str(repo), "add", "."], check=True, capture_output=True, timeout=5,
+        ["git", "-C", str(repo), "add", "."],
+        check=True,
+        capture_output=True,
+        timeout=5,
     )
     subprocess.run(
         ["git", "-C", str(repo), "commit", "-m", "init"],
-        check=True, capture_output=True, timeout=10,
+        check=True,
+        capture_output=True,
+        timeout=10,
     )
     return repo
 
@@ -77,43 +88,49 @@ def test_g021_three_agents_isolated_worktrees(git_repo: Path, tmp_path: Path) ->
             f.write_text(f"content from {agent_id} #{i}", encoding="utf-8")
 
     with ThreadPoolExecutor(max_workers=3) as ex:
-        list(ex.map(
-            lambda kv: write_files(kv[0], kv[1]),
-            handles.items(),
-        ))
+        list(
+            ex.map(
+                lambda kv: write_files(kv[0], kv[1]),
+                handles.items(),
+            )
+        )
 
     # 4. 验证隔离: alpha 只能看到自己的 100 文件
     for agent_id, handle in handles.items():
         own = sorted(handle.path.glob(f"{agent_id}_file_*.txt"))
-        assert len(own) == n_files, (
-            f"{agent_id} expected {n_files} files, got {len(own)}"
-        )
+        assert len(own) == n_files, f"{agent_id} expected {n_files} files, got {len(own)}"
         # 不应看到其他 agent 的文件
         for other in handles:
             if other == agent_id:
                 continue
             other_files = list(handle.path.glob(f"{other}_file_*.txt"))
             assert other_files == [], (
-                f"{agent_id} should not see {other}'s files, "
-                f"but found: {other_files[:3]}..."
+                f"{agent_id} should not see {other}'s files, but found: {other_files[:3]}..."
             )
 
     # 5. 各自 commit
     for agent_id, handle in handles.items():
         subprocess.run(
             ["git", "-C", str(handle.path), "add", "."],
-            check=True, capture_output=True, timeout=10,
+            check=True,
+            capture_output=True,
+            timeout=10,
         )
         subprocess.run(
             ["git", "-C", str(handle.path), "commit", "-m", f"{agent_id} writes"],
-            check=True, capture_output=True, timeout=10,
+            check=True,
+            capture_output=True,
+            timeout=10,
         )
 
     # 验证各自 branch 有 commit
     for agent_id, handle in handles.items():
         proc = subprocess.run(
             ["git", "-C", str(git_repo), "log", handle.branch, "--oneline"],
-            capture_output=True, text=True, timeout=5, check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
         )
         assert f"{agent_id} writes" in proc.stdout, (
             f"branch {handle.branch} should have {agent_id}'s commit"
@@ -122,7 +139,10 @@ def test_g021_three_agents_isolated_worktrees(git_repo: Path, tmp_path: Path) ->
     # 6. main 分支不受影响 (只有 init commit)
     proc = subprocess.run(
         ["git", "-C", str(git_repo), "log", "main", "--oneline"],
-        capture_output=True, text=True, timeout=5, check=False,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
     )
     assert "alpha writes" not in proc.stdout
     assert "beta writes" not in proc.stdout
@@ -133,7 +153,10 @@ def test_g021_three_agents_isolated_worktrees(git_repo: Path, tmp_path: Path) ->
     mgr.cleanup_all()
     proc = subprocess.run(
         ["git", "-C", str(git_repo), "worktree", "list", "--porcelain"],
-        capture_output=True, text=True, timeout=5, check=False,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
     )
     # 只剩 main worktree
     worktree_count = proc.stdout.count("\nworktree ") + (
@@ -151,26 +174,31 @@ def test_g021_concurrent_acquire_no_conflict(git_repo: Path, tmp_path: Path) -> 
 
     n = 10
     with ThreadPoolExecutor(max_workers=n) as ex:
-        handles = list(ex.map(
-            lambda i: mgr.acquire(
-                tenant_id="g021", session_id="s1", agent_id=f"agent{i}",
-            ),
-            range(n),
-        ))
+        handles = list(
+            ex.map(
+                lambda i: mgr.acquire(
+                    tenant_id="g021",
+                    session_id="s1",
+                    agent_id=f"agent{i}",
+                ),
+                range(n),
+            )
+        )
 
     assert len(handles) == n
     assert len({h.path for h in handles}) == n  # 10 个不同路径
     # git worktree list 应该有 10 个 + main = 11 行 (--porcelain 模式)
     proc = subprocess.run(
         ["git", "-C", str(git_repo), "worktree", "list", "--porcelain"],
-        capture_output=True, text=True, timeout=5, check=False,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
     )
     worktree_count = proc.stdout.count("\nworktree ") + (
         1 if proc.stdout.startswith("worktree ") else 0
     )
-    assert worktree_count == n + 1, (
-        f"expected {n + 1} worktrees, got {worktree_count}"
-    )
+    assert worktree_count == n + 1, f"expected {n + 1} worktrees, got {worktree_count}"
     mgr.cleanup_all()
 
 

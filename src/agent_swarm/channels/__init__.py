@@ -5,6 +5,7 @@ Phase 2 W10 引入飞书连接器。
 骨架：ChannelType / ChannelMessage / ChannelConnector ABC / ChannelAdapter 路由
 落地：LarkConnector + 5 个内置卡片模板
 """
+
 from __future__ import annotations
 
 from agent_swarm.channels.adapter import (

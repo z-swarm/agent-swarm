@@ -98,6 +98,7 @@ class PostgresBackend(TaskQueueBackend):
         if self._initialized:
             return
         import asyncio
+
         if self._init_lock is None:
             self._init_lock = asyncio.Lock()
         async with self._init_lock:
@@ -113,6 +114,7 @@ class PostgresBackend(TaskQueueBackend):
                 )
             else:
                 import asyncpg
+
                 self._pool = await asyncpg.create_pool(
                     dsn=self.config.dsn,
                     min_size=self.config.min_size,
@@ -130,9 +132,7 @@ class PostgresBackend(TaskQueueBackend):
         async with self._pool.acquire() as conn:
             # schema 已存在时 (public) CREATE SCHEMA 会报错, 容错
             if self.config.namespace != "public":
-                await conn.execute(
-                    f"CREATE SCHEMA IF NOT EXISTS {self.config.namespace}"
-                )
+                await conn.execute(f"CREATE SCHEMA IF NOT EXISTS {self.config.namespace}")
             # 路径: schema.table (public 简写)
             full_table = (
                 f"{self.config.namespace}.{self.config.table}"
@@ -207,14 +207,15 @@ class PostgresBackend(TaskQueueBackend):
             raise KeyError(task_id)
         if current.version != expected_version:
             raise VersionMismatchError(
-                task_id, expected_version, current.version,
+                task_id,
+                expected_version,
+                current.version,
             )
         # 2. 计算 new
         new = mutator(current)
         if new.version != expected_version + 1:
             raise ValueError(
-                f"mutator must bump version by 1, "
-                f"got {expected_version} -> {new.version}",
+                f"mutator must bump version by 1, got {expected_version} -> {new.version}",
             )
         # 3. 原子 UPDATE
         sql = (
@@ -225,8 +226,11 @@ class PostgresBackend(TaskQueueBackend):
         )
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
-                sql, new.version, json.dumps(new.to_dict()),
-                task_id, expected_version,
+                sql,
+                new.version,
+                json.dumps(new.to_dict()),
+                task_id,
+                expected_version,
             )
         if row is None:
             # 版本已被别人改
@@ -234,7 +238,9 @@ class PostgresBackend(TaskQueueBackend):
             if current2 is None:
                 raise KeyError(task_id)
             raise VersionMismatchError(
-                task_id, expected_version, current2.version,
+                task_id,
+                expected_version,
+                current2.version,
             )
         # row['data'] 可能是 JSON 字符串 (jsonb 自动反序列化取决于 driver)
         data = row["data"]

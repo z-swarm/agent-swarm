@@ -77,10 +77,14 @@ class FakeSysLeases:
 
 class FakeVaultClient:
     def __init__(self) -> None:
-        self.secrets = type("S", (), {
-            "kv": type("KV", (), {"v2": FakeSecretsKvV2()})(),
-            "database": FakeDatabase(),
-        })()
+        self.secrets = type(
+            "S",
+            (),
+            {
+                "kv": type("KV", (), {"v2": FakeSecretsKvV2()})(),
+                "database": FakeDatabase(),
+            },
+        )()
         self.sys = type("Sys", (), {"leases": FakeSysLeases()})()
 
 
@@ -113,7 +117,10 @@ def dyn(vsm: VaultSecretManager) -> VaultDynamicSecretManager:
 def test_dbcredentials_defaults() -> None:
     """DBCredentials: 默认值"""
     c = DBCredentials(
-        username="u", password="p", lease_id="l1", lease_duration_seconds=60,
+        username="u",
+        password="p",
+        lease_id="l1",
+        lease_duration_seconds=60,
     )
     assert c.username == "u"
     assert c.lease_duration_seconds == 60
@@ -124,7 +131,10 @@ def test_dbcredentials_defaults() -> None:
 def test_dbcredentials_expires_at() -> None:
     """expires_at = issued_at + ttl"""
     c = DBCredentials(
-        username="u", password="p", lease_id="l1", lease_duration_seconds=3600,
+        username="u",
+        password="p",
+        lease_id="l1",
+        lease_duration_seconds=3600,
     )
     expected = c.issued_at + 3600
     assert abs(c.expires_at - expected) < 0.01
@@ -133,7 +143,10 @@ def test_dbcredentials_expires_at() -> None:
 def test_dbcredentials_seconds_to_expiry() -> None:
     """seconds_to_expiry = ttl - elapsed"""
     c = DBCredentials(
-        username="u", password="p", lease_id="l1", lease_duration_seconds=3600,
+        username="u",
+        password="p",
+        lease_id="l1",
+        lease_duration_seconds=3600,
     )
     assert c.seconds_to_expiry > 3500
     assert c.seconds_to_expiry <= 3600
@@ -142,7 +155,10 @@ def test_dbcredentials_seconds_to_expiry() -> None:
 def test_dbcredentials_as_dsn() -> None:
     """as_dsn: 组装 postgresql DSN"""
     c = DBCredentials(
-        username="alice", password="s3cret", lease_id="l1", lease_duration_seconds=3600,
+        username="alice",
+        password="s3cret",
+        lease_id="l1",
+        lease_duration_seconds=3600,
     )
     dsn = c.as_dsn("db.example.com", 5432, "myapp")
     assert dsn == "postgresql://alice:s3cret@db.example.com:5432/myapp"
@@ -155,7 +171,8 @@ def test_dbcredentials_as_dsn() -> None:
 
 @pytest.mark.asyncio
 async def test_get_dynamic_credentials(
-    dyn: VaultDynamicSecretManager, fake_vault: FakeVaultClient,
+    dyn: VaultDynamicSecretManager,
+    fake_vault: FakeVaultClient,
 ) -> None:
     """get_dynamic_credentials: 返回 DBCredentials + 记录 lease"""
     c = await dyn.get_dynamic_credentials("readonly")
@@ -193,7 +210,8 @@ async def test_get_dynamic_credentials_unique(
 
 @pytest.mark.asyncio
 async def test_renew_lease(
-    dyn: VaultDynamicSecretManager, fake_vault: FakeVaultClient,
+    dyn: VaultDynamicSecretManager,
+    fake_vault: FakeVaultClient,
 ) -> None:
     """renew: 调 vault, 更新 ttl"""
     c = await dyn.get_dynamic_credentials("rw")
@@ -208,6 +226,7 @@ async def test_renew_unknown_lease_raises(
 ) -> None:
     """renew 未知 lease: 抛 SecretError"""
     from agent_swarm.security.secret_manager import SecretError
+
     with pytest.raises(SecretError, match="unknown lease_id"):
         await dyn.renew_lease("nonexistent-lease-id")
 
@@ -219,7 +238,8 @@ async def test_renew_unknown_lease_raises(
 
 @pytest.mark.asyncio
 async def test_revoke_lease(
-    dyn: VaultDynamicSecretManager, fake_vault: FakeVaultClient,
+    dyn: VaultDynamicSecretManager,
+    fake_vault: FakeVaultClient,
 ) -> None:
     """revoke: 调 vault + 移除 _active_leases"""
     c = await dyn.get_dynamic_credentials("rw")
@@ -238,7 +258,8 @@ async def test_revoke_unknown_lease_is_noop(
 
 @pytest.mark.asyncio
 async def test_revoke_all(
-    dyn: VaultDynamicSecretManager, fake_vault: FakeVaultClient,
+    dyn: VaultDynamicSecretManager,
+    fake_vault: FakeVaultClient,
 ) -> None:
     """revoke_all: 全部回收"""
     for i in range(5):
@@ -257,7 +278,8 @@ async def test_revoke_all(
 
 @pytest.mark.asyncio
 async def test_dyn_uses_vsm_vault_client(
-    vsm: VaultSecretManager, fake_vault: FakeVaultClient,
+    vsm: VaultSecretManager,
+    fake_vault: FakeVaultClient,
 ) -> None:
     """VaultDynamicSecretManager 复用 VaultSecretManager 的 vault client"""
     dyn = VaultDynamicSecretManager(vsm)
@@ -267,7 +289,8 @@ async def test_dyn_uses_vsm_vault_client(
 
 @pytest.mark.asyncio
 async def test_workflow_full(
-    dyn: VaultDynamicSecretManager, fake_vault: FakeVaultClient,
+    dyn: VaultDynamicSecretManager,
+    fake_vault: FakeVaultClient,
 ) -> None:
     """完整工作流: get → renew → revoke"""
     # 1. 获取

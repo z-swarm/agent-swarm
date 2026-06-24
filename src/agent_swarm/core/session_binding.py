@@ -39,7 +39,7 @@ class ChannelIdentity:
 
     tenant_id: str
     identity_key: str  # 通道身份（飞书 open_id / CLI user_id / Web session_id）
-    channel: str        # "lark" / "cli" / "web"
+    channel: str  # "lark" / "cli" / "web"
     user_id: str | None = None  # 跨通道统一 ID（通常是 email）
     session_id: str | None = None
     created_at: datetime = None  # type: ignore[assignment]
@@ -140,8 +140,7 @@ class SessionBindingManager:
                     """INSERT OR REPLACE INTO channel_identities
                        (tenant_id, identity_key, channel, user_id, created_at)
                        VALUES (?, ?, ?, ?, ?)""",
-                    (tenant_id, identity_key, channel, user_id,
-                     identity.created_at.timestamp()),
+                    (tenant_id, identity_key, channel, user_id, identity.created_at.timestamp()),
                 )
                 self._db_conn.commit()
             if user_id:
@@ -149,7 +148,9 @@ class SessionBindingManager:
             return identity
 
     def get_identity(
-        self, tenant_id: str, identity_key: str,
+        self,
+        tenant_id: str,
+        identity_key: str,
     ) -> ChannelIdentity | None:
         """取已注册身份——None 表示未注册"""
         key = f"{tenant_id}|{identity_key}"
@@ -172,7 +173,9 @@ class SessionBindingManager:
         return self._identities.get(key)
 
     def resolve_user(
-        self, tenant_id: str, identity_key: str,
+        self,
+        tenant_id: str,
+        identity_key: str,
     ) -> str | None:
         """
         跨通道身份解析——返回统一 user_id
@@ -198,8 +201,10 @@ class SessionBindingManager:
         """绑定 (tenant_id, identity_key) -> session_id"""
         with self._lock:
             binding = SessionBinding(
-                tenant_id=tenant_id, identity_key=identity_key,
-                session_id=session_id, channel=channel,
+                tenant_id=tenant_id,
+                identity_key=identity_key,
+                session_id=session_id,
+                channel=channel,
             )
             key = f"{tenant_id}|{identity_key}"
             self._bindings[key] = binding
@@ -208,14 +213,15 @@ class SessionBindingManager:
                     """INSERT OR REPLACE INTO session_bindings
                        (tenant_id, identity_key, session_id, channel, bound_at)
                        VALUES (?, ?, ?, ?, ?)""",
-                    (tenant_id, identity_key, session_id, channel,
-                     binding.bound_at.timestamp()),
+                    (tenant_id, identity_key, session_id, channel, binding.bound_at.timestamp()),
                 )
                 self._db_conn.commit()
             return binding
 
     def get_session(
-        self, tenant_id: str, identity_key: str,
+        self,
+        tenant_id: str,
+        identity_key: str,
     ) -> str | None:
         """取 (tenant_id, identity_key) 绑定的 session_id"""
         with self._lock:
@@ -223,8 +229,7 @@ class SessionBindingManager:
             binding = self._bindings.get(key)
             if binding is None and self._db_conn is not None:
                 row = self._db_conn.execute(
-                    "SELECT session_id FROM session_bindings "
-                    "WHERE tenant_id=? AND identity_key=?",
+                    "SELECT session_id FROM session_bindings WHERE tenant_id=? AND identity_key=?",
                     (tenant_id, identity_key),
                 ).fetchone()
                 if row is not None:
@@ -277,10 +282,7 @@ class SessionBindingManager:
         with self._lock:
             if tenant_id is None:
                 return list(self._bindings.values())
-            return [
-                b for b in self._bindings.values()
-                if b.tenant_id == tenant_id
-            ]
+            return [b for b in self._bindings.values() if b.tenant_id == tenant_id]
 
     def clear(self) -> None:
         """清空（测试用）"""
