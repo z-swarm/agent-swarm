@@ -10,23 +10,6 @@
 - **委托模式**: 协调者与执行者分离
 - **多 Provider**: 不绑定单一 LLM，支持 OpenAI / Anthropic / DeepSeek / Ollama
 
-## 状态
-
-🟢 **Phase 1 完成** — 6 周垂直切片全部 DoD 通过；TUI 仪表盘实时观测
-🟡 **Phase 2 W7 (Delegate Mode) 完成** — Lead + Worker 分离端到端跑通
-
-| 周 | 切片 | 状态 | DoD |
-|---|------|-----|-----|
-| W1 | 单 agent + CLI hello | ✅ | 退出码 0 + 关键词 |
-| W2 | 双 agent + Mailbox + TaskQueue + Anthropic | ✅ | CAS 冲突 ≥1 |
-| W3 | SQLite 持久化 + Session 恢复 + Observability | ✅ | kill -9 状态 100% 重建 |
-| W4 | KB + Skill + Golden Case G-001 | ✅ | G-001 通过 + KB 命中 ≥60% |
-| W5 | SecurityContext + Sandbox + TokenBudget | ✅ | 25/25 攻击拦截 + 截断不崩溃 |
-| W6 | TUI 仪表盘 (Textual) | ✅ | 5 秒内完整视图 |
-| **W7** | **Delegate Mode (Lead + Worker)** | ✅ | **1 lead + 2 workers 协作；lead 工具权限拦截；ProtocolResult 含 lead/worker 分组** |
-| **W8** | **Adversarial Verify** | ✅ | **3 plan_only judge × 3 假设；4 条收敛路径全覆盖；5 个 P2 Golden Case 根因命中率 100%** |
-| **W9** | **MCP 集成** | ✅ | **MCPRegistry + StdioMCPClient + MCPToolAdapter；filesystem + GitHub ≥2 server 走通（Phase 2 DoD ③）** |
-
 ## Quickstart
 
 ```bash
