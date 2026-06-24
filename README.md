@@ -2,8 +2,6 @@
 
 独立的通用多 Agent 协作框架。Any OS. Any Platform. The lobster way.
 
-> 架构设计文档: [DESIGN.md](./DESIGN.md)
-
 ## 核心理念
 
 - **去中心化协调**: Task Queue + 乐观锁 CAS，agent 自己认领任务
