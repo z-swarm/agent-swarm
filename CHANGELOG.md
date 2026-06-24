@@ -5,6 +5,85 @@ All notable changes to agent-swarm will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0a2] - 2026-06-24
+
+### Phase 5 增量 release (W33a-W36c)
+
+#### 汇总: 7 个 weekly slice 全部 PDCA 闭环
+
+| Slice | 内容 | 关键 commit |
+|-------|------|------------|
+| **W33a** | P0-1 防御深度 (env 脱敏 + 白名单收缩) + 遗留修复 | `fed9921` |
+| **W33b** | WebState Postgres 持久化 (Store 协议 + Schema + CLI + G-023) | `8849c8a` |
+| **W34** | WebState JWT 鉴权 (HS256 标准库 + middleware 401 拦截) | `e6b204b` |
+| **W35** | WebState 跨进程 fan-out (LISTEN/NOTIFY) 闭环 W33b R4 | `285baa3` |
+| **W36a** | JWT Secret 走 SecretManager (轮换不重启) + SecretRef 协议 | `fff1823` |
+| **W36b** | agent_review Web 入口 (UI 按钮触发 review) | `ecfbe73` |
+| **W36c** | vault://path#field URI 扩展 (闭环 W36a 协议) | `6ca24eb` |
+
+#### W33a: P0-1 防御深度加固 + 遗留修复 (2026-06-23)
+- **新增**: `src/agent_swarm/security/_printenv.py` — `printenv` 替代 `env` 防御深度 (白名单 + 脱敏)
+- **修改**: 5+ 个模块用 `printenv` 替代 `os.environ` 直读
+- **DoD**: ruff 0 / mypy 0 / 全量 1251 passed (W32 → W33a)
+
+#### W33b: WebState Postgres 持久化 (2026-06-23)
+- **新增**: `src/agent_swarm/web/store.py` — WebStateStore 协议 + MemoryWebStateStore + PostgresWebStateStore
+- **Schema**: `webstate_events(seq PK, ts, event_type, payload JSONB, session_id, tenant_id)` + 3 索引
+- **CLI**: `--web-postgres-dsn / --web-postgres-table` 选项
+- **DoD**: 1273 passed (W33a → W33b); 22 新增
+- **已知限制**: 跨进程 fan-out 需 W34+ 加 LISTEN/NOTIFY (R4)
+
+#### W34: WebState JWT 鉴权 (2026-06-23)
+- **新增**: `src/agent_swarm/web/auth.py` — JWTIssuer (HS256 标准库, 零新依赖) + middleware
+- **路由签名决策**: middleware 全局拦截, 不在路由签名加 `Depends` (避 FastAPI 422 坑)
+- **CLI**: `--web-jwt-secret` (字面值 / ${VAR} 引用)
+- **DoD**: 1295 passed (W33b → W34); 22 新增 (test_web_jwt_auth.py ≥15 + G-024)
+- **已知限制**: HS256 secret 需 SecretManager 轮换 (留 W36a)
+
+#### W35: WebState 跨进程 fan-out (LISTEN/NOTIFY) (2026-06-23)
+- **新增**: `PostgresNotifier` (asyncpg LISTEN/NOTIFY 封装) + `NotifyEnvelope` 协议
+- **origin_id 防 fan-out loop**: uuid4 hex 32 字符, 自订阅丢
+- **8KB 截断降级**: NOTIFY 硬限制, payload > 7KB 降级为 `_truncated` 占位
+- **fake asyncpg bus**: 模拟"两进程" + 跨进程语义 (W33 Store 模式延伸)
+- **DoD**: web 子集 108/108 passed; `verify_w35_dod.py` 8/8; 18 unit + 4 G-025
+
+#### W36a: JWT Secret 走 SecretManager (轮换不重启) (2026-06-24)
+- **新增**: `SecretRef` 协议 (literal / env / secret_ref / vault 4 kinds)
+- **JWTConfig 扩展**: `secret_ref` + `secret_manager` 字段
+- **JWTIssuer**: `resolve_secret()` async + (key, version) cache + 降级路径 (P0 防御深度)
+- **CLI**: `--web-jwt-secret-ref` + `--web-secret-manager {env,vault}` + `--vault-*` 三件套
+- **DoD**: `verify_w36a_dod.py` 8/8; W34 22 老 case 不破; 21+7 unit + 5 G-026
+- **闭环 W34 已知限制 #2**
+
+#### W36b: agent_review Web 入口 (UI 按钮触发 review) (2026-06-24)
+- **新增**: `src/agent_swarm/web/review_runner.py` — 薄包装 (AGENT_REVIEW_REPO env + sys.modules 清理)
+- **路由**: `GET /review` 页面 + `POST /api/review` + `GET /partials/review_form`
+- **模板**: `review.html` (HTMX 表单) + `partials/review_result.html` + base.html nav 入口
+- **写路径鉴权**: PROTECTED_PREFIXES 加 `"/api/review"` (W34 模式一行复用)
+- **注入防御**: `pr_ref` 字符黑名单 + shlex.split 双重校验
+- **DoD**: `verify_w36b_dod.py` 8/8; W28/W34/W36a 不破; 14 unit + 4 G-027
+
+#### W36c: vault://path#field URI 扩展 (闭环 W36a 协议) (2026-06-24)
+- **新增**: `parse_secret_ref` 识别 `vault://path#field` (4 kinds 共用入口)
+- **SecretRef 扩展**: `field: str | None = None` 字段 (frozen, 向后兼容 W36a)
+- **JWTIssuer.resolve_secret vault 模式**: `mgr.get(path)` + JSON 解析 + field 提取
+- **create_app**: 接受 `vault_url/vault_role_id/vault_secret_id` (vault:// 自动实例化 VaultSecretManager)
+- **CLI**: `--web-jwt-secret-ref` 接受 `vault://` (复用 W36a `--web-secret-manager vault`)
+- **DoD**: `verify_w36c_dod.py` 8/8; W36a 22 老 case 不破; 14 unit + 5 G-028
+
+#### 阶段统计 (W33a-W36c)
+- **新增代码**: 30+ 文件 (web 9 + security 3 + tests 18+)
+- **测试增量**: 1126 → 1204+ passed (+78 cases: 14+5+21+7+14+4+11)
+- **守门脚本**: 5 个 (verify_w33_dod.py + verify_w35_dod.py + verify_w36{a,b,c}_dod.py)
+- **Golden Case**: G-022 → G-028 (7 个, 端到端 30+ cases)
+- **新增 CLI 选项**: 9 个 (`--web` + `--web-host/--web-port` + `--web-postgres-*` + `--web-jwt-*` + `--web-cross-process` + `--web-worktree-*` + `--web-secret-manager` + `--vault-*`)
+- **向后兼容**: W28 baseline 100% 不破, 跨 8 commit 兼容
+
+#### 已知缺口 (等用户环境)
+- TestPyPI 上传: dist ready, `twine check` PASSED, 实发需用户配 `~/.pypirc` token + non-interactive terminal
+- DESIGN.md / docs/ 已 untrack (chore 2e1de16 / 943f432), 计划/复盘文档本地保留
+- 端到端 e2e: `WorktreeManager initialized` + `web UI started` + `JWT 鉴权 401 拦截` + `SecretManager 轮换不重启` + `agent_review Web 入口` + `vault:// URI 解析`
+
 ## [0.5.0a1] - 2026-06-22
 
 ### Phase 5 启动 (W28 GUI Web UI v1)

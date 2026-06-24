@@ -61,7 +61,7 @@ def create_app(
     vault_role_id: str | None = None,
     vault_secret_id: str | None = None,
     title: str = "agent-swarm",
-    version: str = "0.5.0a1",
+    version: str = "0.5.0a2",
 ) -> FastAPI:
     """
     构造 FastAPI app
