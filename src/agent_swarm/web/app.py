@@ -60,6 +60,9 @@ def create_app(
     vault_url: str = "http://127.0.0.1:8200",
     vault_role_id: str | None = None,
     vault_secret_id: str | None = None,
+    review_mode: str = "full",
+    review_llm: str = "fake",
+    review_timeout: float = 60.0,
     title: str = "agent-swarm",
     version: str = "0.5.0a2",
 ) -> FastAPI:
@@ -84,6 +87,9 @@ def create_app(
     @param vault_url         W36c: Vault URL (vault:// 模式自动实例化时使用)
     @param vault_role_id     W36c: Vault AppRole role_id (vault:// 模式自动实例化时使用)
     @param vault_secret_id   W36c: Vault AppRole secret_id (vault:// 模式自动实例化时使用)
+    @param review_mode       W36f: agent_review 模式 (simple / full; 默认 full)
+    @param review_llm        W36f: full mode LLM provider (openai / anthropic / fake; 默认 fake)
+    @param review_timeout    W36f: full mode LLM 调用超时 (秒, 默认 60)
     @param title             app 标题 (OpenAPI docs)
     @param version           app 版本
     @return FastAPI 实例
@@ -265,6 +271,10 @@ def create_app(
     # W36b: web_repo_root (review 路由读)
     if web_repo_root is not None:
         app.state.web_repo_root = web_repo_root
+    # W36f: review 模式配置 (mode / llm / timeout)
+    app.state.web_review_mode = review_mode
+    app.state.web_review_llm = review_llm
+    app.state.web_review_timeout = review_timeout
     # 可选: WorktreeManager (P5-W32) — 路由用 getattr 兜底
     if worktree_manager is not None:
         app.state.worktree_manager = worktree_manager

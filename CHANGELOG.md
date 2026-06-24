@@ -84,6 +84,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DESIGN.md / docs/ 已 untrack (chore 2e1de16 / 943f432), 计划/复盘文档本地保留
 - 端到端 e2e: `WorktreeManager initialized` + `web UI started` + `JWT 鉴权 401 拦截` + `SecretManager 轮换不重启` + `agent_review Web 入口` + `vault:// URI 解析`
 
+#### W36f: agent_review 异步入口 (LLM + SSE) (2026-06-24)
+
+- **新增**: `src/agent_swarm/web/review_runner.py` `ReviewTask` dataclass + 内存 task store
+  - 7 字段: `task_id` (uuid4 hex 32) / `status` (pending/running/done/error) / `progress` (0-100) / `log` / `result` / `error` / `created_at`
+- **新增**: `llm_judge_factory(provider: str)` — openai / anthropic / fake 三种
+  - fake: 复用 W13 `_deterministic_judge` (零新依赖)
+  - openai/anthropic: 占位 + API key fail-fast (真实 LLM 接入留 W37+)
+- **新增**: `run_full_review_async(task_id, ...)` — 异步后台任务 + 进度推送
+  - 用 `asyncio.to_thread` 跑同步 LLM, event loop 不阻塞
+  - timeout 默认 60s (CLI `--web-review-timeout` 可调)
+- **新增**: 3 端点 (`src/agent_swarm/web/routes.py`)
+  - `POST /api/review` 改异步, mode=full 返 `202 + task_id` (W36f); mode=simple 返 `200 + report` (W36b 兼容)
+  - `GET /api/review/{task_id}` 查状态 + 结果
+  - `GET /api/review/{task_id}/events` SSE 流 (text/event-stream, 30s 心跳保活)
+- **CLI**: `--web-review-mode {simple,full}` (默认 full) + `--web-review-llm {openai,anthropic,fake}` (默认 fake) + `--web-review-timeout` (默认 60s)
+- **前端**: `/review` 页面 JS EventSource 订阅 SSE, 进度条 + 日志流 + 完成后显示结果
+- **测试**: 18 unit (`tests/unit/test_web_review_async.py`) + 5 G-029 端到端 (`tests/golden/test_g029_review_async_e2e.py`)
+- **DoD**: `verify_w36f_dod.py` 8/8; W36b/G-027 不破 (走 simple mode 兼容); 1233 passed (W36d 1204 + W36f +29)
+- **已知限制**:
+  - 内存 task store 单进程限制 (多 worker 留 W37+ Redis 共享)
+  - 真实 OpenAI/Anthropic SDK 接入留 W37+ (当前 fake 模式等价 simple + 异步)
+  - 任务清理 1h TTL + 10min cleanup interval (后台 loop 留 W37+)
+
 ## [0.5.0a1] - 2026-06-22
 
 ### Phase 5 启动 (W28 GUI Web UI v1)

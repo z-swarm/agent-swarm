@@ -80,6 +80,7 @@ async def test_g027_clean_pr_zero_findings(tmp_path: Path) -> None:
     app = create_app(
         web_state=WebState(),
         jwt_secret=SECRET,
+        review_mode="simple",
         web_repo_root=repo,
     )
     client = TestClient(app)
@@ -122,6 +123,7 @@ async def test_g027_secret_leak_findings(tmp_path: Path) -> None:
     app = create_app(
         web_state=WebState(),
         jwt_secret=SECRET,
+        review_mode="simple",
         web_repo_root=repo,
     )
     client = TestClient(app)
@@ -167,6 +169,7 @@ async def test_g027_cmd_injection_findings(tmp_path: Path) -> None:
     app = create_app(
         web_state=WebState(),
         jwt_secret=SECRET,
+        review_mode="simple",
         web_repo_root=repo,
     )
     client = TestClient(app)
@@ -198,6 +201,7 @@ async def test_g027_report_schema(tmp_path: Path) -> None:
     app = create_app(
         web_state=WebState(),
         jwt_secret=SECRET,
+        review_mode="simple",
         web_repo_root=repo,
     )
     client = TestClient(app)

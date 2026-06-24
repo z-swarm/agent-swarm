@@ -19,13 +19,14 @@ P5-W36b: + /review 页面 + POST /api/review (调 run_simple_review)
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import shlex
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 
 from agent_swarm.web.state import WebState
 
@@ -305,76 +306,89 @@ async def review_page(request: Request) -> HTMLResponse:
 
 
 @router.post("/api/review")
-async def api_review(request: Request) -> JSONResponse:
+async def api_review(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
     """
-    调 agent_review.run_simple_review 同步返 ReviewReport
+    @brief P5-W36b/W36f: agent_review Web 入口 (兼容 + 异步)
 
-    W36b DoD:
-      - 接受 pr_ref (default "main..HEAD")
-      - 写路径强制 Bearer token (W34 middleware)
-      - 错误处理: 无 git repo / 无效 pr_ref / git 异常 → 友好 JSON
+    W36b 兼容: mode=simple 时同步调 run_review_sync, 立即返 report
+    W36f 异步: mode=full 时创建 task, 立即返 202 + task_id, 后台跑 LLM review
 
-    @note 实际生产中 agent_review 应异步, W36b 同步优先 (W13 决策)
+    @note  统一入口, 由 --web-review-mode 控制走哪条路径
     """
-    # 解析 body (允许空 body → 默认 pr_ref)
+    # 解析 body
     try:
         body: dict[str, Any] = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     except Exception:
         body = {}
     pr_ref = body.get("pr_ref", "main..HEAD")
-    if not isinstance(pr_ref, str):
-        return JSONResponse({"detail": "pr_ref must be a string"}, status_code=400)
-    # 校验 pr_ref
-    err = _validate_pr_ref(pr_ref)
-    if err:
-        return JSONResponse({"detail": err}, status_code=400)
-    # 取 repo_root (W36b: 复用 worktree_manager 模式, 加 web_repo_root)
+    err_resp = await _validate_pr_ref_or_400(pr_ref)
+    if err_resp is not None:
+        return err_resp
+    mode, llm = _get_web_review_config(request)
     web_repo_root: Path | None = getattr(request.app.state, "web_repo_root", None)
-    # 调 agent_review (run_simple_review 是 sync, 用 to_thread 不阻塞 event loop)
-    try:
-        # 延迟导入避免循环
-        from agent_swarm.web import review_runner
+    if mode == "simple":
+        # W36b 兼容路径: 同步返 report
+        try:
+            from agent_swarm.web import review_runner
 
-        report_dict: dict[str, Any] = await asyncio.to_thread(
-            review_runner.run_review_sync,
-            pr_ref,
-            web_repo_root,
-        )
-    except FileNotFoundError as exc:
-        # git 不在 PATH
-        return JSONResponse(
-            {"detail": f"git not available: {exc}"},
-            status_code=500,
-        )
-    except RuntimeError as exc:
-        # 非 git repo / 无 diff / git 异常
-        msg = str(exc)
-        if "not a git repository" in msg or "not a git" in msg:
+            report_dict: dict[str, Any] = await asyncio.to_thread(
+                review_runner.run_review_sync, pr_ref, web_repo_root,
+            )
+        except FileNotFoundError as exc:
+            return JSONResponse({"detail": f"git not available: {exc}"}, status_code=500)
+        except RuntimeError as exc:
+            msg = str(exc)
+            if "not a git" in msg:
+                return JSONResponse(
+                    {"detail": "not a git repository", "hint": "configure --web-review-repo"},
+                    status_code=500,
+                )
+            if "no diff" in msg.lower() or "empty" in msg.lower():
+                return JSONResponse({
+                    "ok": True,
+                    "report": {
+                        "pr_ref": pr_ref,
+                        "verdict": "approve",
+                        "findings": [],
+                        "root_causes": [],
+                        "summary": f"无变更 (pr_ref={pr_ref!r})",
+                        "confidence": 1.0,
+                    },
+                })
+            return JSONResponse({"detail": f"review failed: {exc}"}, status_code=500)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("simple review failed")
             return JSONResponse(
-                {"detail": "not a git repository", "hint": "configure --web-review-repo"},
+                {"detail": f"unexpected error: {type(exc).__name__}: {exc}"},
                 status_code=500,
             )
-        if "no diff" in msg.lower() or "empty" in msg.lower():
-            # 无变更 → 返空 report (200)
-            return JSONResponse({
-                "ok": True,
-                "report": {
-                    "pr_ref": pr_ref,
-                    "verdict": "approve",
-                    "findings": [],
-                    "root_causes": [],
-                    "summary": f"无变更 (pr_ref={pr_ref!r})",
-                    "confidence": 1.0,
-                },
-            })
-        return JSONResponse({"detail": f"review failed: {exc}"}, status_code=500)
-    except Exception as exc:  # noqa: BLE001
-        log.exception("agent_review failed")
+        return JSONResponse({"ok": True, "report": report_dict})
+    # mode == "full": W36f 异步路径
+    from agent_swarm.web import review_runner as _rr
+    check_path = web_repo_root if web_repo_root else Path.cwd()
+    if not _rr._is_git_repo(check_path):
         return JSONResponse(
-            {"detail": f"unexpected error: {type(exc).__name__}: {exc}"},
+            {"detail": "not a git repository", "hint": "configure --web-review-repo"},
             status_code=500,
         )
-    return JSONResponse({"ok": True, "report": report_dict})
+    # 创建 task
+    task = _rr.create_task(pr_ref, llm)
+    # 调度后台任务
+    review_timeout: float = float(getattr(request.app.state, "web_review_timeout", 60.0))
+    background_tasks.add_task(
+        _rr.run_full_review_async,
+        task.task_id, pr_ref, web_repo_root, llm, review_timeout,
+    )
+    return JSONResponse(
+        {
+            "ok": True,
+            "task_id": task.task_id,
+            "status": "pending",
+            "status_url": f"/api/review/{task.task_id}",
+            "events_url": f"/api/review/{task.task_id}/events",
+        },
+        status_code=202,
+    )
 
 
 @router.get("/partials/review_form")
@@ -386,3 +400,212 @@ async def review_form_partial(request: Request) -> HTMLResponse:
         "partials/review_form.html",
         {},
     )
+
+
+# ---------------------------------------------------------------------------
+# P5-W36f: full mode 异步入口 (LLM + SSE)
+# ---------------------------------------------------------------------------
+
+
+async def _validate_pr_ref_or_400(pr_ref: Any) -> JSONResponse | None:
+    """
+    @brief 校验 pr_ref, 失败返 400 JSONResponse, 成功返 None
+
+    @param pr_ref 入参
+    @return JSONResponse (400) 或 None
+    """
+    if not isinstance(pr_ref, str):
+        return JSONResponse({"detail": "pr_ref must be a string"}, status_code=400)
+    err = _validate_pr_ref(pr_ref)
+    if err:
+        return JSONResponse({"detail": err}, status_code=400)
+    return None
+
+
+def _get_web_review_config(request: Request) -> tuple[str, str]:
+    """
+    @brief 取 web review 配置 (mode, llm_provider)
+
+    @return (mode, llm_provider) — mode in {simple, full}, llm in {openai,anthropic,fake}
+    @note  从 app.state 取, CLI 注入 (D6)
+    """
+    mode = getattr(request.app.state, "web_review_mode", "full")
+    llm = getattr(request.app.state, "web_review_llm", "fake")
+    return mode, llm
+
+
+@router.post("/api/review")
+async def api_review_v2(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
+    """
+    @brief W36f: 异步 review 入口 (LLM + full mode)
+
+    @note  W36b 简单模式: 同步调 run_review_sync, 立即返 report
+           W36f full mode: 创建 task + 立即返 task_id (202), 后台跑 LLM review
+    @note  由 --web-review-mode 控制: simple 走 W36b 同步路径, full 走 W36f 异步
+    """
+    # 解析 body
+    try:
+        body: dict[str, Any] = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    except Exception:
+        body = {}
+    pr_ref = body.get("pr_ref", "main..HEAD")
+    err_resp = await _validate_pr_ref_or_400(pr_ref)
+    if err_resp is not None:
+        return err_resp
+    mode, llm = _get_web_review_config(request)
+    web_repo_root: Path | None = getattr(request.app.state, "web_repo_root", None)
+    if mode == "simple":
+        # W36b 兼容路径: 同步返 report
+        try:
+            from agent_swarm.web import review_runner
+
+            report_dict: dict[str, Any] = await asyncio.to_thread(
+                review_runner.run_review_sync, pr_ref, web_repo_root,
+            )
+        except FileNotFoundError as exc:
+            return JSONResponse({"detail": f"git not available: {exc}"}, status_code=500)
+        except RuntimeError as exc:
+            msg = str(exc)
+            if "not a git" in msg:
+                return JSONResponse(
+                    {"detail": "not a git repository", "hint": "configure --web-review-repo"},
+                    status_code=500,
+                )
+            if "no diff" in msg.lower() or "empty" in msg.lower():
+                return JSONResponse({
+                    "ok": True,
+                    "report": {
+                        "pr_ref": pr_ref,
+                        "verdict": "approve",
+                        "findings": [],
+                        "root_causes": [],
+                        "summary": f"无变更 (pr_ref={pr_ref!r})",
+                        "confidence": 1.0,
+                    },
+                })
+            return JSONResponse({"detail": f"review failed: {exc}"}, status_code=500)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("simple review failed")
+            return JSONResponse(
+                {"detail": f"unexpected error: {type(exc).__name__}: {exc}"},
+                status_code=500,
+            )
+        return JSONResponse({"ok": True, "report": report_dict})
+    # mode == "full": W36f 异步路径
+    # 前置: git repo check (fail-fast, 不浪费 task_id)
+    from agent_swarm.web import review_runner as _rr
+    check_path = web_repo_root if web_repo_root else Path.cwd()
+    if not _rr._is_git_repo(check_path):
+        return JSONResponse(
+            {"detail": "not a git repository", "hint": "configure --web-review-repo"},
+            status_code=500,
+        )
+    # 创建 task
+    task = _rr.create_task(pr_ref, llm)
+    # 调度后台任务
+    background_tasks.add_task(
+        _rr.run_full_review_async,
+        task.task_id, pr_ref, web_repo_root, llm,
+    )
+    return JSONResponse(
+        {
+            "ok": True,
+            "task_id": task.task_id,
+            "status": "pending",
+            "status_url": f"/api/review/{task.task_id}",
+            "events_url": f"/api/review/{task.task_id}/events",
+        },
+        status_code=202,
+    )
+
+
+@router.get("/api/review/{task_id}")
+async def api_review_status(request: Request, task_id: str) -> JSONResponse:
+    """
+    @brief W36f: 查 task 状态 + 结果
+
+    @param task_id 任务 ID
+    @return 200 = 状态 JSON, 404 = 不存在
+    """
+    from agent_swarm.web import review_runner as _rr
+    task = _rr.get_task(task_id)
+    if task is None:
+        return JSONResponse({"detail": "task not found"}, status_code=404)
+    body: dict[str, Any] = {
+        "task_id": task.task_id,
+        "status": task.status,
+        "progress": task.progress,
+        "pr_ref": task.pr_ref,
+        "llm_provider": task.llm_provider,
+        "created_at": task.created_at,
+    }
+    if task.status == "done" and task.result is not None:
+        body["result"] = task.result
+    if task.status == "error" and task.error is not None:
+        body["error"] = task.error
+    if task.log:
+        body["log"] = task.log
+    return JSONResponse(body)
+
+
+@router.get("/api/review/{task_id}/events")
+async def api_review_events(request: Request, task_id: str):
+    """
+    @brief W36f: SSE 进度流 (text/event-stream)
+
+    @param task_id 任务 ID
+    @return StreamingResponse (SSE)
+    @note  事件格式: data: {json}\n\n
+           事件类型: update (进度更新) / done (完成) / error
+    """
+    from agent_swarm.web import review_runner as _rr
+    task = _rr.get_task(task_id)
+    if task is None:
+        return JSONResponse({"detail": "task not found"}, status_code=404)
+    # 已完成: 立即发完所有状态, 然后关流
+    if task.status in ("done", "error"):
+        async def _immediate() -> Any:
+            payload: dict[str, Any] = {
+                "type": "update",
+                "task_id": task.task_id,
+                "status": task.status,
+                "progress": task.progress,
+            }
+            if task.result is not None:
+                payload["result"] = task.result
+            if task.error is not None:
+                payload["error"] = task.error
+            yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+        return StreamingResponse(_immediate(), media_type="text/event-stream")
+    # 未完成: 订阅 + 推送
+    queue = _rr.subscribe_task(task_id)
+    if queue is None:
+        return JSONResponse({"detail": "task not found"}, status_code=404)
+
+    async def _event_stream() -> Any:
+        try:
+            # 先发当前快照
+            snapshot = {
+                "type": "update",
+                "task_id": task.task_id,
+                "status": task.status,
+                "progress": task.progress,
+            }
+            yield f"data: {json.dumps(snapshot, ensure_ascii=False)}\n\n"
+            # 再等事件
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=30.0)
+                except TimeoutError:
+                    # 心跳保活
+                    yield ": heartbeat\n\n"
+                    continue
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                if event.get("status") in ("done", "error"):
+                    break
+        finally:
+            # 清理: 从订阅列表移除
+            queues = _rr._TASK_QUEUES.get(task_id, [])
+            if queue in queues:
+                queues.remove(queue)
+    return StreamingResponse(_event_stream(), media_type="text/event-stream")

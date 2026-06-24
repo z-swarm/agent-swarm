@@ -29,7 +29,8 @@ SECRET = "test-secret-w36b-do-not-use"
 
 
 def _client(jwt_secret: str | None = None) -> TestClient:
-    app = create_app(web_state=WebState(), jwt_secret=jwt_secret)
+    # W36f: W36b 测试走 simple mode (同步, 200 返 report); full mode 走 W36f 异步 (202)
+    app = create_app(web_state=WebState(), jwt_secret=jwt_secret, review_mode="simple")
     return TestClient(app)
 
 

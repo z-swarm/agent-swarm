@@ -335,6 +335,33 @@ cli.add_command(_doctor_cmd)
     default=3600,
     help="P5-W34: JWT 有效期 (秒, 默认 3600)",
 )
+@click.option(
+    "--web-review-mode",
+    "web_review_mode",
+    type=click.Choice(["simple", "full"], case_sensitive=False),
+    default="full",
+    help=(
+        "P5-W36f: agent_review 模式; simple 走 W36b 同步 (确定性 Judge), "
+        "full 走 W36f 异步 + SSE (LLM judge, 默认)"
+    ),
+)
+@click.option(
+    "--web-review-llm",
+    "web_review_llm",
+    type=click.Choice(["openai", "anthropic", "fake"], case_sensitive=False),
+    default="fake",
+    help=(
+        "P5-W36f: full mode LLM provider; "
+        "openai/anthropic 需对应 API key, fake 走确定性 Judge (W13 default)"
+    ),
+)
+@click.option(
+    "--web-review-timeout",
+    "web_review_timeout",
+    type=float,
+    default=60.0,
+    help="P5-W36f: full mode LLM 调用超时 (秒, 默认 60)",
+)
 def run(
     config: Path,
     verbose: bool,
@@ -357,6 +384,9 @@ def run(
     vault_role_id: str | None,
     vault_secret_id: str | None,
     web_jwt_expires: int,
+    web_review_mode: str,
+    web_review_llm: str,
+    web_review_timeout: float,
 ) -> None:
     """运行 swarm（从 YAML 配置启动）"""
     _configure_logging(verbose)
@@ -453,6 +483,9 @@ def run(
             jwt_secret_ref=web_jwt_secret_ref,
             secret_manager=cli_secret_manager,
             jwt_expires_seconds=web_jwt_expires,
+            review_mode=web_review_mode,
+            review_llm=web_review_llm,
+            review_timeout=web_review_timeout,
         )
         uv_config = uvicorn.Config(
             app,

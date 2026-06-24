@@ -3,12 +3,13 @@
 {% block content %}
 <section class="page-header">
     <h1>🔍 Review</h1>
-    <p class="subtitle">运行 agent_review 静态扫描 (W13 7 类规则)</p>
+    <p class="subtitle">运行 agent_review (W36f: full mode 异步 + SSE 进度流)</p>
 </section>
 
 <section class="card">
     <h2>📋 Run Review</h2>
-    <form hx-post="/api/review"
+    <form id="review-form"
+          hx-post="/api/review"
           hx-target="#review-result"
           hx-swap="innerHTML"
           hx-indicator="#review-spinner"
@@ -23,10 +24,11 @@
                       background: var(--bg-input, #1e1e1e); color: var(--fg, #eee);
                       border: 1px solid var(--border, #444); border-radius: 4px;">
         <button type="submit" class="btn-primary">Run Review</button>
-        <span id="review-spinner" class="htmx-indicator">⏳ 扫描中...</span>
+        <span id="review-spinner" class="htmx-indicator">⏳ 启动中...</span>
     </form>
     <p class="hint" style="color: var(--hint, #888); font-size: 0.85em; margin-top: 0.5rem;">
         默认 <code>main..HEAD</code>; 也支持 <code>abc123..def456</code> 等。
+        W36f full mode: 异步任务 + SSE 进度流; simple mode 走 W36b 同步。
         写路径需 Bearer token (与 <code>/api/events</code> 一致)。
     </p>
 </section>
@@ -36,5 +38,107 @@
     <div id="review-result">
         <p class="empty">点击 "Run Review" 启动扫描...</p>
     </div>
+    <div id="review-progress" style="display: none; margin-top: 1rem;">
+        <progress id="progress-bar" value="0" max="100" style="width: 100%; height: 1.5rem;"></progress>
+        <p id="progress-status" style="font-family: monospace; font-size: 0.85em; color: var(--hint, #888);"></p>
+        <pre id="progress-log" style="background: var(--bg-input, #1e1e1e); padding: 0.5rem; border-radius: 4px; max-height: 200px; overflow-y: auto; font-size: 0.8em;"></pre>
+    </div>
 </section>
+
+<script>
+/**
+ * @brief W36f: 处理 POST /api/review 返 202 + task_id 时, 订阅 SSE
+ * @note  simple mode (W36b 同步) 时 hx-target 直接显示 result, 不进 SSE
+ */
+(function() {
+    const form = document.getElementById('review-form');
+    const resultDiv = document.getElementById('review-result');
+    const progressDiv = document.getElementById('review-progress');
+    const progressBar = document.getElementById('progress-bar');
+    const progressStatus = document.getElementById('progress-status');
+    const progressLog = document.getElementById('progress-log');
+
+    form.addEventListener('htmx:afterRequest', function(evt) {
+        const xhr = evt.detail.xhr;
+        if (xhr.status === 202) {
+            try {
+                const data = JSON.parse(xhr.responseText);
+                if (data.task_id && data.events_url) {
+                    progressDiv.style.display = 'block';
+                    progressBar.value = 0;
+                    progressStatus.textContent = 'pending...';
+                    progressLog.textContent = '';
+                    subscribeSSE(data.task_id, data.events_url);
+                }
+            } catch (e) {
+                console.error('parse 202 response failed:', e);
+            }
+        } else if (xhr.status === 200) {
+            progressDiv.style.display = 'none';
+        }
+    });
+
+    function subscribeSSE(taskId, eventsUrl) {
+        const es = new EventSource(eventsUrl);
+        es.onmessage = function(e) {
+            try {
+                const event = JSON.parse(e.data);
+                if (event.progress !== undefined) {
+                    progressBar.value = event.progress;
+                }
+                if (event.status) {
+                    progressStatus.textContent = `${event.status} (${event.progress || 0}%)`;
+                }
+                if (event.log) {
+                    progressLog.textContent += event.log + '\n';
+                    progressLog.scrollTop = progressLog.scrollHeight;
+                }
+                if (event.status === 'done' && event.result) {
+                    resultDiv.innerHTML = renderResult(event.result);
+                    es.close();
+                    progressStatus.textContent = 'done';
+                }
+                if (event.status === 'error' && event.error) {
+                    resultDiv.innerHTML = '<p class="error">Error: ' + escapeHtml(event.error) + '</p>';
+                    es.close();
+                    progressStatus.textContent = 'error';
+                }
+            } catch (e) {
+                console.error('parse SSE event failed:', e);
+            }
+        };
+        es.onerror = function() {
+            progressStatus.textContent = 'connection closed';
+            es.close();
+        };
+    }
+
+    function renderResult(report) {
+        const verdict = report.verdict || 'unknown';
+        const findings = report.findings || [];
+        const summary = report.summary || '';
+        let html = '<p><strong>verdict:</strong> ' + escapeHtml(verdict) + '</p>';
+        html += '<p><strong>summary:</strong> ' + escapeHtml(summary) + '</p>';
+        if (findings.length === 0) {
+            html += '<p class="empty">no security issues</p>';
+        } else {
+            html += '<h3>findings (' + findings.length + '):</h3><ul>';
+            for (const f of findings) {
+                html += '<li><strong>[' + escapeHtml(f.severity) + ']</strong> '
+                      + escapeHtml(f.file) + ':' + f.line + ' '
+                      + escapeHtml(f.category) + ': ' + escapeHtml(f.description) + '</li>';
+            }
+            html += '</ul>';
+        }
+        return html;
+    }
+
+    function escapeHtml(s) {
+        if (s === null || s === undefined) return '';
+        return String(s).replace(/[&<>"']/g, function(c) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+        });
+    }
+})();
+</script>
 {% endblock %}
