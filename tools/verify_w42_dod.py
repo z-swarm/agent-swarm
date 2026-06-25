@@ -153,11 +153,10 @@ def check_8_zero_trust_fail_handled() -> bool:
     """8. 4 个零信任 fail 全部处理 (1 修 / 2 skip / 1 xfail)"""
     sandbox = (ROOT / "tests/unit/test_sandbox.py").read_text(encoding="utf-8")
     tui = (ROOT / "tests/unit/test_tui.py").read_text(encoding="utf-8")
-    if sandbox.count('@pytest.mark.skipif(\n    sys.platform == "win32"') < 2:
+    if sandbox.count('@pytest.mark.skipif(\n    sys.platform == "win32"') < 2 and "P3-WIN: Windows 没有 printenv" not in sandbox:
         # 计数不严格 (允许多种格式), 简化: 看 skipif 关键字是否在 p01 测试前
-        if "P3-WIN: Windows 没有 printenv" not in sandbox:
-            print("  [8/8] sandbox P3-WIN skipif: 缺失")
-            return False
+        print("  [8/8] sandbox P3-WIN skipif: 缺失")
+        return False
     if "test_tui_handles_very_many_agents_without_crash" not in tui:
         print("  [8/8] tui xfail: 缺失")
         return False

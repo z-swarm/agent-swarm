@@ -992,3 +992,61 @@ Phase 1 alpha: 核心 swarm + TaskQueue + Mailbox + KB + sandbox 基础
 ### Added
 - W1-W7 Phase 1 全部交付 (见 git log)
 
+
+## [1.0.0-rc1] - 2026-06-25
+
+### P6 W43 1.0.0 release 准备 (W36-W43 累计)
+
+#### 汇总: 8 个 P6 阶段 slice + 7 个 P5 收口 slice 累计 15 个 commit
+
+| Slice | 内容 | 关键 commit |
+|-------|------|------------|
+| **W36a** | JWT Secret 走 SecretManager | `0.5.0 节点` |
+| **W36b** | agent_review Web 入口 | `0.5.0 节点` |
+| **W36c** | vault://path#field URI 扩展 | `0.5.0 节点` |
+| **W36d** | 0.5.0a2 release | `0.5.0 节点` |
+| **W36e** | ruff format 150 文件 | `0.5.0 节点` |
+| **W36f** | agent_review 异步 (LLM+SSE) | `0.5.0 节点` |
+| **W36g** | 0.5.0 final release | `0.5.0 节点` |
+| **W37** | 真实 LLM judge (OpenAI/Anthropic) | `0.5.0 节点` |
+| **W38** | Phase 5 收口 (git-blame-ignore) | `0.5.0 节点` |
+| **W39** | Phase 6 启动 (PHASE6-PLAN + W40 候选) | `52a4f15` |
+| **W40** | Redis task store (Protocol + Memory/Redis) | `298b60a` |
+| **W41** | 多 worker 部署实战 (uvicorn workers + W40 闭环修复) | `03359eb` |
+| **W42** | 全量测试零信任缺口缝合 (KB TTL + 2 skipif + 1 xfail) | `6b1dc5e` |
+| **W43a** | TUI `_pump_events` drain 模式 (大场景吞吐优化) | `W43 commit` |
+| **W43c** | 1.0.0-rc1 release 准备 (version bump + dist + tag) | `W43 commit` |
+
+#### W43a: TUI 吞吐优化 (2026-06-25)
+
+- **升级**: `src/agent_swarm/tui/app.py` `_pump_events` 改 drain 模式
+  - 队列非空时一次拉多个事件 (max_drain=1000 兜底), 减少 wait_for 0.5s 阻塞
+  - 加速大场景 (100 task 涌入) 处理
+  - Linux 验证: 16/16 test_tui.py PASS
+  - Windows xfail 保留 (P3-WIN 平台 flake, 留 W44 实战验证)
+
+#### W43c: 1.0.0-rc1 release 准备 (2026-06-25)
+
+- **version 升级**: 0.5.0 → 1.0.0-rc1 (三处同步)
+  - `pyproject.toml` `[project] version = "1.0.0-rc1"`
+  - `src/agent_swarm/__init__.py` `__version__ = "1.0.0-rc1"`
+  - `src/agent_swarm/web/app.py` `version: str = "1.0.0-rc1"`
+- **dist 重建**: `python -m build` → `agent_swarm-1.0.0rc1-py3-none-any.whl` (245K) + `agent_swarm-1.0.0rc1.tar.gz` (503K)
+- **twine check**: `dist/agent_swarm-1.0.0rc1*` PASSED
+- **git tag**: `1.0.0-rc1` (本地, 不 push)
+- **守门**: `tools/verify_w43_dod.py` 8/8 PASSED (含 ruff 0 / mypy 0 / 全量 ≥1368 passed)
+
+#### 已知限制 (W43 范围外)
+
+- **W43b TestPyPI 真实上传** 阻塞, 等用户提供 `~/.pypirc` token
+  - 操作步骤见 `RELEASE.md` §2, 30min 可完成
+  - 命令: `twine upload --repository testpypi dist/agent_swarm-1.0.0rc1*`
+- **W44**: PyPI 正式发布 + 1.0.0 final tag + Windows TUI race 实战验证 (用户环境)
+- **Windows TUI race** (W43a xfail): 留 W44 实战, Linux 优化理论受益
+- **多 worker 跨 worker 真 SSE 通知**: 需真 Redis 实战 (e2e fakeredis 模拟), W44 实战
+
+#### 衔接
+
+- W43 整体闭环 = W43a + W43c ✅
+- W43b 阻塞 = 等用户 (token 后 30min 跑完)
+- W44 = PyPI 1.0.0 final 发布 + Windows 实战

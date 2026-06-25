@@ -13,7 +13,7 @@ from agent_swarm.core.types import (
     Turn,
 )
 
-__version__ = "0.5.0"
+__version__ = "1.0.0-rc1"
 
 __all__ = [
     "Swarm",

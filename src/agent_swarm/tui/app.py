@@ -326,13 +326,27 @@ class SwarmDashboardApp(App):
         @brief 持续从 TUISink.queue 拉事件, 路由到对应面板
 
         @note 用 asyncio.wait_for 短超时, 让 cancelled 能被快速响应
+        @note W43a: drain 模式 — 队列非空时一次拉多个事件 (max_drain=1000 兜底),
+              减少 wait_for 0.5s 阻塞, 加速大场景 (100 task 涌入) 处理
         """
+        max_drain = 1000
         while not self._is_finished or not self._sink.queue.empty():
-            try:
-                evt = await asyncio.wait_for(self._sink.queue.get(), timeout=0.5)
-            except TimeoutError:
-                continue
-            self._dispatch(evt)
+            # W43a: drain 队列 (空时快速 fallthrough 到 wait_for)
+            drained = 0
+            while not self._sink.queue.empty() and drained < max_drain:
+                try:
+                    evt = self._sink.queue.get_nowait()
+                except asyncio.QueueEmpty:  # noqa: PERF203
+                    break
+                self._dispatch(evt)
+                drained += 1
+            if drained == 0:
+                # 队列空, 短 wait 等新事件
+                try:
+                    evt = await asyncio.wait_for(self._sink.queue.get(), timeout=0.5)
+                except TimeoutError:
+                    continue
+                self._dispatch(evt)
         # 完成后 2 秒内自动退出（Q6 demo 用; 真实部署可改成持续监听）
         await asyncio.sleep(2.0)
         self.exit()

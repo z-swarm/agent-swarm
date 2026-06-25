@@ -65,7 +65,7 @@ def create_app(
     review_timeout: float = 60.0,
     task_store: Any = None,
     title: str = "agent-swarm",
-    version: str = "0.5.0",
+    version: str = "1.0.0-rc1",
 ) -> FastAPI:
     """
     构造 FastAPI app
