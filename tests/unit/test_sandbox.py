@@ -268,6 +268,10 @@ def test_p01_secret_env_name_regex_skips_normal_vars() -> None:
         assert not re.search(name), f"误伤: {name}"
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="P3-WIN: Windows 没有 printenv 命令 (Win32 shell 工具集差异)",
+)
 def test_p01_sandbox_execute_strips_secret_env(monkeypatch, tmp_path: Path) -> None:
     """execute() 透传 env 时不携带密钥类变量——`printenv` 也拿不到"""
     import asyncio as _asyncio
@@ -286,6 +290,10 @@ def test_p01_sandbox_execute_strips_secret_env(monkeypatch, tmp_path: Path) -> N
     assert "PATH=" in result.stdout
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="P3-WIN: Windows 没有 printenv 命令 (Win32 shell 工具集差异)",
+)
 def test_p01_sandbox_env_overrides_not_redacted(monkeypatch, tmp_path: Path) -> None:
     """env_overrides 显式注入的变量不被脱敏(用户明确知情)"""
     import asyncio as _asyncio

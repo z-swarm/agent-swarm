@@ -228,8 +228,9 @@ class KnowledgeBase:
                 self._misses += 1
                 return None
 
-            # 过期检查
-            if entry.expires_at is not None and time.time() > entry.expires_at:
+            # 过期检查 — W42 修复: ttl=0 / 负值视为立即过期, 用 >= 保证
+            # (time.time() 与 cache_analysis 里的 now 可能相等或差几微秒, 严格 > 会误判命中)
+            if entry.expires_at is not None and time.time() >= entry.expires_at:
                 del self._cache[key]
                 self._cache_size -= entry.size_bytes
                 self._misses += 1
