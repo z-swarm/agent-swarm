@@ -27,12 +27,9 @@ coverage.xml
 .mypy_cache/
 .ruff_cache/
 
-# 设计文档 (W43+ 部分入 git: docs/MEMORY/PHASE*-PLAN/PHASE*-RETRO/P5-RETRO; DESIGN.md 本地保留不入 git, git status 可见 untracked)
+# 设计文档 (W36 时代策略, 本地保留不入 git)
+DESIGN.md
 docs/
-!docs/MEMORY.md
-!docs/PHASE*-PLAN*.md
-!docs/PHASE*-RETRO.md
-!docs/P5-RETRO.md
 
 # IDE
 .idea/
