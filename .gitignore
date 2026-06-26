@@ -27,8 +27,7 @@ coverage.xml
 .mypy_cache/
 .ruff_cache/
 
-# 不上传的设计文档 (W43+ 部分入 git: DESIGN.md + docs/MEMORY/PHASE*-PLAN/PHASE*-RETRO/P5-RETRO; 临时复盘仍本地)
-DESIGN.md
+# 设计文档 (W43+ 部分入 git: docs/MEMORY/PHASE*-PLAN/PHASE*-RETRO/P5-RETRO; DESIGN.md 本地保留不入 git, git status 可见 untracked)
 docs/
 !docs/MEMORY.md
 !docs/PHASE*-PLAN*.md
